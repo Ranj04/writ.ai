@@ -322,10 +322,15 @@ describe("Live Workspace components", () => {
       expect(html).toContain("required status check on protected main");
       // Extraction reaches review, but no vendor delivery or approval was exercised.
       expect(html).toContain(
-        "Slack extraction is live to a pending proposal in direct",
+        "Slack extraction reaches a real graph write",
       );
+      // The measured instability must ship WITH the capability claim. A panel
+      // that says extraction works, without saying its wording is not
+      // reproducible, is the more dangerous half-truth.
+      expect(html).toContain("not reproducible");
+      expect(html).toContain("14 live runs");
+      expect(html).toContain("audience");
       expect(html).toContain("No real Composio webhook");
-      expect(html).toContain("human_reviewed=false");
       expect(html).toContain("--scope/--was/--now");
       // The CrustData payload is replayed, and is not even a real capture.
       expect(html).toContain("never fires live here");

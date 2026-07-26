@@ -310,15 +310,73 @@ scope vocabulary. A live rerun on the same sentence produced a valid
 `export.authorization` candidate; `SlackDecisionIntake` routed it to `PENDING`
 and built a proposal with validated evidence and `human_reviewed=false`.
 
-After structural failures were added to Gemini's retry loop, a second five-run
-characterisation on 2026-07-25 passed **5 of 5**: every candidate selected
-`export.authorization`, returned a non-empty requirement under that exact key,
-and carried evidence that validated after Python derived the quote offsets. A
-composed test now takes that candidate through shared human approval and a real
-`graph-v18` write; the model still never supplies the approval verdict.
+#### Re-characterised after the retry fix — 14 live runs, two harnesses
 
-It still does not approve itself. A real signed Composio delivery and authenticated
-Hexclave approval have not been exercised here.
+The earlier characterisation was wrong because it generalised from too few runs.
+This one does not. Same source sentence, same model, `max_attempts=2`,
+`repair_offsets=True`, the workspace's real scope vocabulary.
+
+**Structural, 8 runs** (mirrors `intake/slack.py:ingest_verified`):
+
+| Measure | Result |
+|---|---|
+| Call returned a candidate | **8 / 8** |
+| `extracted_requirements_error` clean | **8 / 8** |
+| `evidence_span_error` clean | **8 / 8** |
+| `decision_extraction_error` clean | **8 / 8** |
+| `build_workspace_proposal` succeeded | **8 / 8** |
+| Arrived as `PROPOSAL`, never pre-approved | **8 / 8** |
+
+**End to end to a graph write, 6 runs** (import → approve baseline → authorize →
+propose the *extracted* change → approve → inspect the graph):
+
+| Measure | Result |
+|---|---|
+| Proposal refused by the orchestrator | 0 / 6 |
+| Approval refused by the authority engine | 0 / 6 |
+| **Graph written, `graph-v17 → graph-v18`** | **6 / 6** |
+| Correct blast radius (203/204/205 invalidated, 201/202 preserved) | **6 / 6** |
+
+So the honest answer changed: **extraction now reaches a real graph write, with
+the correct scope-level verdict, every time.** The retry fix closed the
+`requirements: null` failure that made it unusable.
+
+#### The new caveat, which is the one that matters now
+
+**The requirement wording is not reproducible.** All 14 runs produced a
+*different* requirement shape, and **none used the workspace's own key**. The
+baseline is `{"audience": "all_users"}`. Extraction wrote, among others:
+
+```
+{"allowed_roles": ["administrator"], "data_format": "CSV"}
+{"allowed_roles": ["administrators"], "export_format": "CSV", "effective": "immediately"}
+{"restriction": "administrators_only", "format": "CSV"}
+{"restricted_to": "administrators_only", "format": "CSV"}
+{"rule": "CSV data exports must be restricted to administrators only", "access_level": "administrator"}
+```
+
+Every one is a correct English reading of the message. None is the graph's own
+vocabulary. The consequences split cleanly:
+
+- **Stable and correct:** which scope is affected, which decision is superseded,
+  which tasks are invalidated, which are preserved. That is what drives the
+  blast radius and the deny, and it did not vary once in 14 runs.
+- **Not stable:** the requirement text a redirected agent is handed. It changes
+  every run and never matches the key the baseline uses, so the "now required"
+  line an agent reads is a paraphrase rather than the graph's own words.
+
+This is Lane C's ASSUMPTIONS #13 in a sharper form — it recorded that a corrected
+agent paraphrases the new value; the measurement shows the *key itself* differs
+run to run.
+
+**Do not claim the redirect wording is deterministic.** The staged demo does not
+depend on it: `scripts/demo/fire.sh` fires the seeded fixture through the
+explicit delta with no extraction in the path.
+
+It still does not approve itself. A real signed Composio delivery and
+authenticated Hexclave approval have not been exercised here — the harness above
+bypassed channel authentication exactly as the seeder does, so every authority
+check ran but nobody proved who the approver was.
 
 #### What originally failed
 
@@ -733,7 +791,7 @@ the real-vs-simulated panel and at the top of `docs/STAGE_RUNBOOK.md`.
 |---|---|
 | Scope-aware invalidation, provenance, grant signing, stale-grant rejection | **Real** |
 | `PreToolUse` enforcement against live Claude Code sessions | **Real**, proven end to end |
-| Slack → decision **extraction** | **Live to a pending proposal in direct rehearsal.** No real Composio delivery or authenticated approval. See §4. |
+| Slack → decision **extraction** | **Reaches a real graph write** — 14/14 valid proposals, 6/6 applied with the correct blast radius. **Requirement wording is not reproducible**: 14 runs, 14 shapes, none using the workspace's own key. No real Composio delivery or authenticated approval. See §4. |
 | Composio webhook delivery | **Never delivered here.** Message text supplied by hand. |
 | Hexclave approval identity | **Real code, blocked on provisioning.** The project has zero teams, so no valid `HEXCLAVE_TEAM_ID` exists; the demo uses the gated in-process seam. |
 | CrustData person watcher | **Replayed.** `CRUSTDATA_API_KEY` is unset and the payload is documentation-reconstructed, not captured. |

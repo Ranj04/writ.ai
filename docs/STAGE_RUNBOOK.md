@@ -144,14 +144,27 @@ Also close and relaunch the five `claude` sessions — a session that already sa
 
 ## What is NOT live — do not claim otherwise on stage
 
+- **Slack extraction now works, and its wording is not reproducible.** Measured
+  over 14 live runs on the demo's own sentence: 14/14 produced a valid proposal,
+  and 6/6 driven through approval reached a **graph write** with the correct
+  blast radius — `graph-v17 → graph-v18`, TASK-203/204/205 invalidated,
+  TASK-201/202 preserved, every time.
+
+  **But all 14 runs invented a different requirement shape**, and none used the
+  workspace's own `audience` key. The baseline says
+  `{"audience": "all_users"}`; extraction writes `{"allowed_roles":
+  ["administrators"], "format": "CSV"}`, `{"restricted_to":
+  "administrators_only"}`, and twelve other variants. **The scope-level verdict
+  is stable and correct; the requirement text handed to a redirected agent is
+  not.** Do not promise a judge that the redirect wording is deterministic.
+
+  The staged demo does not depend on any of this: `scripts/demo/fire.sh` fires
+  the seeded change fixture through the explicit delta, with no extraction in
+  the path. Show extraction as its own beat, not as the demo's spine.
 - **No real Composio delivery or Hexclave-authenticated approval has exercised
-  the Slack route.** Live Gemini extraction now reaches a `PENDING` proposal in
-  direct rehearsal: exact quotes are resolved to offsets in Python, requirements
-  are mandatory, and the workspace supplies the trusted scope vocabulary.
-  Deterministic validation still refuses fabricated evidence or unknown scopes,
-  and the proposal remains `human_reviewed=false`. The staged demo still fires
-  through `scripts/demo/fire.sh`, which uses the seeded change fixture and the
-  explicit delta — no extraction in that path.
+  the Slack route.** The measurement above bypassed channel authentication
+  exactly as the seeder does. Every authority check ran; nobody proved who the
+  approver was.
 - **No Composio webhook has ever been delivered here.** Message text is supplied
   by hand. `COMPOSIO_WEBHOOK_SECRET` is empty, so no signed delivery can be
   verified.
