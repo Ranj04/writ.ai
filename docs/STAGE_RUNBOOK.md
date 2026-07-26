@@ -6,24 +6,35 @@ Cold machine to the deny landing. Read top to bottom, one command per step.
 
 ## 0. Prerequisites
 
-Work from a checkout that has **all four** of: a `.venv` on python3.12, the
-`writai` package installed into it, a `.env`, and the branch you actually mean
-to demo. Missing any one of them fails later and less obviously.
+**There is exactly one tree. It is `/Users/ranjivj/writai-verify`.**
 
 ```
-cd <your writ.ai checkout> && .venv/bin/python --version && .venv/bin/writai --help >/dev/null && ls .env && git log --oneline -1
+cd /Users/ranjivj/writai-verify && .venv/bin/python --version && .venv/bin/writai --help >/dev/null && ls .env && git log --oneline -1
 ```
 
-All four must succeed. What each one catches:
+The other two checkouts on this machine were renamed so they cannot be entered
+by accident: `DragBack-ARCHIVE` (pre-rename code, still holds the lane branches
+— **do not delete it**) and `writ.ai-STALE` (had the `.env`, no venv, behind).
+`/Users/ranjivj/DragBack` is now an empty directory containing only a signpost
+back here.
+
+All four checks must pass. What each one catches:
 
 - **`Python 3.12.x`** — system `python3` is 3.9 and will not work.
-- **`.venv/bin/writai`** — the console script. It did not exist for a while after
-  the rename: the venv still held an *editable* install of the old `dragback`
-  package pointed at a **different directory**, so `dragback …` ran pre-rename
-  code from the archive tree and looked completely normal doing it. If `writai`
-  is missing, or `.venv/bin/dragback` still exists, fix it before anything else:
+- **`.venv/bin/writai`** — the console script, and proof the venv is real. Two
+  separate versions of this went wrong:
+  - the venv held an *editable* install of the old `dragback` package pointed at
+    a **different directory**, so `dragback …` ran pre-rename code from the
+    archive tree and looked completely normal doing it;
+  - and `.venv` here was a **symlink into `/Users/ranjivj/DragBack/.venv`** — the
+    canonical tree had no interpreter of its own and silently borrowed the
+    archive's, which is what made the first problem possible.
+
+  Both are fixed: `.venv` is now a real directory built by `python3.12 -m venv`
+  with `pip install -e ".[dev]"`. If `ls -ld .venv` ever shows a symlink, or
+  `.venv/bin/dragback` exists, stop and rebuild:
   ```
-  .venv/bin/pip uninstall -y dragback && .venv/bin/pip install -e .
+  rm .venv && python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
   ```
 - **`.env`** — read from the **working directory**. Run step 1 from a tree
   without one and every integration reports `[ ---- ] not configured` and the
