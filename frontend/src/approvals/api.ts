@@ -65,7 +65,10 @@ export type ApprovalResult = {
 };
 
 const NO_APPROVAL_CHANNEL =
-  "no approval identity is present in this browser — approve with `writai approve`";
+  "NOT SIGNED IN — this browser has no Hexclave identity, so nothing was " +
+  "approved here. The staged demo approves through the unauthenticated seam " +
+  "(WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1), which checks every authority rule " +
+  "but proves no approver. Sign in, or approve with `writai approve`.";
 
 /**
  * What a live approval needs, kept beside the change rather than inside it so
