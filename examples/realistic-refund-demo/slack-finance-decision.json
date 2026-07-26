@@ -1,0 +1,47 @@
+{
+  "_fixture_notice": "Simulated Slack export for the Dragback demo; not retrieved from a live workspace.",
+  "workspace": "Northstar Payments",
+  "channel": {
+    "id": "C08FINOPS",
+    "name": "finance-operations"
+  },
+  "thread": {
+    "thread_ts": "1782896400.000100",
+    "messages": [
+      {
+        "ts": "1782896400.000100",
+        "user": {
+          "id": "U042MAYA",
+          "display_name": "Maya Chen",
+          "title": "Payments Product Manager"
+        },
+        "text": "Proposal: automate verified customer refunds. The service will calculate the standard refund amount, confirm the customer identity check is complete, and send approved refunds to our payment provider without another manual handoff."
+      },
+      {
+        "ts": "1782896880.000200",
+        "user": {
+          "id": "U019ELENA",
+          "display_name": "Elena Ruiz",
+          "title": "Finance Operations Director"
+        },
+        "text": "Finance approves this workflow for verified refund requests. Calculation uses the standard method, identity verification remains required, and execution may be automatic."
+      },
+      {
+        "ts": "1782897000.000300",
+        "user": {
+          "id": "U019ELENA",
+          "display_name": "Elena Ruiz",
+          "title": "Finance Operations Director"
+        },
+        "text": "Decision status: APPROVED. Owner: Finance Operations. Effective July 1, 2026. Related engineering ticket: PAY-104."
+      }
+    ]
+  },
+  "normalized_decision": {
+    "id": "DEC-REFUND-001",
+    "title": "Verified refunds may be processed automatically",
+    "approval_status": "approved",
+    "authority_role": "finance-admin",
+    "effective_at": "2026-07-01T09:00:00Z"
+  }
+}

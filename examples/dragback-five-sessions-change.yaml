@@ -1,0 +1,30 @@
+# The Slack message, as an approved decision change.
+#
+#   "Approved: exports must be admin-only, effective immediately."
+#
+# It never names TICKET-100 or any task. The graph reaches all three
+# export.authorization tasks through decision -> specification -> ticket lineage.
+#
+# effective_at is set deliberately: current_requirements() orders candidates by it
+# and defaults None to datetime.min, so an "effective immediately" message
+# ingested without a timestamp sorts to the BOTTOM of precedence and silently
+# loses to the decision it supersedes.
+decision:
+  id: DEC-018
+  kind: Decision
+  title: Exports must be admin-only
+  text: Data exports may only be exposed to administrators.
+  scopes:
+    - export.authorization
+  approval_status: proposal
+  authority_role: approve_compliance
+  confidence: 0.97
+  effective_at: "2026-07-24T16:30:00Z"
+  source_ref: slack://compliance/decision-018
+  attributes:
+    requirements:
+      export.authorization:
+        audience: admin_only
+supersedes_id: DEC-004
+affected_scopes:
+  - export.authorization

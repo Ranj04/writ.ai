@@ -1,0 +1,65 @@
+{
+  "_fixture_notice": "Simulated Jira export for the Dragback demo; not retrieved from a live Jira site.",
+  "id": "100104",
+  "key": "PAY-104",
+  "self": "https://northstar-payments.example.atlassian.net/rest/api/3/issue/100104",
+  "fields": {
+    "project": {
+      "key": "PAY",
+      "name": "Payments Platform"
+    },
+    "issuetype": {
+      "name": "Story"
+    },
+    "summary": "Automate verified customer refunds",
+    "description": "Implement the approved refund workflow: calculate the standard refund amount, confirm identity verification, and issue the refund through the payment provider.",
+    "status": {
+      "name": "In Progress"
+    },
+    "priority": {
+      "name": "High"
+    },
+    "assignee": {
+      "displayName": "Payments Coding Agent"
+    },
+    "reporter": {
+      "displayName": "Maya Chen"
+    },
+    "labels": [
+      "refunds",
+      "automation",
+      "agent-run"
+    ],
+    "customfield_decision": "DEC-REFUND-001",
+    "customfield_specification": "SPEC-REFUND-001",
+    "subtasks": [
+      {
+        "key": "PAY-105",
+        "fields": {
+          "summary": "Calculate the standard refund amount",
+          "status": {
+            "name": "In Progress"
+          }
+        }
+      },
+      {
+        "key": "PAY-106",
+        "fields": {
+          "summary": "Confirm customer identity verification",
+          "status": {
+            "name": "To Do"
+          }
+        }
+      },
+      {
+        "key": "PAY-107",
+        "fields": {
+          "summary": "Issue approved refund automatically",
+          "status": {
+            "name": "To Do"
+          }
+        }
+      }
+    ]
+  }
+}

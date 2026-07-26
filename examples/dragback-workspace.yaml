@@ -1,0 +1,128 @@
+id: refund-operations
+name: Refund operations
+description: >
+  A user-owned workspace that governs an automated refund workflow. The
+  calculation task and refund-execution task intentionally have separate scopes
+  so Dragback can preserve one while stopping the other.
+
+authority_policy:
+  payments.refunds.calculation:
+    - finance-admin
+  payments.refunds.execution:
+    - finance-admin
+
+baseline_decision:
+  id: DEC-REFUND-001
+  kind: Decision
+  title: Refunds may be calculated and issued automatically
+  text: Approved refund requests may be calculated and issued without another review.
+  scopes:
+    - payments.refunds.calculation
+    - payments.refunds.execution
+  approval_status: proposal
+  authority_role: finance-admin
+  confidence: 1.0
+  effective_at: "2026-07-01T09:00:00Z"
+  source_ref: manual://refund-operations/decision-001
+  attributes:
+    requirements:
+      payments.refunds.calculation:
+        calculation_mode: automatic
+      payments.refunds.execution:
+        human_approval_required: false
+        approval_threshold_usd: null
+
+specification:
+  id: SPEC-REFUND-001
+  kind: Specification
+  title: Automated refund workflow
+  text: Calculate the refund amount and issue the approved refund automatically.
+  scopes:
+    - payments.refunds.calculation
+    - payments.refunds.execution
+  source_ref: manual://refund-operations/specification-001
+
+ticket:
+  id: PAY-104
+  kind: Ticket
+  title: Automate approved customer refunds
+  text: Implement calculation and execution of approved refunds.
+  scopes:
+    - payments.refunds.calculation
+    - payments.refunds.execution
+  source_ref: manual://refund-operations/ticket-PAY-104
+
+tasks:
+  - id: TASK-REFUND-CALCULATE
+    kind: Task
+    title: Calculate the refund amount
+    text: Calculate the approved refund using the existing finance rules.
+    scopes:
+      - payments.refunds.calculation
+    source_ref: manual://refund-operations/task-calculate
+  - id: TASK-REFUND-ISSUE
+    kind: Task
+    title: Issue the refund automatically
+    text: Send the calculated refund to the payment provider.
+    scopes:
+      - payments.refunds.execution
+    source_ref: manual://refund-operations/task-issue
+
+plan:
+  id: PLAN-REFUND-001
+  ticket_id: PAY-104
+  objective: Calculate and issue approved refunds automatically.
+  actions:
+    - id: ACTION-REFUND-CALCULATE
+      description: Calculate the approved refund amount.
+      scopes:
+        - payments.refunds.calculation
+      attributes:
+        calculation_mode: automatic
+    - id: ACTION-REFUND-ISSUE
+      description: Issue the calculated refund without another approval.
+      scopes:
+        - payments.refunds.execution
+      attributes:
+        human_approval_required: false
+        approval_threshold_usd: null
+
+edges:
+  - source_id: DEC-REFUND-001
+    target_id: SPEC-REFUND-001
+    kind: BASIS_FOR
+    scopes:
+      - payments.refunds.calculation
+      - payments.refunds.execution
+    evidence_ref: manual://refund-operations/decision-001
+  - source_id: SPEC-REFUND-001
+    target_id: PAY-104
+    kind: CREATES
+    scopes:
+      - payments.refunds.calculation
+      - payments.refunds.execution
+    evidence_ref: manual://refund-operations/specification-001
+  - source_id: PAY-104
+    target_id: TASK-REFUND-CALCULATE
+    kind: DECOMPOSES_TO
+    scopes:
+      - payments.refunds.calculation
+    evidence_ref: manual://refund-operations/ticket-PAY-104
+  - source_id: PAY-104
+    target_id: TASK-REFUND-ISSUE
+    kind: DECOMPOSES_TO
+    scopes:
+      - payments.refunds.execution
+    evidence_ref: manual://refund-operations/ticket-PAY-104
+  - source_id: TASK-REFUND-CALCULATE
+    target_id: PLAN-REFUND-001
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - payments.refunds.calculation
+    evidence_ref: manual://refund-operations/plan-001
+  - source_id: TASK-REFUND-ISSUE
+    target_id: PLAN-REFUND-001
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - payments.refunds.execution
+    evidence_ref: manual://refund-operations/plan-001

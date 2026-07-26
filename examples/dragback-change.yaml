@@ -1,0 +1,20 @@
+decision:
+  id: DEC-REFUND-002
+  kind: Decision
+  title: Large refunds require finance approval
+  text: Refunds of $500 or more must receive finance approval before execution.
+  scopes:
+    - payments.refunds.execution
+  approval_status: proposal
+  authority_role: finance-admin
+  confidence: 1.0
+  effective_at: "2026-07-23T12:00:00Z"
+  source_ref: manual://refund-operations/decision-002
+  attributes:
+    requirements:
+      payments.refunds.execution:
+        human_approval_required: true
+        approval_threshold_usd: 500
+supersedes_id: DEC-REFUND-001
+affected_scopes:
+  - payments.refunds.execution

@@ -1,0 +1,50 @@
+name: Dragback authorization backstop
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent-url:
+        description: HTTPS URL of the running Dragback agent service
+        required: true
+        type: string
+      workspace-id:
+        description: Live Workspace to verify
+        required: true
+        type: string
+      grant:
+        description: Authorization snapshot to verify
+        required: true
+        default: initial
+        type: choice
+        options:
+          - initial
+          - replacement
+  workflow_call:
+    inputs:
+      agent-url:
+        required: true
+        type: string
+      workspace-id:
+        required: true
+        type: string
+      grant:
+        required: false
+        default: initial
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-dragback-authorization:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the protected revision
+        uses: actions/checkout@v4
+
+      - name: Reject stale or invalid Dragback authorization
+        uses: ./.github/actions/dragback-verify
+        with:
+          agent-url: ${{ inputs.agent-url }}
+          workspace-id: ${{ inputs.workspace-id }}
+          grant: ${{ inputs.grant }}

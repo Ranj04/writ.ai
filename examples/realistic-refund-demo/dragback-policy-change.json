@@ -1,0 +1,26 @@
+{
+  "decision": {
+    "id": "DEC-REFUND-002",
+    "kind": "Decision",
+    "title": "High-value refunds require human approval",
+    "text": "Refunds over $500 must be escalated to a human approver before execution.",
+    "scopes": [
+      "refund.execution"
+    ],
+    "approval_status": "proposal",
+    "authority_role": "finance-admin",
+    "confidence": 0.99,
+    "source_ref": "fixture://slack/risk-and-compliance/1784907000.000100",
+    "attributes": {
+      "requirements": {
+        "refund.execution": {
+          "mode": "human_approval_over_500"
+        }
+      }
+    }
+  },
+  "supersedes_id": "DEC-REFUND-001",
+  "affected_scopes": [
+    "refund.execution"
+  ]
+}

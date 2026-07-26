@@ -1,0 +1,27 @@
+{
+  "decision": {
+    "id": "DEC-018",
+    "kind": "Decision",
+    "title": "Exports must be admin-only",
+    "text": "For compliance, CSV exports are restricted to administrators.",
+    "scopes": [
+      "export.authorization"
+    ],
+    "approval_status": "approved",
+    "authority_role": "compliance",
+    "confidence": 0.97,
+    "effective_at": "2026-07-20T14:30:00Z",
+    "source_ref": "slack://compliance/decision-018",
+    "attributes": {
+      "requirements": {
+        "export.authorization": {
+          "audience": "admin_only"
+        }
+      }
+    }
+  },
+  "supersedes_id": "DEC-004",
+  "affected_scopes": [
+    "export.authorization"
+  ]
+}

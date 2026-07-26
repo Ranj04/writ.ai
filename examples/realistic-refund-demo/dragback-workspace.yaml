@@ -1,0 +1,179 @@
+id: realistic-refund-demo
+name: Realistic refund operations demo
+description: >
+  A simulated company workspace assembled from a Slack decision, a finance
+  specification, Jira ticket PAY-104, its subtasks, and a coding-agent plan.
+
+graph_version: 17
+
+authority_policy:
+  refund.calculation:
+    - finance-admin
+  refund.identity:
+    - finance-admin
+  refund.execution:
+    - finance-admin
+
+baseline_decision:
+  id: DEC-REFUND-001
+  kind: Decision
+  title: Verified refunds may be processed automatically
+  text: >
+    Verified customer refunds may be calculated and issued automatically.
+  scopes:
+    - refund.calculation
+    - refund.identity
+    - refund.execution
+  approval_status: proposal
+  authority_role: finance-admin
+  confidence: 0.99
+  effective_at: "2026-07-01T09:00:00Z"
+  source_ref: fixture://slack/finance-operations/1782896400.000100
+  attributes:
+    requirements:
+      refund.calculation:
+        method: standard
+      refund.identity:
+        verification: required
+      refund.execution:
+        mode: automatic
+
+specification:
+  id: SPEC-REFUND-001
+  kind: Specification
+  title: Refund processing controls
+  text: >
+    Calculate refunds, confirm customer identity, and issue approved refunds.
+  scopes:
+    - refund.calculation
+    - refund.identity
+    - refund.execution
+  source_ref: fixture://documents/refund-processing-spec
+
+ticket:
+  id: PAY-104
+  kind: Ticket
+  title: Automate verified customer refunds
+  text: >
+    Implement the approved refund workflow for calculation, identity checks,
+    and execution.
+  scopes:
+    - refund.calculation
+    - refund.identity
+    - refund.execution
+  source_ref: fixture://jira/PAY-104
+
+tasks:
+  - id: TASK-REFUND-CALCULATE
+    kind: Task
+    title: Calculate the standard refund amount
+    text: Calculate an approved refund using the standard finance method.
+    scopes:
+      - refund.calculation
+    source_ref: fixture://jira/PAY-105
+
+  - id: TASK-REFUND-IDENTITY
+    kind: Task
+    title: Confirm customer identity verification
+    text: Require a successful identity verification before refund execution.
+    scopes:
+      - refund.identity
+    source_ref: fixture://jira/PAY-106
+
+  - id: TASK-REFUND-EXECUTE
+    kind: Task
+    title: Issue the approved refund automatically
+    text: Send the approved refund to the configured payment provider.
+    scopes:
+      - refund.execution
+    source_ref: fixture://jira/PAY-107
+
+plan:
+  id: PLAN-REFUND-001
+  ticket_id: PAY-104
+  objective: Implement automated processing for verified customer refunds.
+  actions:
+    - id: ACTION-REFUND-CALCULATE
+      description: Calculate the approved refund using the standard method.
+      scopes:
+        - refund.calculation
+      attributes:
+        task_id: TASK-REFUND-CALCULATE
+        method: standard
+
+    - id: ACTION-REFUND-IDENTITY
+      description: Require successful identity verification.
+      scopes:
+        - refund.identity
+      attributes:
+        task_id: TASK-REFUND-IDENTITY
+        verification: required
+
+    - id: ACTION-REFUND-EXECUTE
+      description: Send the approved refund automatically.
+      scopes:
+        - refund.execution
+      attributes:
+        task_id: TASK-REFUND-EXECUTE
+        mode: automatic
+
+edges:
+  - source_id: DEC-REFUND-001
+    target_id: SPEC-REFUND-001
+    kind: BASIS_FOR
+    scopes:
+      - refund.calculation
+      - refund.identity
+      - refund.execution
+    evidence_ref: fixture://slack/finance-operations/1782896400.000100
+
+  - source_id: SPEC-REFUND-001
+    target_id: PAY-104
+    kind: CREATES
+    scopes:
+      - refund.calculation
+      - refund.identity
+      - refund.execution
+    evidence_ref: fixture://documents/refund-processing-spec
+
+  - source_id: PAY-104
+    target_id: TASK-REFUND-CALCULATE
+    kind: DECOMPOSES_TO
+    scopes:
+      - refund.calculation
+    evidence_ref: fixture://jira/PAY-105
+
+  - source_id: PAY-104
+    target_id: TASK-REFUND-IDENTITY
+    kind: DECOMPOSES_TO
+    scopes:
+      - refund.identity
+    evidence_ref: fixture://jira/PAY-106
+
+  - source_id: PAY-104
+    target_id: TASK-REFUND-EXECUTE
+    kind: DECOMPOSES_TO
+    scopes:
+      - refund.execution
+    evidence_ref: fixture://jira/PAY-107
+
+  - source_id: TASK-REFUND-CALCULATE
+    target_id: PLAN-REFUND-001
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - refund.calculation
+    evidence_ref: fixture://agent/RUN-REFUND-027/PLAN-REFUND-001
+
+  - source_id: TASK-REFUND-IDENTITY
+    target_id: PLAN-REFUND-001
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - refund.identity
+    evidence_ref: fixture://agent/RUN-REFUND-027/PLAN-REFUND-001
+
+  - source_id: TASK-REFUND-EXECUTE
+    target_id: PLAN-REFUND-001
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - refund.execution
+    evidence_ref: fixture://agent/RUN-REFUND-027/PLAN-REFUND-001

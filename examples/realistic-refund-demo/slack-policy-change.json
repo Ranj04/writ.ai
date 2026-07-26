@@ -1,0 +1,66 @@
+{
+  "_fixture_notice": "Simulated Slack export for the Dragback demo; not retrieved from a live workspace.",
+  "workspace": "Northstar Payments",
+  "channel": {
+    "id": "C08RISK",
+    "name": "risk-and-compliance"
+  },
+  "thread": {
+    "thread_ts": "1784907000.000100",
+    "messages": [
+      {
+        "ts": "1784907000.000100",
+        "user": {
+          "id": "U055PRIYA",
+          "display_name": "Priya Shah",
+          "title": "Risk Manager"
+        },
+        "text": "Our July loss review found that high-value refunds need a second set of eyes. I propose human approval before any refund above $500 is sent to the payment provider."
+      },
+      {
+        "ts": "1784907480.000200",
+        "user": {
+          "id": "U019ELENA",
+          "display_name": "Elena Ruiz",
+          "title": "Finance Operations Director"
+        },
+        "text": "Approved. Effective immediately, refunds over $500 must be escalated to a human approver before execution. Calculation and identity verification do not change."
+      },
+      {
+        "ts": "1784907600.000300",
+        "user": {
+          "id": "U019ELENA",
+          "display_name": "Elena Ruiz",
+          "title": "Finance Operations Director"
+        },
+        "text": "Decision status: APPROVED. This supersedes the automatic-execution portion of DEC-REFUND-001."
+      }
+    ]
+  },
+  "dragback_mutation": {
+    "decision": {
+      "id": "DEC-REFUND-002",
+      "kind": "Decision",
+      "title": "High-value refunds require human approval",
+      "text": "Refunds over $500 must be escalated to a human approver before execution.",
+      "scopes": [
+        "refund.execution"
+      ],
+      "approval_status": "proposal",
+      "authority_role": "finance-admin",
+      "confidence": 0.99,
+      "source_ref": "fixture://slack/risk-and-compliance/1784907000.000100",
+      "attributes": {
+        "requirements": {
+          "refund.execution": {
+            "mode": "human_approval_over_500"
+          }
+        }
+      }
+    },
+    "supersedes_id": "DEC-REFUND-001",
+    "affected_scopes": [
+      "refund.execution"
+    ]
+  }
+}

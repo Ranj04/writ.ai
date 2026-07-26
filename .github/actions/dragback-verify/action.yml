@@ -1,0 +1,42 @@
+name: Dragback authorization check
+description: Verify a stored Dragback grant and fail when execution is not authorized.
+
+inputs:
+  agent-url:
+    description: Base URL of the running Dragback agent service.
+    required: true
+  workspace-id:
+    description: Live workspace whose stored authorization should be verified.
+    required: true
+  grant:
+    description: Stored authorization to verify (initial or replacement).
+    required: false
+    default: initial
+  python-version:
+    description: Python version used to install the Dragback CLI.
+    required: false
+    default: "3.11"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Dragback CLI
+      shell: bash
+      run: python -m pip install "${GITHUB_ACTION_PATH}/../../.."
+
+    - name: Verify Dragback authorization
+      shell: bash
+      env:
+        DRAGBACK_ACTION_AGENT_URL: ${{ inputs.agent-url }}
+        DRAGBACK_ACTION_WORKSPACE_ID: ${{ inputs.workspace-id }}
+        DRAGBACK_ACTION_GRANT: ${{ inputs.grant }}
+      run: >-
+        dragback
+        --agent-url "$DRAGBACK_ACTION_AGENT_URL"
+        workspace verify "$DRAGBACK_ACTION_WORKSPACE_ID"
+        --grant "$DRAGBACK_ACTION_GRANT"

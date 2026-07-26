@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dragback — pending change</title>
+<style>
+  :root{
+    --sl-white:#ffffff; --sl-ink:#0a0a0a; --sl-muted:#5d6167; --sl-faint:#f6f7f7;
+    --sl-border:#d7d9dc; --sl-border-strong:#aeb2b7;
+    --sl-green:#207a3a; --sl-green-soft:#f4faf5;
+    --sl-amber:#bc5a09; --sl-amber-soft:#fff8f1;
+    --sl-red:#d21c1c; --sl-red-soft:#fff7f7;
+    --sl-focus:#1a5fd0;
+    --sl-font-sans:Inter,"Helvetica Neue",Helvetica,Arial,ui-sans-serif,system-ui,sans-serif;
+    --sl-font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sl-radius-control:4px; --sl-radius-panel:5px;
+    --sl-motion-fast:140ms;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; background:var(--sl-white); color:var(--sl-ink);
+    font-family:var(--sl-font-sans); font-size:16px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(1200px 500px at 50% -220px,#f3f6f9 0%,#ffffff 62%);
+  }
+  .page{width:min(100%,1080px); margin:0 auto; padding:56px 48px 96px}
+
+  .eyebrow{
+    display:inline-flex; align-items:center; gap:8px; padding:6px 12px;
+    border:1px solid var(--sl-border); border-radius:999px; background:var(--sl-white);
+    color:var(--sl-muted); font-size:.78rem; letter-spacing:.02em;
+  }
+  .dot{width:7px;height:7px;border-radius:999px;background:var(--sl-amber);
+       box-shadow:0 0 0 4px var(--sl-amber-soft)}
+  h1{
+    margin:20px 0 0; font-size:clamp(2.4rem,4vw,3.45rem); font-weight:760;
+    letter-spacing:-.06em; line-height:1;
+  }
+  .sub{max-width:680px;margin:14px 0 0;color:var(--sl-muted);font-size:1.04rem}
+
+  .card{
+    margin-top:40px; border:1px solid var(--sl-border); border-radius:var(--sl-radius-panel);
+    background:var(--sl-white); box-shadow:0 1px 2px rgba(10,10,10,.04),0 12px 32px -18px rgba(10,10,10,.18);
+    overflow:hidden;
+  }
+  .sect{padding:28px 32px; border-bottom:1px solid var(--sl-border)}
+  .sect:last-child{border-bottom:none}
+  .label{
+    margin:0 0 14px; color:var(--sl-muted); font-size:.74rem; font-weight:600;
+    letter-spacing:.09em; text-transform:uppercase;
+  }
+
+  /* --- slack --- */
+  .slack{display:flex;gap:12px;align-items:flex-start}
+  .slack .av{
+    width:38px;height:38px;border-radius:var(--sl-radius-control);flex:none;
+    background:#4a154b;color:#fff;display:grid;place-items:center;font-weight:700;font-size:.82rem;
+  }
+  .slack .who{display:flex;align-items:baseline;gap:8px}
+  .slack .who strong{font-size:.95rem}
+  .slack .who span{color:var(--sl-muted);font-size:.78rem}
+  .slack .msg{margin:3px 0 0;font-size:1.06rem}
+  .chan{margin:12px 0 0;color:var(--sl-muted);font-size:.8rem;font-family:var(--sl-font-mono)}
+
+  /* --- delta --- */
+  .delta{display:flex;flex-direction:column;gap:8px;font-size:1.02rem}
+  .delta .row{display:flex;align-items:center;gap:12px}
+  .delta code{
+    font-family:var(--sl-font-mono);font-size:.9rem;padding:5px 10px;
+    border:1px solid var(--sl-border);border-radius:999px;background:var(--sl-faint);
+  }
+  .was code{text-decoration:line-through;color:var(--sl-muted);opacity:.75}
+  .now code{border-color:var(--sl-green);background:var(--sl-green-soft);color:var(--sl-green)}
+  .arrow{color:var(--sl-border-strong);font-size:.9rem}
+
+  /* --- chain --- */
+  .chain{position:relative;padding-left:26px}
+  .rail{position:absolute;left:5px;top:6px;bottom:6px;width:2px;background:var(--sl-border);border-radius:2px;overflow:hidden}
+  .rail i{
+    position:absolute;left:0;right:0;top:0;height:0;display:block;
+    background:linear-gradient(180deg,var(--sl-amber),#e08a3c);
+    transition:height 820ms cubic-bezier(.4,0,.2,1);
+  }
+  .fired .rail i{height:100%}
+  .node{position:relative;padding:9px 0}
+  .node::before{
+    content:"";position:absolute;left:-25px;top:16px;width:12px;height:12px;border-radius:999px;
+    background:var(--sl-white);border:2px solid var(--sl-border);transition:all var(--sl-motion-fast)
+  }
+  .node b{display:block;font-size:.95rem;font-weight:600}
+  .node span{color:var(--sl-muted);font-size:.84rem}
+  .fired .node::before{border-color:var(--sl-amber)}
+  .fired .node--calm::before{border-color:var(--sl-green)}
+  .node--calm b{color:var(--sl-green)}
+
+  /* --- blast radius --- */
+  .hero{display:flex;align-items:flex-end;gap:16px;margin-bottom:26px}
+  .big{font-size:4.2rem;font-weight:760;letter-spacing:-.06em;line-height:.9}
+  .hero p{margin:0 0 8px;color:var(--sl-muted);font-size:1rem;max-width:320px}
+  .people{display:flex;gap:34px;flex-wrap:wrap}
+  .col{flex:1;min-width:250px}
+  .col h4{margin:0 0 14px;font-size:.85rem;font-weight:650;display:flex;align-items:center;gap:8px}
+  .pill{padding:2px 9px;border-radius:999px;font-size:.75rem;font-weight:650}
+  .stop .pill{background:var(--sl-amber-soft);color:var(--sl-amber);border:1px solid #f0d9c2}
+  .go .pill{background:var(--sl-green-soft);color:var(--sl-green);border:1px solid #cfe7d5}
+  .person{display:flex;align-items:center;gap:11px;padding:9px 0}
+  .face{
+    position:relative;width:40px;height:40px;border-radius:999px;flex:none;display:grid;place-items:center;
+    font-weight:700;font-size:.85rem;color:#fff;
+    transition:filter 420ms ease,opacity 420ms ease,box-shadow 420ms ease;
+  }
+  .person b{display:block;font-size:.93rem;font-weight:600}
+  .person span{color:var(--sl-muted);font-size:.8rem;font-family:var(--sl-font-mono)}
+  .glyph{
+    position:absolute;right:-3px;bottom:-3px;width:17px;height:17px;border-radius:999px;
+    background:var(--sl-white);border:1px solid var(--sl-border);display:grid;place-items:center;
+    opacity:0;transform:scale(.6);transition:all 300ms ease 380ms;
+  }
+  .glyph svg{width:9px;height:9px}
+  .fired .stop .face{filter:grayscale(1);opacity:.42}
+  .fired .stop .glyph{opacity:1;transform:scale(1)}
+  .fired .go .face{box-shadow:0 0 0 3px var(--sl-green-soft),0 0 0 4px #cfe7d5}
+
+  /* --- action --- */
+  .action{display:flex;align-items:center;gap:16px;background:var(--sl-faint)}
+  button{
+    font:inherit;font-weight:600;padding:0 22px;height:44px;border-radius:var(--sl-radius-control);
+    cursor:pointer;transition:all var(--sl-motion-fast);
+  }
+  .primary{background:var(--sl-ink);color:#fff;border:1px solid var(--sl-ink)}
+  .primary:hover{background:#242424}
+  .ghost{background:transparent;color:var(--sl-muted);border:1px solid var(--sl-border)}
+  .ghost:hover{color:var(--sl-ink);border-color:var(--sl-border-strong)}
+  .note{color:var(--sl-muted);font-size:.85rem;margin-left:auto}
+  .receipt{display:none;align-items:center;gap:10px;color:var(--sl-green);font-weight:600;font-size:.95rem}
+  .fired .action .primary,.fired .action .ghost,.fired .action .note{display:none}
+  .fired .receipt{display:flex}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <span class="eyebrow"><i class="dot"></i> Pending change · awaiting your approval</span>
+  <h1>Exports must be admin&#8209;only</h1>
+  <p class="sub">Dragback found an approved decision in Slack that changes work five people are doing right now.</p>
+
+  <div class="card" id="card">
+
+    <div class="sect">
+      <p class="label">Where it came from</p>
+      <div class="slack">
+        <div class="av">DK</div>
+        <div>
+          <div class="who"><strong>Dana Kaur</strong><span>Compliance Lead · 2:41 PM</span></div>
+          <p class="msg">Approved — exports must be admin-only, effective immediately.</p>
+        </div>
+      </div>
+      <p class="chan">#compliance · no ticket referenced · no one tagged</p>
+    </div>
+
+    <div class="sect">
+      <p class="label">What changes</p>
+      <div class="delta">
+        <div class="row was"><span class="arrow">was</span><code>export.authorization → all users</code></div>
+        <div class="row now"><span class="arrow">now</span><code>export.authorization → admins only</code></div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <p class="label">How it reaches the work</p>
+      <div class="chain">
+        <div class="rail"><i></i></div>
+        <div class="node"><b>Slack message</b><span>Dana Kaur, 2:41 PM</span></div>
+        <div class="node"><b>DEC-018 · supersedes DEC-004</b><span>approved · compliance</span></div>
+        <div class="node"><b>Export specification</b><span>SPEC-101</span></div>
+        <div class="node"><b>Implementation ticket</b><span>TICKET-101</span></div>
+        <div class="node"><b>TASK-102 · expose export to all users</b><span>3 sessions affected</span></div>
+        <div class="node node--calm"><b>TASK-101 · generate CSV files</b><span>out of scope · unaffected</span></div>
+      </div>
+    </div>
+
+    <div class="sect">
+      <p class="label">Who this touches</p>
+      <div class="hero">
+        <div class="big" id="big">3 of 5</div>
+        <p id="heroCopy">active sessions will be interrupted and redirected. Two keep working.</p>
+      </div>
+      <div class="people">
+        <div class="col stop">
+          <h4>Stopping <span class="pill">3</span></h4>
+          <div class="person">
+            <div class="face" style="background:#7a4fd4">PR<span class="glyph"><svg viewBox="0 0 10 10"><rect x="1" y="1" width="2.6" height="8" fill="#bc5a09"/><rect x="6.4" y="1" width="2.6" height="8" fill="#bc5a09"/></svg></span></div>
+            <div><b>Priya Raman</b><span>TASK-102</span></div>
+          </div>
+          <div class="person">
+            <div class="face" style="background:#0f7d8c">MO<span class="glyph"><svg viewBox="0 0 10 10"><rect x="1" y="1" width="2.6" height="8" fill="#bc5a09"/><rect x="6.4" y="1" width="2.6" height="8" fill="#bc5a09"/></svg></span></div>
+            <div><b>Marcus Obi</b><span>TASK-102</span></div>
+          </div>
+          <div class="person">
+            <div class="face" style="background:#b04a72">DL<span class="glyph"><svg viewBox="0 0 10 10"><rect x="1" y="1" width="2.6" height="8" fill="#bc5a09"/><rect x="6.4" y="1" width="2.6" height="8" fill="#bc5a09"/></svg></span></div>
+            <div><b>Dan Levy</b><span>TASK-102</span></div>
+          </div>
+        </div>
+        <div class="col go">
+          <h4>Continuing <span class="pill">2</span></h4>
+          <div class="person">
+            <div class="face" style="background:#207a3a">AS</div>
+            <div><b>Ana Silva</b><span>TASK-101</span></div>
+          </div>
+          <div class="person">
+            <div class="face" style="background:#2c5fb8">JT</div>
+            <div><b>Jonas Tan</b><span>TASK-101</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sect action">
+      <button class="primary" onclick="fire()">Approve change</button>
+      <button class="ghost" onclick="reset()">Reject</button>
+      <span class="note">You hold <code style="font-family:var(--sl-font-mono);font-size:.8rem">approve_compliance</code></span>
+      <span class="receipt">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.2 3.2L13 5" stroke="#207a3a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Applied · 3 sessions redirected, 2 preserved
+        <button class="ghost" style="margin-left:14px;height:32px;padding:0 14px" onclick="reset()">Replay</button>
+      </span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const card = document.getElementById('card');
+  function fire(){
+    card.classList.add('fired');
+    setTimeout(()=>{
+      document.getElementById('big').textContent = '3 stopped';
+      document.getElementById('heroCopy').textContent =
+        'Each received the new constraint and what it already built that still stands. Two were never touched.';
+    }, 900);
+  }
+  function reset(){
+    card.classList.remove('fired');
+    document.getElementById('big').textContent = '3 of 5';
+    document.getElementById('heroCopy').textContent =
+      'active sessions will be interrupted and redirected. Two keep working.';
+  }
+</script>
+</body>
+</html>

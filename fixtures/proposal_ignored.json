@@ -1,0 +1,25 @@
+{
+  "decision": {
+    "id": "DEC-PROPOSAL-1",
+    "kind": "Decision",
+    "title": "Maybe remove exports",
+    "text": "Should we remove exports entirely?",
+    "scopes": [
+      "export.generation",
+      "export.authorization"
+    ],
+    "approval_status": "proposal",
+    "authority_role": "individual",
+    "confidence": 0.99,
+    "effective_at": "2026-07-21T10:00:00Z",
+    "source_ref": "slack://general/proposal-1",
+    "attributes": {
+      "requirements": {}
+    }
+  },
+  "supersedes_id": "DEC-004",
+  "affected_scopes": [
+    "export.generation",
+    "export.authorization"
+  ]
+}

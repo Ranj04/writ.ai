@@ -1,0 +1,28 @@
+{
+  "id": "PLAN-REFUND-002",
+  "ticket_id": "PAY-104",
+  "objective": "Calculate refunds automatically and require finance approval before issuing large refunds.",
+  "actions": [
+    {
+      "id": "ACTION-REFUND-CALCULATE",
+      "description": "Calculate the approved refund amount.",
+      "scopes": [
+        "payments.refunds.calculation"
+      ],
+      "attributes": {
+        "calculation_mode": "automatic"
+      }
+    },
+    {
+      "id": "ACTION-REFUND-ISSUE-WITH-APPROVAL",
+      "description": "Require finance approval before issuing refunds of $500 or more.",
+      "scopes": [
+        "payments.refunds.execution"
+      ],
+      "attributes": {
+        "human_approval_required": true,
+        "approval_threshold_usd": 500
+      }
+    }
+  ]
+}

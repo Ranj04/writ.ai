@@ -1,0 +1,789 @@
+/*
+ * Approval screen — a port of docs/mocks/approval-screen.html.
+ *
+ * The design tokens live on .ap-root rather than being imported from
+ * scenario-lab.css, which is not loaded on this route. Same variable names, so
+ * the two surfaces stay one visual language without one owning the other.
+ */
+
+.ap-root {
+  --sl-white: #ffffff;
+  --sl-ink: #0a0a0a;
+  --sl-muted: #5d6167;
+  --sl-faint: #f6f7f7;
+  --sl-border: #d7d9dc;
+  --sl-border-strong: #aeb2b7;
+  --sl-green: #207a3a;
+  --sl-green-soft: #f4faf5;
+  --sl-amber: #bc5a09;
+  --sl-amber-soft: #fff8f1;
+  --sl-red: #d21c1c;
+  --sl-red-soft: #fff7f7;
+  --sl-focus: #1a5fd0;
+  --sl-font-sans: Inter, "Helvetica Neue", Helvetica, Arial, ui-sans-serif,
+    system-ui, sans-serif;
+  --sl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sl-radius-control: 4px;
+  --sl-radius-panel: 5px;
+  --sl-motion-fast: 140ms;
+
+  min-height: 100vh;
+  margin: 0;
+  background: var(--sl-white);
+  background-image: radial-gradient(
+    1200px 500px at 50% -220px,
+    #f3f6f9 0%,
+    #ffffff 62%
+  );
+  color: var(--sl-ink);
+  font-family: var(--sl-font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.ap-root *,
+.ap-root *::before,
+.ap-root *::after {
+  box-sizing: border-box;
+}
+
+/* --- app chrome, matching .sl-header in scenario-lab.css --- */
+
+.ap-header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto minmax(260px, 1fr);
+  min-height: 84px;
+  padding: 0 clamp(24px, 3vw, 48px);
+  align-items: center;
+  border-bottom: 1px solid var(--sl-border);
+  background: color-mix(in srgb, var(--sl-white) 96%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.ap-wordmark {
+  display: inline-flex;
+  justify-self: start;
+  color: var(--sl-ink);
+  font-size: clamp(1.6rem, 2vw, 2rem);
+  font-weight: 760;
+  letter-spacing: -0.055em;
+  text-decoration: none;
+}
+
+.ap-header__nav {
+  display: flex;
+  gap: 26px;
+  align-items: center;
+}
+
+.ap-nav-link {
+  position: relative;
+  padding: 29px 0 27px;
+  color: var(--sl-muted);
+  font-size: 0.88rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.ap-nav-link:hover,
+.ap-nav-link[aria-current="page"] {
+  color: var(--sl-ink);
+}
+
+.ap-nav-link[aria-current="page"]::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--sl-ink);
+  content: "";
+}
+
+.ap-header__utilities {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ap-page {
+  width: min(100%, 1080px);
+  margin: 0 auto;
+  padding: 56px 48px 96px;
+}
+
+/* --- masthead --- */
+
+.ap-eyebrows {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ap-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--sl-border);
+  border-radius: 999px;
+  background: var(--sl-white);
+  color: var(--sl-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+}
+
+.ap-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--sl-amber);
+  box-shadow: 0 0 0 4px var(--sl-amber-soft);
+}
+
+.ap-dot--live {
+  background: var(--sl-green);
+  box-shadow: 0 0 0 4px var(--sl-green-soft);
+}
+
+.ap-source-badge {
+  font-family: var(--sl-font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ap-source-badge--fixture {
+  border-color: #f0d9c2;
+  background: var(--sl-amber-soft);
+  color: var(--sl-amber);
+}
+
+.ap-source-badge--live {
+  border-color: #cfe7d5;
+  background: var(--sl-green-soft);
+  color: var(--sl-green);
+}
+
+.ap-root h1 {
+  margin: 20px 0 0;
+  font-size: clamp(2.4rem, 4vw, 3.45rem);
+  font-weight: 760;
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.ap-sub {
+  max-width: 680px;
+  margin: 14px 0 0;
+  color: var(--sl-muted);
+  font-size: 1.04rem;
+}
+
+/* --- card --- */
+
+.ap-card {
+  margin-top: 40px;
+  border: 1px solid var(--sl-border);
+  border-radius: var(--sl-radius-panel);
+  background: var(--sl-white);
+  box-shadow:
+    0 1px 2px rgba(10, 10, 10, 0.04),
+    0 12px 32px -18px rgba(10, 10, 10, 0.18);
+  overflow: hidden;
+}
+
+.ap-sect {
+  padding: 28px 32px;
+  border-bottom: 1px solid var(--sl-border);
+}
+
+.ap-sect:last-child {
+  border-bottom: none;
+}
+
+.ap-label {
+  margin: 0 0 14px;
+  color: var(--sl-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+/* --- slack --- */
+
+.ap-slack {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.ap-slack-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--sl-radius-control);
+  flex: none;
+  background: #4a154b;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.ap-slack-who {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ap-slack-who strong {
+  font-size: 0.95rem;
+}
+
+.ap-slack-who span {
+  color: var(--sl-muted);
+  font-size: 0.78rem;
+}
+
+.ap-slack-msg {
+  margin: 3px 0 0;
+  font-size: 1.06rem;
+}
+
+.ap-chan {
+  margin: 12px 0 0;
+  color: var(--sl-muted);
+  font-size: 0.8rem;
+  font-family: var(--sl-font-mono);
+}
+
+/* --- delta --- */
+
+.ap-delta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 1.02rem;
+}
+
+.ap-delta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ap-delta code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.9rem;
+  padding: 5px 10px;
+  border: 1px solid var(--sl-border);
+  border-radius: 999px;
+  background: var(--sl-faint);
+}
+
+.ap-delta-row--was code {
+  text-decoration: line-through;
+  color: var(--sl-muted);
+  opacity: 0.75;
+}
+
+.ap-delta-row--now code {
+  border-color: var(--sl-green);
+  background: var(--sl-green-soft);
+  color: var(--sl-green);
+}
+
+.ap-arrow {
+  color: var(--sl-border-strong);
+  font-size: 0.9rem;
+}
+
+/* --- chain --- */
+
+.ap-chain {
+  position: relative;
+  padding-left: 26px;
+}
+
+.ap-rail {
+  position: absolute;
+  left: 5px;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--sl-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ap-rail i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 0;
+  display: block;
+  background: linear-gradient(180deg, var(--sl-amber), #e08a3c);
+  transition: height 820ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ap-card--fired .ap-rail i {
+  height: 100%;
+}
+
+.ap-node {
+  position: relative;
+  padding: 9px 0;
+}
+
+.ap-node::before {
+  content: "";
+  position: absolute;
+  left: -25px;
+  top: 16px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--sl-white);
+  border: 2px solid var(--sl-border);
+  transition: all var(--sl-motion-fast);
+}
+
+.ap-node b {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.ap-node span {
+  color: var(--sl-muted);
+  font-size: 0.84rem;
+}
+
+.ap-card--fired .ap-node::before {
+  border-color: var(--sl-amber);
+}
+
+.ap-card--fired .ap-node--calm::before {
+  border-color: var(--sl-green);
+}
+
+.ap-node--calm b {
+  color: var(--sl-green);
+}
+
+/* --- blast radius --- */
+
+.ap-hero {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 26px;
+}
+
+.ap-big {
+  font-size: 4.2rem;
+  font-weight: 760;
+  letter-spacing: -0.06em;
+  line-height: 0.9;
+}
+
+.ap-hero p {
+  margin: 0 0 8px;
+  color: var(--sl-muted);
+  font-size: 1rem;
+  max-width: 320px;
+}
+
+.ap-people {
+  display: flex;
+  gap: 34px;
+  flex-wrap: wrap;
+}
+
+.ap-col {
+  flex: 1;
+  min-width: 250px;
+}
+
+.ap-col h4 {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ap-pill {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.ap-col--stop .ap-pill {
+  background: var(--sl-amber-soft);
+  color: var(--sl-amber);
+  border: 1px solid #f0d9c2;
+}
+
+.ap-col--go .ap-pill {
+  background: var(--sl-green-soft);
+  color: var(--sl-green);
+  border: 1px solid #cfe7d5;
+}
+
+.ap-person {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 0;
+}
+
+.ap-face {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #fff;
+  transition:
+    filter 420ms ease,
+    opacity 420ms ease,
+    box-shadow 420ms ease;
+}
+
+.ap-person b {
+  display: block;
+  font-size: 0.93rem;
+  font-weight: 600;
+}
+
+.ap-person span {
+  color: var(--sl-muted);
+  font-size: 0.8rem;
+  font-family: var(--sl-font-mono);
+}
+
+.ap-glyph {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 17px;
+  height: 17px;
+  border-radius: 999px;
+  background: var(--sl-white);
+  border: 1px solid var(--sl-border);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: all 300ms ease 380ms;
+}
+
+.ap-glyph svg {
+  width: 9px;
+  height: 9px;
+}
+
+.ap-card--fired .ap-col--stop .ap-face {
+  filter: grayscale(1);
+  opacity: 0.42;
+}
+
+.ap-card--fired .ap-col--stop .ap-glyph {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ap-card--fired .ap-col--go .ap-face {
+  box-shadow:
+    0 0 0 3px var(--sl-green-soft),
+    0 0 0 4px #cfe7d5;
+}
+
+/* --- action --- */
+
+.ap-action {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--sl-faint);
+}
+
+/*
+ * `min-height` with vertical padding, matching `.sl-button` in scenario-lab.css
+ * and `/`'s controls. The mock used a fixed `height: 44px`, which is identical
+ * at the default label length but clips instead of growing when a label wraps —
+ * and these labels come from server data now.
+ */
+.ap-root button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  font: inherit;
+  font-weight: 600;
+  padding: 10px 22px;
+  min-height: 44px;
+  border-radius: var(--sl-radius-control);
+  cursor: pointer;
+  transition: all var(--sl-motion-fast);
+}
+
+.ap-root button:disabled {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.ap-primary {
+  background: var(--sl-ink);
+  color: #fff;
+  border: 1px solid var(--sl-ink);
+}
+
+.ap-primary:hover:not(:disabled) {
+  background: #242424;
+}
+
+.ap-ghost {
+  background: transparent;
+  color: var(--sl-muted);
+  border: 1px solid var(--sl-border);
+}
+
+.ap-ghost:hover:not(:disabled) {
+  color: var(--sl-ink);
+  border-color: var(--sl-border-strong);
+}
+
+/* Scoped under .ap-root so it outweighs the `.ap-root button` base rule. */
+.ap-root .ap-ghost--small {
+  min-height: 32px;
+  padding: 6px 14px;
+}
+
+.ap-note {
+  color: var(--sl-muted);
+  font-size: 0.85rem;
+  margin-left: auto;
+}
+
+.ap-note code {
+  font-family: var(--sl-font-mono);
+  font-size: 0.8rem;
+}
+
+.ap-receipt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--sl-green);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.ap-receipt--rehearsal {
+  color: var(--sl-amber);
+}
+
+.ap-receipt--unresolved {
+  color: var(--sl-amber);
+}
+
+.ap-receipt-note {
+  color: var(--sl-muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.ap-rejected {
+  color: var(--sl-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* --- pending queue --- */
+
+.ap-queue {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 28px;
+}
+
+.ap-root .ap-queue-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--sl-border);
+  border-radius: var(--sl-radius-control);
+  background: var(--sl-white);
+  color: var(--sl-muted);
+  text-align: left;
+  font-weight: 500;
+}
+
+.ap-queue-item[aria-pressed="true"] {
+  border-color: var(--sl-ink);
+  color: var(--sl-ink);
+}
+
+.ap-queue-item b {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.ap-queue-item span {
+  font-family: var(--sl-font-mono);
+  font-size: 0.74rem;
+}
+
+/* --- developer view --- */
+
+.ap-why-lead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ap-why-lead b {
+  font-size: 1.06rem;
+  font-weight: 600;
+}
+
+.ap-why-lead span {
+  color: var(--sl-muted);
+  font-size: 0.92rem;
+}
+
+.ap-work {
+  display: flex;
+  gap: 34px;
+  flex-wrap: wrap;
+}
+
+.ap-work-col {
+  flex: 1;
+  min-width: 250px;
+}
+
+.ap-work-col h4 {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ap-work-item {
+  padding: 9px 0;
+}
+
+.ap-work-item b {
+  display: block;
+  font-size: 0.93rem;
+  font-weight: 600;
+}
+
+.ap-work-item span {
+  color: var(--sl-muted);
+  font-size: 0.84rem;
+}
+
+.ap-work-col--invalidated .ap-work-item b {
+  color: var(--sl-amber);
+}
+
+.ap-work-col--invalidated .ap-pill {
+  background: var(--sl-amber-soft);
+  color: var(--sl-amber);
+  border: 1px solid #f0d9c2;
+}
+
+.ap-work-col--preserved .ap-work-item b {
+  color: var(--sl-green);
+}
+
+.ap-work-col--preserved .ap-pill {
+  background: var(--sl-green-soft);
+  color: var(--sl-green);
+  border: 1px solid #cfe7d5;
+}
+
+.ap-viewswitch {
+  margin-top: 34px;
+  color: var(--sl-muted);
+  font-size: 0.85rem;
+}
+
+.ap-viewswitch a {
+  color: var(--sl-focus);
+}
+
+/* --- states --- */
+
+.ap-status {
+  margin-top: 40px;
+  color: var(--sl-muted);
+  font-size: 1rem;
+}
+
+/*
+ * Matching `.sl-empty-state` in scenario-lab.css: centred, rules top and bottom,
+ * 1.35rem heading rather than the page's hero scale. An empty queue was
+ * rendering as a full-size hero, which read as a headline announcement of
+ * nothing.
+ */
+.ap-empty {
+  padding: clamp(56px, 8vw, 112px) 24px;
+  border-top: 1px solid var(--sl-border);
+  border-bottom: 1px solid var(--sl-border);
+  text-align: center;
+}
+
+.ap-empty h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.3;
+}
+
+.ap-empty p {
+  max-width: none;
+  margin: 9px 0 0;
+  color: var(--sl-muted);
+  font-size: 1rem;
+}
+
+.ap-empty .ap-eyebrows {
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ap-root .ap-rail i,
+  .ap-root .ap-face,
+  .ap-root .ap-glyph,
+  .ap-root .ap-node::before {
+    transition-duration: 1ms;
+  }
+}

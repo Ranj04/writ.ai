@@ -1,0 +1,46 @@
+{
+  "fixture_provenance": {
+    "kind": "documentation-reconstructed",
+    "label": "documentation-reconstructed payload, replayed (not captured from CrustData)",
+    "captured_from_crustdata": false,
+    "documentation_url": "https://docs.crustdata.com/watcher-docs/person/entity",
+    "notice": "This is not a real CrustData webhook capture. CRUSTDATA_API_KEY was unavailable, so the payload was reconstructed from the documented Person Entity Watcher webhook shape. It must never be presented as a real captured delivery."
+  },
+  "payload": {
+    "metadata": {
+      "watch_id": 46936,
+      "kind": "entity",
+      "dataset": "person",
+      "api_version": "2025-11-01",
+      "run_id": 64200,
+      "notification_id": "ntf_64200_documentation_reconstructed",
+      "delivered_at": "2026-07-16T03:20:00Z",
+      "summary": {
+        "delivered": 1,
+        "total_count": 1,
+        "max_results_per_run": 100,
+        "truncated": false
+      }
+    },
+    "results": [
+      {
+        "changes": [
+          {
+            "field": "basic_profile.current_title",
+            "type": "changed",
+            "from": "Vice President, Finance",
+            "to": "Chief Financial Officer"
+          }
+        ],
+        "record": {
+          "basic_profile": {
+            "name": "Documentation Example Person",
+            "current_title": "Chief Financial Officer",
+            "headline": "Documentation-reconstructed watcher example"
+          },
+          "crustdata_person_id": 6324687
+        }
+      }
+    ]
+  }
+}

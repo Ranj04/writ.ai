@@ -1,0 +1,113 @@
+# The enforcement backstop.
+#
+# The Claude Code PreToolUse hook fails OPEN by design: on timeout, crash or
+# HTTP failure the tool call proceeds. That is a deliberate, documented hole,
+# and this required check is what closes it. Work that a degraded hook let
+# through still cannot merge.
+#
+# It resolves the PR branch to a task with the same rules as session binding,
+# asks the agent service whether that task's authorization is current, and fails
+# when the task was invalidated or the grant's snapshot is stale — with the same
+# explanation the hook gives, including the provenance path.
+#
+# Unlike the hook, it FAILS CLOSED: an unreachable service, a malformed
+# response, or a missing DRAGBACK_AGENT_URL fails the check. There is no
+# cached-verdict fallback, because a check that passes during an outage is not a
+# backstop. Make this a required status check on the protected branch — an
+# advisory check closes nothing.
+#
+# `scripts/ci/verify.sh` runs the identical logic locally, before pushing.
+#
+# Injection note: a branch name is attacker-controlled input. It reaches the
+# check through an `env:` binding and a quoted shell variable, never through a
+# `${{ }}` expansion inside a `run:` block.
+
+name: Dragback PR authorization
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One verdict per branch; a superseded push should not race an older answer.
+  group: dragback-authorization-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  authorization:
+    name: Branch authorization is current
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # THE CHECKER COMES FROM THE BASE BRANCH, NOT FROM THE PR.
+      #
+      # A cross-model review found the hole: running the PR head's copy of
+      # scripts/ci/ means the branch under review supplies the code that decides
+      # whether the branch under review is authorized. One commit changing
+      # `dragback_ci_check.py` to `sys.exit(0)` disables the backstop, and the
+      # same step would hand that edited code DRAGBACK_CI_API_KEY. A required
+      # check that the candidate can rewrite is not a check.
+      #
+      # So: the checker is checked out from the PR's BASE, which is the
+      # protected branch, and the PR head is checked out separately as inspected
+      # DATA only. Nothing from the head is ever executed here.
+      - name: Check out the trusted checker from the base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: dragback-checker
+          persist-credentials: false
+
+      - name: Check out the branch under review, as data
+        uses: actions/checkout@v4
+        with:
+          # The PR head, not the merge commit: `.dragback/task` and
+          # `.dragback/attach` must be read from what the developer's session
+          # would have been bound to.
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: branch-under-review
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify this branch is still authorized
+        env:
+          # Configure DRAGBACK_AGENT_URL as a repository variable. It is
+          # intentionally NOT defaulted: a check silently pointed at a service
+          # that cannot exist on a runner would pass by accident, so an unset
+          # value fails the job rather than skipping it.
+          DRAGBACK_AGENT_URL: ${{ vars.DRAGBACK_AGENT_URL }}
+          DRAGBACK_CI_API_KEY: ${{ secrets.DRAGBACK_CI_API_KEY }}
+          DRAGBACK_CI_TIMEOUT_SECONDS: "20"
+          # The PR's source branch. Attacker-controlled input, so it reaches the
+          # check through an env binding and a quoted shell variable, never
+          # through a ${{ }} expansion inside this run block.
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        # Trusted code, untrusted repo-root. `--repo-root` only ever has marker
+        # files READ from it; the check never executes anything found there.
+        #
+        # --require-binding is on here specifically: a branch that presents an
+        # unresolvable `.dragback/attach` resolves to unbound, and unbound
+        # passes by default, so without this a developer could opt out of the
+        # required check by writing one junk marker file.
+        run: |
+          python dragback-checker/scripts/ci/dragback_ci_check.py \
+            --branch "$BRANCH" \
+            --repo-root "$GITHUB_WORKSPACE/branch-under-review" \
+            --require-binding
+
+      - name: Self-test the check itself
+        # A backstop whose own logic is broken is not a backstop. These tests
+        # need no network and no installed package, so they cost seconds. They
+        # run even when the step above failed, so a broken check is
+        # distinguishable from an unauthorized branch in the same log.
+        #
+        # Also from the base: self-tests supplied by the PR prove nothing.
+        if: always()
+        run: python dragback-checker/scripts/ci/test_dragback_ci_check.py

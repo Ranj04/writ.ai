@@ -1,0 +1,41 @@
+{
+  "SLACK_CHANNEL_MESSAGE_RECEIVED": {
+    "properties": {
+      "attachments": {"type": "array"},
+      "blocks": {"type": "array"},
+      "bot_id": {"type": "string"},
+      "channel": {"type": "string"},
+      "channel_type": {"type": "string"},
+      "files": {"type": "array"},
+      "subtype": {"type": "string"},
+      "team_id": {"type": "string"},
+      "text": {"type": "string"},
+      "thread_ts": {"type": "string"},
+      "ts": {"type": "string"},
+      "user": {"type": "string"}
+    },
+    "required": ["channel", "ts"],
+    "title": "ChannelMessageReceivedPayloadSchema",
+    "type": "object"
+  },
+  "SLACK_MESSAGE_REACTION_ADDED": {
+    "properties": {
+      "event_ts": {"type": "string"},
+      "message_channel": {"type": "string"},
+      "message_ts": {"type": "string"},
+      "message_user": {"type": "string"},
+      "reaction": {"type": "string"},
+      "team_id": {"type": "string"},
+      "user": {"type": "string"}
+    },
+    "required": [
+      "user",
+      "reaction",
+      "message_channel",
+      "message_ts",
+      "event_ts"
+    ],
+    "title": "MessageReactionAddedPayloadSchema",
+    "type": "object"
+  }
+}

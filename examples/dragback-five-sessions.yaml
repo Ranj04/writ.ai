@@ -1,0 +1,233 @@
+# The canonical CSV proof, distributed across five people.
+#
+# Five Claude Code sessions on one repo. Two are working on export.generation and
+# three on export.authorization. One approved compliance decision — which never
+# names the ticket — stops exactly three of them and leaves exactly two running.
+#
+# The surviving sibling from the single-agent proof is now a person.
+id: csv-exports
+name: CSV export for all users
+description: >
+  Five supervised Claude Code sessions on one ticket. TASK-201 and TASK-202 carry
+  export.generation; TASK-203, TASK-204 and TASK-205 carry export.authorization.
+  An approved change to export.authorization must interrupt exactly three.
+
+authority_policy:
+  export.generation:
+    - approve_compliance
+    - approve_product
+  export.authorization:
+    - approve_compliance
+    - approve_product
+
+baseline_decision:
+  id: DEC-004
+  kind: Decision
+  title: All users may export account data
+  text: CSV export is approved for all authenticated users.
+  scopes:
+    - export.generation
+    - export.authorization
+  approval_status: proposal
+  authority_role: approve_product
+  confidence: 0.98
+  effective_at: "2026-07-01T09:00:00Z"
+  source_ref: slack://product/decision-004
+  attributes:
+    requirements:
+      export.generation:
+        format: csv
+      export.authorization:
+        audience: all_users
+
+specification:
+  id: SPEC-009
+  kind: Specification
+  title: CSV export
+  text: Generate CSV exports of account data and expose them to users.
+  scopes:
+    - export.generation
+    - export.authorization
+  source_ref: notion://specs/export-009
+
+ticket:
+  id: TICKET-100
+  kind: Ticket
+  title: Add CSV export for all users
+  text: Build CSV generation and expose the export control.
+  scopes:
+    - export.generation
+    - export.authorization
+  source_ref: linear://ticket/TICKET-100
+
+tasks:
+  # --- export.generation: these two must survive the change ------------------
+  - id: TASK-201
+    kind: Task
+    title: Generate valid CSV files
+    text: Serialize account data to a valid CSV file.
+    scopes:
+      - export.generation
+    source_ref: linear://ticket/TICKET-100#task-201
+    attributes:
+      runtime_provider: claude-code
+      agent_name: Sara
+  - id: TASK-202
+    kind: Task
+    title: Stream large exports
+    text: Stream CSV generation so large accounts do not exhaust memory.
+    scopes:
+      - export.generation
+    source_ref: linear://ticket/TICKET-100#task-202
+    attributes:
+      runtime_provider: claude-code
+      agent_name: Alex
+
+  # --- export.authorization: these three must be interrupted -----------------
+  - id: TASK-203
+    kind: Task
+    title: Expose the export control to all users
+    text: Show the export button to every authenticated user.
+    scopes:
+      - export.authorization
+    source_ref: linear://ticket/TICKET-100#task-203
+    attributes:
+      runtime_provider: claude-code
+      agent_name: Priya
+  - id: TASK-204
+    kind: Task
+    title: Open the export API to all users
+    text: Allow any authenticated caller to request an export.
+    scopes:
+      - export.authorization
+    source_ref: linear://ticket/TICKET-100#task-204
+    attributes:
+      runtime_provider: claude-code
+      agent_name: Marcus
+  - id: TASK-205
+    kind: Task
+    title: Document the export permission model
+    text: Document that exports are available to all authenticated users.
+    scopes:
+      - export.authorization
+    source_ref: linear://ticket/TICKET-100#task-205
+    attributes:
+      runtime_provider: claude-code
+      agent_name: Dan
+
+plan:
+  id: PLAN-027
+  ticket_id: TICKET-100
+  objective: Ship CSV export for all authenticated users.
+  actions:
+    - id: ACTION-201
+      description: Serialize account data to a valid CSV file.
+      scopes:
+        - export.generation
+      attributes:
+        task_id: TASK-201
+        format: csv
+    - id: ACTION-202
+      description: Stream CSV generation for large accounts.
+      scopes:
+        - export.generation
+      attributes:
+        task_id: TASK-202
+        format: csv
+    - id: ACTION-203
+      description: Show the export control to all authenticated users.
+      scopes:
+        - export.authorization
+      attributes:
+        task_id: TASK-203
+        audience: all_users
+    - id: ACTION-204
+      description: Accept export API requests from all authenticated users.
+      scopes:
+        - export.authorization
+      attributes:
+        task_id: TASK-204
+        audience: all_users
+    - id: ACTION-205
+      description: Document that exports are available to all authenticated users.
+      scopes:
+        - export.authorization
+      attributes:
+        task_id: TASK-205
+        audience: all_users
+
+edges:
+  - source_id: DEC-004
+    target_id: SPEC-009
+    kind: BASIS_FOR
+    scopes:
+      - export.generation
+      - export.authorization
+    evidence_ref: slack://product/decision-004
+  - source_id: SPEC-009
+    target_id: TICKET-100
+    kind: CREATES
+    scopes:
+      - export.generation
+      - export.authorization
+    evidence_ref: notion://specs/export-009
+  - source_id: TICKET-100
+    target_id: TASK-201
+    kind: DECOMPOSES_TO
+    scopes:
+      - export.generation
+    evidence_ref: linear://ticket/TICKET-100
+  - source_id: TICKET-100
+    target_id: TASK-202
+    kind: DECOMPOSES_TO
+    scopes:
+      - export.generation
+    evidence_ref: linear://ticket/TICKET-100
+  - source_id: TICKET-100
+    target_id: TASK-203
+    kind: DECOMPOSES_TO
+    scopes:
+      - export.authorization
+    evidence_ref: linear://ticket/TICKET-100
+  - source_id: TICKET-100
+    target_id: TASK-204
+    kind: DECOMPOSES_TO
+    scopes:
+      - export.authorization
+    evidence_ref: linear://ticket/TICKET-100
+  - source_id: TICKET-100
+    target_id: TASK-205
+    kind: DECOMPOSES_TO
+    scopes:
+      - export.authorization
+    evidence_ref: linear://ticket/TICKET-100
+  - source_id: TASK-201
+    target_id: PLAN-027
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - export.generation
+    evidence_ref: agent://run/RUN-27/plan/PLAN-027
+  - source_id: TASK-202
+    target_id: PLAN-027
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - export.generation
+    evidence_ref: agent://run/RUN-27/plan/PLAN-027
+  - source_id: TASK-203
+    target_id: PLAN-027
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - export.authorization
+    evidence_ref: agent://run/RUN-27/plan/PLAN-027
+  - source_id: TASK-204
+    target_id: PLAN-027
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - export.authorization
+    evidence_ref: agent://run/RUN-27/plan/PLAN-027
+  - source_id: TASK-205
+    target_id: PLAN-027
+    kind: CURRENTLY_DRIVES
+    scopes:
+      - export.authorization
+    evidence_ref: agent://run/RUN-27/plan/PLAN-027

@@ -1,0 +1,146 @@
+{
+  "version": 17,
+  "artifacts": [
+    {
+      "id": "DEC-004",
+      "kind": "Decision",
+      "title": "All users may export account data",
+      "text": "CSV export is approved for all authenticated users.",
+      "scopes": [
+        "export.generation",
+        "export.authorization"
+      ],
+      "approval_status": "approved",
+      "authority_role": "product",
+      "confidence": 0.98,
+      "effective_at": "2026-07-01T09:00:00Z",
+      "source_ref": "slack://product/decision-004",
+      "attributes": {
+        "requirements": {
+          "export.authorization": {
+            "audience": "all_users"
+          },
+          "export.generation": {
+            "format": "csv"
+          }
+        }
+      }
+    },
+    {
+      "id": "SPEC-009",
+      "kind": "Specification",
+      "title": "CSV export specification",
+      "text": "Generate CSV files and expose the export control to all users.",
+      "scopes": [
+        "export.generation",
+        "export.authorization"
+      ],
+      "source_ref": "notion://specs/export-009"
+    },
+    {
+      "id": "TICKET-100",
+      "kind": "Ticket",
+      "title": "Add CSV export",
+      "text": "Add CSV export for all users.",
+      "scopes": [
+        "export.generation",
+        "export.authorization"
+      ],
+      "source_ref": "linear://ticket/TICKET-100"
+    },
+    {
+      "id": "TASK-101",
+      "kind": "Task",
+      "title": "Generate valid CSV files",
+      "text": "Serialize account data to CSV.",
+      "scopes": [
+        "export.generation"
+      ],
+      "source_ref": "linear://ticket/TICKET-100#task-101"
+    },
+    {
+      "id": "TASK-102",
+      "kind": "Task",
+      "title": "Expose export to all users",
+      "text": "Place the export button on the account page for every user.",
+      "scopes": [
+        "export.authorization"
+      ],
+      "source_ref": "linear://ticket/TICKET-100#task-102"
+    },
+    {
+      "id": "PLAN-027",
+      "kind": "AgentPlan",
+      "title": "Initial CSV export implementation plan",
+      "text": "Generate CSV and expose the button to all users.",
+      "scopes": [
+        "export.generation",
+        "export.authorization"
+      ],
+      "source_ref": "agent://run/RUN-27/plan/PLAN-027"
+    }
+  ],
+  "edges": [
+    {
+      "source_id": "DEC-004",
+      "target_id": "SPEC-009",
+      "kind": "BASIS_FOR"
+    },
+    {
+      "source_id": "SPEC-009",
+      "target_id": "TICKET-100",
+      "kind": "CREATES"
+    },
+    {
+      "source_id": "TICKET-100",
+      "target_id": "TASK-101",
+      "kind": "DECOMPOSES_TO"
+    },
+    {
+      "source_id": "TICKET-100",
+      "target_id": "TASK-102",
+      "kind": "DECOMPOSES_TO"
+    },
+    {
+      "source_id": "TASK-101",
+      "target_id": "PLAN-027",
+      "kind": "CURRENTLY_DRIVES"
+    },
+    {
+      "source_id": "TASK-102",
+      "target_id": "PLAN-027",
+      "kind": "CURRENTLY_DRIVES"
+    }
+  ],
+  "run": {
+    "run_id": "RUN-27",
+    "ticket_id": "TICKET-100",
+    "plan": {
+      "id": "PLAN-027",
+      "ticket_id": "TICKET-100",
+      "objective": "Provide CSV export",
+      "actions": [
+        {
+          "id": "ACTION-1",
+          "description": "Generate a valid CSV file from account data",
+          "scopes": [
+            "export.generation"
+          ],
+          "attributes": {
+            "format": "csv"
+          }
+        },
+        {
+          "id": "ACTION-2",
+          "description": "Expose the CSV export control to all users",
+          "scopes": [
+            "export.authorization"
+          ],
+          "attributes": {
+            "audience": "all_users"
+          }
+        }
+      ]
+    }
+  }
+}

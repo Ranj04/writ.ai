@@ -1,0 +1,37 @@
+{
+  "_fixture_notice": "Simulated coding-agent plan for the Dragback demo.",
+  "run_id": "RUN-REFUND-027",
+  "plan": {
+    "id": "PLAN-REFUND-001",
+    "ticket_id": "PAY-104",
+    "objective": "Implement automated processing for verified customer refunds.",
+    "actions": [
+      {
+        "id": "ACTION-REFUND-CALCULATE",
+        "task_id": "TASK-REFUND-CALCULATE",
+        "description": "Calculate the approved refund using the standard finance method.",
+        "scope": "refund.calculation",
+        "implementation_notes": "Add a deterministic calculation service and unit tests."
+      },
+      {
+        "id": "ACTION-REFUND-IDENTITY",
+        "task_id": "TASK-REFUND-IDENTITY",
+        "description": "Require a successful identity verification result.",
+        "scope": "refund.identity",
+        "implementation_notes": "Fail closed when verification evidence is absent."
+      },
+      {
+        "id": "ACTION-REFUND-EXECUTE",
+        "task_id": "TASK-REFUND-EXECUTE",
+        "description": "Send the approved refund to the payment provider automatically.",
+        "scope": "refund.execution",
+        "implementation_notes": "Call the provider only after calculation and identity checks pass."
+      }
+    ],
+    "test_strategy": [
+      "Unit-test the standard refund calculation.",
+      "Reject requests without completed identity verification.",
+      "Verify that approved refunds reach the payment-provider adapter."
+    ]
+  }
+}
