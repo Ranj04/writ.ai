@@ -203,11 +203,39 @@ plain directory, so they cannot collide on a shared filesystem.
 **Without it:** the launcher falls back to plain directories under the demo root
 and says so. The demo still runs.
 
+### Why provisioning only, and not `agents_create` — settled, do not revisit
+
+Superset can start the agent for you. **We deliberately do not let it**, and the
+deciding fact is not preference:
+
+> An agent Superset launches does not get the hook configuration or the canned
+> prompt this launcher writes into each session directory. A session started
+> without the `PreToolUse` hook is an **unenforced session that looks identical
+> to a working one on screen** — it registers nothing, it is never interrupted,
+> and it produces confident output the whole time.
+
+That is the exact silent failure this project has already been bitten by twice:
+an unbound session is allowed everything and is indistinguishable from success,
+which is why `check.sh` treats it as one of the three demo-killers. Handing
+session startup to a tool that cannot install the hook re-introduces it by
+design.
+
+So the division is fixed:
+
+| | Owner |
+|---|---|
+| Creating the isolated workspace | **Superset** (`workspaces create`) |
+| Writing `.writai/task`, the hook config, and the prompt | **the launcher** |
+| Starting the agent | **the launcher** |
+
+Nothing is lost by this. Isolated per-agent workspaces *are* Superset's product;
+`agents_create` is a convenience on top, and it is the one part we cannot use
+without giving up enforcement. `--agent` and `--prompt` are not passed for the
+same reason.
+
 **Undocumented surfaces:** `terminals_send` and `terminals_read` exist in
 Superset's source but are **not documented**, and nothing here depends on them
-at runtime. `--agent` / `--prompt` are also deliberately not passed: Superset
-would launch the agent itself and bypass this launcher's hook configuration and
-canned prompt.
+at runtime.
 
 **Not yet exercised against the real CLI.** The provisioning logic is verified
 against a stub that mimics the documented contract; Superset is not installed
