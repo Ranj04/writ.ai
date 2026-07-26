@@ -1,31 +1,30 @@
 # Recording script
 
-The stage is already armed and `check.sh` is green. Do not reset. Do not re-arm.
-Start at step 1.
+The stage is already armed and `check.sh` is green. **Do not reset. Do not re-arm.** Start at step 1.
 
 ---
 
 ## Copy-paste block — never type these on camera
 
-**A — fire the change** (operator pane):
+**A — fire the change** *(operator pane)*
 
 ```bash
 WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 scripts/demo/fire.sh
 ```
 
-**B — show the split** (operator pane):
+**B — show the split** *(operator pane)*
 
 ```bash
 .venv/bin/writai --agent-url http://127.0.0.1:8002 dev status
 ```
 
-**C — show the provenance chain** (operator pane, run only after B):
+**C — show the provenance chain** *(operator pane, only after B)*
 
 ```bash
 .venv/bin/writai --agent-url http://127.0.0.1:8002 dev why $(.venv/bin/writai --agent-url http://127.0.0.1:8002 --json dev status | python3 -c 'import json,sys;print(next(s["session_id"] for s in json.load(sys.stdin)["sessions"] if s["assignment"]["task_id"]=="TASK-204"))')
 ```
 
-**D — recovery, only if a step goes red** (repo terminal, costs ~40s):
+**D — recovery, only if a step goes red** *(repo terminal, ~40s)*
 
 ```bash
 export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 && scripts/demo/reset.sh && scripts/demo/up.sh && tmux send-keys -t writai-demo.1 Enter \; send-keys -t writai-demo.2 Enter \; send-keys -t writai-demo.3 Enter \; send-keys -t writai-demo.4 Enter \; send-keys -t writai-demo.5 Enter && scripts/demo/check.sh
@@ -35,16 +34,15 @@ export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 && scripts/demo/reset.sh && script
 
 ## 1. Attach
 
-**SAY:** "Five engineers, five Claude Code sessions, all running right now."
+**SAY:** "Five engineers, five Claude Code sessions, running right now. Same repo, same feature — two building the CSV export, three building who's allowed to download it."
 
-**RUN:** repo terminal
+**RUN:** *repo terminal*
 
 ```bash
 tmux attach -t writai-demo
 ```
 
-**SEE:** Six panes. One operator pane, five agent panes, each showing a Claude
-Code session working on its own task.
+**SEE:** Six panes. One operator pane, five agent panes, each with a Claude Code session working its own task.
 
 **IF NOT:** `tmux kill-server`, then paste **D**.
 
@@ -52,9 +50,9 @@ Code session working on its own task.
 
 ## 2. Show the before state
 
-**SAY:** "All five are authorised. Same decision snapshot, graph-v17."
+**SAY:** "All five are authorised against the same decision snapshot. Each one holds a grant bound to that exact version of company intent."
 
-**RUN:** operator pane — paste **B**
+**RUN:** *operator pane* — paste **B**
 
 **SEE:** Five sessions, every one `running`, every one `graph-v17`.
 
@@ -64,11 +62,11 @@ Code session working on its own task.
 
 ## 3. The trigger
 
-**SAY:** "Compliance just changed one decision. Exports become admin-only."
+**SAY (before you paste):** "Compliance changes one decision: exports become admin-only. In production this arrives from Slack — we're connected through Composio — tonight I'm triggering it directly so you can see the timing."
 
-**RUN:** operator pane — paste **A**
+**RUN:** *operator pane* — paste **A**
 
-**SEE:** The blast radius, before anything is applied:
+**SEE:**
 
 ```
 ⏺ Blast radius: 3 of 5 active sessions will be interrupted
@@ -76,84 +74,99 @@ Code session working on its own task.
   Continuing (2)  Sara · Alex
 ```
 
-Then `Approve the change now? [y/N]`
+then `Approve the change now? [y/N]`
+
+**SAY (pointing at it):** "Before it applies anything, it tells you exactly who you're about to interrupt. Three of five. By name."
 
 **IF NOT:** if it prints nothing and returns, the services are down — paste **D**.
 
 ---
 
-## 4. Confirm — twice
+## 4. Confirm — twice. This is the Hexclave beat.
 
-**SAY:** "One person approves it."
+**SAY (before you press anything):** "Now — who is allowed to make this call? Because if the answer is 'anyone in the Slack channel', this product is dangerous rather than useful."
+
+**SAY:** "Identity runs through Hexclave. It answers one question: does this person hold `approve_compliance` on this team? If they don't, the reaction is ignored, silently, and nothing moves."
 
 **RUN:** press `y` then Enter. **It asks a second time.** Press `y` then Enter again.
 
-**SEE:** `change DEC-018 approved as approve_compliance`, then
-`FIRED — watch the sessions`.
+**SEE:** `change DEC-018 approved as approve_compliance`, then `FIRED — watch the sessions`.
 
-**IF NOT:** if you see `EOFError`, you missed the second prompt — press `y` Enter.
+**SAY (as it applies):** "And there are three ways to approve — this terminal, the web screen, or a reaction in Slack. All three land on the same permission check. None of them can approve by claiming it already checked — the request envelope refuses those fields outright, so a caller physically cannot assert its own authority."
+
+**IF NOT:** an `EOFError` means you missed the second prompt — press `y` Enter.
 
 ---
 
 ## 5. The three-second silence
 
-**SAY:** nothing. Count three seconds. Let the panes move.
+**SAY:** nothing. Count three. Let the panes move.
 
 **RUN:** nothing. Hands off the keyboard.
 
-**SEE:** Priya, Marcus and Dan each stop on their next tool call with the
-writ.ai block and the admin-only redirect. Sara and Alex keep working.
+**SEE:** Priya, Marcus and Dan each stop on their next tool call with the writ.ai block and the admin-only redirect. Sara and Alex keep working.
 
-**IF NOT:** if a pane looks frozen rather than blocked, ignore it and go to
-step 6 — the verdict is in the service, not the pane.
+**IF NOT:** if a pane looks frozen rather than blocked, ignore it and go to step 6 — the verdict lives in the service, not the pane.
 
 ---
 
-## 6. Show the split
+## 6. Show the split — deliver this slowly
 
-**SAY:** "One person acknowledged the change. Five agents inherited it — and
-only the three that needed to."
+**SAY:** "Three stopped. Two never noticed. A kill switch stops everything, which is why teams switch them off — this stopped exactly the three whose task scope intersected the change."
 
-**RUN:** operator pane — paste **B**
+**RUN:** *operator pane* — paste **B**
 
-**SEE:** Three sessions interrupted on TASK-203, TASK-204, TASK-205. Two
-continuing on TASK-201, TASK-202.
+**SEE:** Three sessions interrupted on TASK-203, TASK-204, TASK-205. Two continuing on TASK-201, TASK-202.
 
-**IF NOT:** if all five continue, the change did not apply — paste **A** again.
+**SAY (after it prints):** "And they didn't start over. Each one read the correction and proposed the admin-gated version of what it was already building."
 
----
-
-## 7. Show the provenance chain
-
-**SAY:** "This is why. Not a red badge — the actual path, and what survived."
-
-**RUN:** operator pane — paste **C**
-
-**SEE:** The chain `DEC-018 → DEC-004 → SPEC-009 → TICKET-100 → TASK-204`, then
-all five tasks with `still valid` or `invalidated` beside each, and `←` on
-TASK-204. `Preserved` names the two CSV tasks. `Changed` gives the admin-only
-instruction.
-
-**IF NOT:** if it prints `Which became —`, the change has not applied yet — go
-back to step 3.
+**IF NOT:** if the labels look wrong, say the numbers from the blast radius instead and move on — do not debug on camera.
 
 ---
 
-## 8. Stop
+## 7. Show the chain
 
-**SAY:** "Deterministic invalidation, scope-aware, enforced in the agent's own
-session."
+**SAY:** "Any of them can ask why, and get the whole path back — the decision, what it superseded, and the evidence."
 
-**RUN:** nothing.
+**RUN:** *operator pane* — paste **C**
 
-**Do not open `/approvals` in the browser.** Skip it. The screen labels itself a
-rehearsal, which contradicts the claim you just made on camera.
+**SEE:** The provenance chain, TASK-203/204/205 invalidated, TASK-201/202 still valid.
+
+**IF NOT:** skip it. Step 6 already made the point.
 
 ---
 
-## Two things not to say
+## 8. The CrustData beat — say this, no command
 
-- Do not say the redirect **wording** is deterministic. The scope verdict is;
-  the requirement text is not.
-- Do not claim the approval was authenticated. It ran on the labelled
-  in-process seam.
+This is the idea that makes the product bigger than one demo. Deliver it as a question.
+
+**SAY:** "One more thing. That approval rested on Dana being the compliance lead. What happens when she changes role — or leaves?"
+
+**SAY:** "Then every decision she approved is resting on a fact that stopped being true, and nobody notices, because approvals don't expire when people move."
+
+**SAY:** "CrustData watches for exactly that. When an approver changes role or leaves the company, writ.ai flags every decision they approved for review — the same mechanic you just watched, pointed at people instead of tickets."
+
+**SAY:** "Because decisions don't only rest on other decisions. They rest on facts about the world. And facts change."
+
+---
+
+## Closing — say these in order
+
+**1 — enforcement**
+> "Two things you're not seeing. This runs through a Claude Code hook installed in organisation-managed settings, so a developer can't disable it locally. And hooks fail open by design, so there's a pull-request check behind it that fails closed."
+
+**2 — engineering credibility**
+> "760 tests. And every change was reviewed by a second model — that found four fail-open holes our own tests missed, including a cached *allow* being replayed when the service was unreachable."
+
+**3 — the honest one. Do not skip it.** Volunteering the limits is what makes everything above believable.
+> "What we haven't proven end to end: the Slack delivery, and tonight's approval falls back to an in-process seam because the approver's Hexclave user key isn't provisioned yet — the identity layer is wired and tested, the credential isn't. And the CrustData signal is a replayed capture, because their watcher runs hourly and can't fire on a stage."
+
+**Then close:**
+> "Tests prove the code works. writ.ai proves the work is still wanted — for everyone at once."
+
+---
+
+## Two claims to avoid
+
+- Do **not** claim the redirect wording is deterministic. The scope verdict is stable; the requirement text is not.
+- Do **not** run `scripts/demo/ack.sh`. The hook self-acknowledges and nothing on the staged path needs it.
