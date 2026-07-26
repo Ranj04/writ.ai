@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from fastapi.testclient import TestClient
 from writai.domain import ApprovalStatus, Artifact, ArtifactKind
 from writai.intake.gate import (
     DeterministicIntakeGate,
@@ -24,7 +25,6 @@ from writai.workspaces.models import (
     WorkspaceProposalRequest,
     WorkspaceSlackBinding,
 )
-from fastapi.testclient import TestClient
 
 
 def _message() -> VerifiedSlackMessage:

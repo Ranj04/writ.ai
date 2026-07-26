@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from writai.authority.engine import IntentAuthority
 from writai.config import settings
 from writai.domain import (
@@ -22,7 +23,6 @@ from writai.scenarios import (
     list_scenarios,
 )
 from writai.scenarios.validation import SCENARIO_AUTHORITY_THRESHOLD
-from pydantic import ValidationError
 
 EXPECTED_SCENARIO_IDS = {
     "csv-exports-admin-only",

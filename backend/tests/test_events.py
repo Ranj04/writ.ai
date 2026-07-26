@@ -4,13 +4,13 @@ import asyncio
 import json
 from typing import cast
 
+from fastapi import Request
 from writai.services.events import (
     EventBroker,
     StreamEvent,
     snapshot_event,
     stream_events,
 )
-from fastapi import Request
 
 
 def test_event_broker_wakes_subscribers_with_correlated_state() -> None:

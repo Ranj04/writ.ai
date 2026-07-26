@@ -17,6 +17,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Literal, Protocol, cast
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from writai.intake.approval import (
     ApprovalChannel,
     ApprovalResult,
@@ -28,7 +29,6 @@ from writai.supervisor_contract import (
     InterruptResult,
     SupervisorInterruptPort,
 )
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _MAX_MESSAGE_LENGTH = 10_000
 _MAX_LISTED_ASSIGNMENTS = 20

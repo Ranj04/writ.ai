@@ -14,6 +14,13 @@ from enum import StrEnum
 from threading import RLock
 from typing import Any, Protocol
 
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    model_validator,
+)
 from writai.domain import (
     AgentPlan,
     PlanAction,
@@ -27,13 +34,6 @@ from writai.integrations.callwright import (
 )
 from writai.workspaces.models import WorkspaceExecutionResult
 from writai.workspaces.supervisor import SupervisorAssignmentState
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    SecretStr,
-    model_validator,
-)
 
 _MAX_EXPLANATION_FRAGMENT = 900
 _ACTIVE_INTERRUPT_STATES = {SupervisorAssignmentState.INTERRUPTED}

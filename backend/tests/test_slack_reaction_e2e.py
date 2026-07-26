@@ -11,10 +11,12 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
 
-import writai.services.agent_api as agent_api
-import writai.services.authority_api as authority_api
 import httpx
 import pytest
+import writai.services.agent_api as agent_api
+import writai.services.authority_api as authority_api
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from writai.auth.hexclave import HexclavePermissionError
 from writai.domain import (
     ApprovalStatus,
@@ -57,8 +59,6 @@ from writai.workspaces.models import (
     WorkspaceProposalRequest,
     WorkspaceSlackBinding,
 )
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
 
 WORKSPACE_ID = "slack-e2e"
 OTHER_WORKSPACE_ID = "slack-other"

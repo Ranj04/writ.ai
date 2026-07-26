@@ -26,12 +26,6 @@ from typing import Any, Literal, Protocol
 from urllib.parse import quote, urlparse
 
 import httpx
-from writai.hashing import stable_hash
-from writai.intake.approval import (
-    ApprovalChannel,
-    ApprovalResult,
-    PendingApproval,
-)
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -39,6 +33,12 @@ from pydantic import (
     SecretStr,
     ValidationError,
     model_validator,
+)
+from writai.hashing import stable_hash
+from writai.intake.approval import (
+    ApprovalChannel,
+    ApprovalResult,
+    PendingApproval,
 )
 
 _MAX_TOKEN_LENGTH = 8_192

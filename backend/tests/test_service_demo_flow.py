@@ -5,9 +5,9 @@ from urllib.parse import urlparse
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 from writai.fixtures import load_decision_v18
 from writai.services import agent_api, authority_api, executor_api, support
-from fastapi.testclient import TestClient
 
 
 def test_three_service_demo_rejects_old_grant_and_accepts_corrected_grant(

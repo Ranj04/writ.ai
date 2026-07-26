@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
+from fastapi.testclient import TestClient
 from writai.cli import run
 from writai.intake.approval import ApprovalChannel, ApprovalEvidence
 from writai.intake.crustdata import (
@@ -24,7 +25,6 @@ from writai.workspaces.models import LiveWorkspaceImportRequest, LiveWorkspaceRe
 from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
 from writai.workspaces.repository import JsonFileLiveWorkspaceRepository
 from writai.workspaces.supervisor import FixtureSupervisorRuntime
-from fastapi.testclient import TestClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_PATH = (

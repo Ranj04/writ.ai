@@ -7,6 +7,9 @@ from threading import Event as ThreadEvent
 from typing import cast
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from pydantic import SecretStr, ValidationError
 from writai.authority.engine import IntentAuthority
 from writai.domain import (
     AgentPlan,
@@ -72,9 +75,6 @@ from writai.workspaces.supervisor import (
     WorkspaceSupervisor,
 )
 from writai.workspaces.transport import LiveWorkspaceTransport
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from pydantic import SecretStr, ValidationError
 
 NOW = datetime(2026, 7, 25, 8, 0, tzinfo=UTC)
 SCOPE = "incident.escalation"

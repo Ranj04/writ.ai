@@ -5,15 +5,15 @@ from dataclasses import dataclass, field
 from typing import cast
 from urllib.parse import urlparse
 
+import httpx
+import pytest
 import writai.services.agent_api as agent_api
 import writai.services.authority_api as authority_api
 import writai.services.executor_api as executor_api
 import writai.services.support as support
-import httpx
-import pytest
+from fastapi.testclient import TestClient
 from writai.scenarios.authority_contexts import ScenarioAuthorityContextRegistry
 from writai.scenarios.runner import ScenarioRunner
-from fastapi.testclient import TestClient
 
 CSV_SCENARIO_ID = "csv-exports-admin-only"
 

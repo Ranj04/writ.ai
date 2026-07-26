@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from writai.intake.approval import (
     ApprovalChannel,
     ApprovalCoordinator,
@@ -29,7 +30,6 @@ from writai.notify.push import (
     PushDeliveryReceipt,
     PushoverPushSender,
 )
-from pydantic import SecretStr
 
 NOW = datetime(2026, 7, 25, 8, 0, tzinfo=UTC)
 SECRET = "push-link-test-secret-that-is-over-32-bytes"

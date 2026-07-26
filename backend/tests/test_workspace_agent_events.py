@@ -4,9 +4,9 @@ import asyncio
 import json
 from typing import cast
 
+from fastapi import Request
 from writai.services import agent_api
 from writai.services.events import StreamEvent
-from fastapi import Request
 
 
 def _clear_workspace_brokers() -> None:

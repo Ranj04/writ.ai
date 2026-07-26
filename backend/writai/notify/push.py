@@ -8,6 +8,7 @@ from typing import Any, Literal, Protocol
 from urllib.parse import quote, urlencode, urlparse
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from writai.intake.approval import ApprovalChannel, PendingApproval
 from writai.notify.email import (
     ApprovalDeliveryProvider,
@@ -17,7 +18,6 @@ from writai.notify.email import (
     build_approval_link_urls,
     is_high_entropy_ntfy_topic,
 )
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 _PUSH_MESSAGE_MAX_LENGTH = 1_024
 

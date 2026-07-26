@@ -18,6 +18,8 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 import yaml
+from fastapi.testclient import TestClient
+from pydantic import BaseModel
 from writai.domain import utc_now
 from writai.hashing import stable_hash
 from writai.intake.approval import ApprovalChannel, ApprovalEvidence
@@ -41,8 +43,6 @@ from writai.workspaces.session_enforcement import (
     ClaudeSessionStartRequest,
     RepositorySupervisorAssignmentGateway,
 )
-from fastapi.testclient import TestClient
-from pydantic import BaseModel
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
 WORKSPACE_ID = "csv-exports"
@@ -432,13 +432,13 @@ def test_the_session_list_route_is_authenticated_and_lists_unbound_sessions(
 ) -> None:
     """`dev status` reads this. It must authenticate, and must not hide gaps."""
 
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient as _TestClient
     from writai.services.supervisor_api import (
         HookApiKeyVerifier,
         build_supervisor_session_router,
     )
     from writai.services.support import install_api_support
-    from fastapi import FastAPI
-    from fastapi.testclient import TestClient as _TestClient
 
     service, _repository, root = _stack(tmp_path, monkeypatch)
     # The router captures its verifier when it is built, so inject one rather

@@ -618,10 +618,13 @@ def test_worst_case_context_length_is_recorded() -> None:
         },
         stale=True,
     )
-    # Re-measured after the deny block was reformatted to
-    # docs/TERMINAL_OUTPUT_SPEC.md section 1. The pin moved DOWN (9,496 -> 8,235),
-    # so the budget got safer, and the ceiling assertion below is unchanged.
-    assert len(worst) == 8_235
+    # Re-measured twice. First after the deny block was reformatted to
+    # docs/TERMINAL_OUTPUT_SPEC.md section 1 (9,496 -> 8,235), then again after
+    # the product rename shortened the block's own header from DRAGBACK to
+    # WRITAI (8,235 -> 8,231). Both moves were DOWN, so the budget got safer
+    # each time, and the ceiling assertion below is untouched. This pin exists
+    # so a future field addition cannot creep past it, which it still does.
+    assert len(worst) == 8_231
     assert len(worst) < lib.MAX_ADDITIONAL_CONTEXT_CHARS
 
 

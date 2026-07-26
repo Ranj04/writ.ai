@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from pydantic import ValidationError
 from writai.intake.approval import (
     ApprovalDisposition,
     ApprovalResult,
@@ -24,7 +25,6 @@ from writai.notify.slack import (
     SlackThreadReference,
 )
 from writai.supervisor_contract import InterruptRequest, InterruptResult
-from pydantic import ValidationError
 
 
 class PreviewOnlyPort:

@@ -314,7 +314,7 @@ function jiraNarrativeSentences(text: string): string[] {
       /\b(?:Backlog|Active sprint|Releases|Reports|Details|Assignee|Coding Agent|Reporter|Platform Lead|Priority|High|Status|In progress)\b/gi,
       " ",
     )
-    .replace(/\b(?:Original authorization|writ.ai test change)\b/gi, " ")
+    .replace(/\b(?:Original authorization|writ\.ai test change)\b/gi, " ")
     .replace(/\s+/g, " ");
   return (
     withoutInterfaceLabels
@@ -348,7 +348,7 @@ function tryExtractJiraWorkspaceDraft(
   const hasJiraSignal =
     /\bjira\b/i.test(filename) ||
     /\bjira software\b/i.test(normalized) ||
-    /\bwritai test change\b/i.test(normalized);
+    /\bwrit\.ai test change\b/i.test(normalized);
   if (!ticketKey || !hasStructure || !hasJiraSignal || tasks.length < 2) {
     return null;
   }

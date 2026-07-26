@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 
 import pytest
+from fastapi.testclient import TestClient
 from writai.domain import Verdict, VerificationCode
 from writai.scenarios import get_scenario
 from writai.scenarios.authority_contexts import ScenarioAuthorityContextRegistry
 from writai.services import authority_api
-from fastapi.testclient import TestClient
 
 SCENARIO_ID = "csv-exports-admin-only"
 CONTEXT_A = "context-isolation-a"

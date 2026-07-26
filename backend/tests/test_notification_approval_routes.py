@@ -4,8 +4,9 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-import writai.services.authority_api as authority_api
 import pytest
+import writai.services.authority_api as authority_api
+from fastapi.testclient import TestClient
 from writai.intake.approval import (
     ApprovalChannel,
     ApprovalCoordinator,
@@ -33,7 +34,6 @@ from writai.services.support import (
     internal_service_token,
 )
 from writai.workspaces.models import WorkspaceApprovalPreview
-from fastapi.testclient import TestClient
 
 NOW = datetime(2026, 7, 25, 8, 0, tzinfo=UTC)
 SECRET = "route-link-test-secret-that-is-over-32-bytes"

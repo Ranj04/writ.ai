@@ -10,6 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
+from fastapi.testclient import TestClient
 from writai.domain import (
     AgentPlan,
     GrantPayload,
@@ -34,7 +35,6 @@ from writai.integrations.callwright import (
     build_call_request,
 )
 from writai.services import executor_api
-from fastapi.testclient import TestClient
 
 
 class SpyCallwrightClient:

@@ -11,6 +11,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Protocol
 
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from writai.domain import (
     AgentPlan,
     AuthorizationRequest,
@@ -36,7 +37,6 @@ from writai.workspaces.supervisor import (
     SupervisorAssignment,
     SupervisorAssignmentState,
 )
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 _ACTIVE_STATES = {SupervisorAssignmentState.INTERRUPTED}
 
