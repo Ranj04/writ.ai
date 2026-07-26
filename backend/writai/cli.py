@@ -1201,6 +1201,16 @@ def build_parser() -> argparse.ArgumentParser:
     _add_runtime_options(parser, defaults=True)
     groups = parser.add_subparsers(dest="group", required=True)
 
+    doctor = groups.add_parser(
+        "doctor",
+        help="Check every sponsor integration: configured, credential valid, what is lost.",
+    )
+    doctor.add_argument(
+        "integrations",
+        nargs="*",
+        help="Limit to these integrations (default: all).",
+    )
+
     workspace = groups.add_parser(
         "workspace",
         help="Manage a user-owned live workspace.",
@@ -1525,6 +1535,15 @@ def run(
 ) -> int:
     args = _parse_cli_args(argv)
     json_output = bool(args.json)
+    if args.group == "doctor":
+        # Deliberately outside the WritaiClient block: doctor probes the SPONSOR
+        # services, not ours, so it has to work on a machine where nothing local
+        # is running. That is exactly when someone runs it.
+        from writai import doctor as doctor_module
+
+        return doctor_module.main(
+            [*getattr(args, "integrations", []), *(["--json"] if json_output else [])]
+        )
     try:
         if not math.isfinite(args.timeout) or args.timeout <= 0:
             raise CliError("The HTTP timeout must be greater than zero.", code="INVALID_TIMEOUT")
