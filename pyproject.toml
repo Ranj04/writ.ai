@@ -16,6 +16,7 @@ dependencies = [
   "httpx>=0.27",
   "python-dotenv>=1.0",
   "PyYAML>=6.0",
+  "svix>=1.70",
 ]
 
 [project.optional-dependencies]

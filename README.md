@@ -197,6 +197,131 @@ Neo4j never enables destructive startup seeding or `/graph/reset` by default: se
 Scenario Lab does not use this destructive reset path; its per-run stores are always isolated
 `MemoryGraphStore` instances.
 
+### Hexclave provisioning
+
+The checked-in `hexclave.config.ts` records the project apps and RBAC permission definitions.
+It contains no API keys or other credentials. Authenticate the CLI, then pull the live project
+configuration into a clean worktree before editing so dashboard changes are not overwritten:
+
+```bash
+npx --yes @hexclave/cli@1.0.66 login
+npx --yes @hexclave/cli@1.0.66 config pull \
+  --cloud-project-id "$HEXCLAVE_PROJECT_ID" \
+  --config-file ./hexclave.config.ts \
+  --overwrite
+git diff -- hexclave.config.ts
+```
+
+After reviewing the pulled state, edit the file and inspect the diff before explicitly syncing it:
+
+```bash
+git diff --check -- hexclave.config.ts
+npx --yes @hexclave/cli@1.0.66 config push \
+  --cloud-project-id "$HEXCLAVE_PROJECT_ID" \
+  --config-file ./hexclave.config.ts
+```
+
+`config push` changes the live Hexclave project, so it is deliberately not part of `make check`.
+The current config schema records the `approve_compliance` team-permission definition, but not the
+concrete Dragback team, its members, or their grants. Manage those live server-side and keep
+Hexclave credentials only in the ignored `.env`.
+
+Configure the Hexclave Webhooks app to send `team_permission.created`,
+`team_permission.deleted`, `team_membership.created`, and `team_membership.deleted` to the
+authority service at `https://<public-authority-host>/webhooks/hexclave`, then set:
+
+```dotenv
+HEXCLAVE_WEBHOOK_SECRET=<svix-endpoint-secret>
+HEXCLAVE_WEBHOOK_EVIDENCE_STORE=.writai/hexclave-webhook-events.json
+```
+
+The endpoint verifies the raw delivery with the Svix signature headers, stores only redacted event
+identifiers and a body digest, and clears the authority and agent permission caches. It never
+produces an authorization verdict or mutates the graph, policy, grants, or sessions. The next
+approval still performs the live server-side Hexclave permission check; an unavailable agent
+service returns `503` so Svix retries the invalidation.
+
+### CrustData person watcher
+
+CrustData is a review signal, never an authority source. A role change or departure can flag
+decisions that person previously approved, but it cannot mutate the graph or revoke authority
+without human confirmation.
+
+Create an account with the sponsor code, obtain an API key, and configure:
+
+```dotenv
+CRUSTDATA_API_KEY=...
+CRUSTDATA_API_VERSION=2025-11-01
+CRUSTDATA_WEBHOOK_BEARER=<strong-random-callback-secret>
+CRUSTDATA_REPLAY_BEARER=<different-strong-random-operator-secret>
+CRUSTDATA_CAPTURE_DIR=.writai/crustdata-captures
+CRUSTDATA_PERSON_IDENTITY_BINDINGS={"schema_version":1,"people":[{"crustdata_person_id":6324687,"hexclave_user_id":"<hexclave-user-id>","evidence_ref":"provisioning://crustdata/person/6324687"}]}
+```
+
+The identity binding is human-provisioned server configuration. writ.ai never infers a Hexclave
+identity from a name, title, email address, or webhook claim. The two bearer values must be
+different: CrustData receives only the callback credential, while deliberate replay is an
+operator-only capability. The service fails closed if they match.
+
+Start the agent service with `WRITAI_DEMO_RESET_ENABLED=false`. Put a controlled HTTPS gateway in
+front of it that permits only `POST /intake/crustdata/person/capture` and rejects every other
+method and path. Do **not** point an unrestricted `ngrok http 8002` tunnel at the agent service:
+that port also carries demo and state surfaces. For a temporary callback, the checked-in ngrok
+Traffic Policy provides that narrow boundary and disables request-body inspection:
+
+```bash
+# Terminal 1
+WRITAI_DEMO_RESET_ENABLED=false make agent
+
+# Terminal 2
+ngrok http 8002 \
+  --traffic-policy-file ./examples/crustdata-ngrok-traffic-policy.yml \
+  --inspect=false
+```
+
+Configure the CrustData Person Entity Watcher with:
+
+```text
+POST https://api.crustdata.com/watch/person
+Authorization: Bearer $CRUSTDATA_API_KEY
+x-api-version: 2025-11-01
+```
+
+Use a Person watcher with the target LinkedIn profile URL, role/departure fields, an interval of at
+least one hour, and this notification:
+
+```json
+{
+  "type": "webhook",
+  "url": "https://<public-agent-host>/intake/crustdata/person/capture",
+  "headers": {
+    "Authorization": "Bearer <CRUSTDATA_WEBHOOK_BEARER>"
+  }
+}
+```
+
+The callback only writes an owner-readable replay file; it does not create a review or mutate the
+graph. CrustData does not document a vendor webhook signature, so the capture records that it
+arrived with the configured shared bearer and explicitly records that no vendor signature was
+verified. The retained file is minimized to the watched identity/profile fields and delivered
+change evidence, but it still contains personal data; delete it after the review/demo according to
+your retention policy. The first watcher run establishes a silent baseline. After a later change
+is captured, replay the returned file deliberately:
+
+```bash
+writai workspace replay-crustdata \
+  .writai/crustdata-captures/crustdata-capture-<id>.json
+```
+
+The CLI reads `CRUSTDATA_REPLAY_BEARER` from the environment, keeping it out of process arguments.
+Before processing captured provenance, the service requires an exact match with its immutable
+server-side capture; a caller cannot self-assert that a payload was captured. Captured files are
+labelled `configured CrustData callback payload, replayed from server capture (not live; no vendor
+signature verified)`. The original documentation-reconstructed fixture remains available as an
+explicitly simulated fallback.
+See the current [API authentication reference](https://docs.crustdata.com/openapi-specs/2025-11-01/introduction)
+and [Person Entity Watcher contract](https://docs.crustdata.com/watcher-docs/person/entity).
+
 ### Neo4j parity tests
 
 The Neo4j suite is opt-in because it resets the configured database. Use only a disposable

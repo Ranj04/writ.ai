@@ -13,8 +13,14 @@ from fastapi.testclient import TestClient
 from writai.cli import run
 from writai.intake.approval import ApprovalChannel, ApprovalEvidence
 from writai.intake.crustdata import (
+    CrustDataCapturedProvenance,
+    CrustDataFixtureProvenance,
+    CrustDataIdentityMappingError,
+    CrustDataPersonIdentityBindings,
     CrustDataPersonObservationService,
+    CrustDataPersonWebhookPayload,
     CrustDataReplayRequest,
+    FileCrustDataCaptureStore,
 )
 from writai.intake.replay import (
     CrustDataDeliveryKey,
@@ -34,6 +40,10 @@ FIXTURE_PATH = (
 )
 SOURCE_LABEL = (
     "documentation-reconstructed payload, replayed (not captured from CrustData)"
+)
+CAPTURED_SOURCE_LABEL = (
+    "configured CrustData callback payload, replayed from server capture "
+    "(not live; no vendor signature verified)"
 )
 
 
@@ -63,10 +73,33 @@ def _approval(
     )
 
 
-def _service(path: Path) -> CrustDataPersonObservationService:
+def _identity_bindings(
+    *,
+    hexclave_user_id: str = "hex-user-001",
+) -> CrustDataPersonIdentityBindings:
+    return CrustDataPersonIdentityBindings.model_validate(
+        {
+            "schema_version": 1,
+            "people": [
+                {
+                    "crustdata_person_id": 6324687,
+                    "hexclave_user_id": hexclave_user_id,
+                    "evidence_ref": "provisioning://crustdata/person/6324687",
+                }
+            ],
+        }
+    )
+
+
+def _service(
+    path: Path,
+    *,
+    identity_bindings: CrustDataPersonIdentityBindings | None = None,
+) -> CrustDataPersonObservationService:
     return CrustDataPersonObservationService(
         replay_store=JsonCrustDataDeliveryReplayStore(path),
         expected_api_version="2025-11-01",
+        identity_bindings=identity_bindings,
     )
 
 
@@ -88,9 +121,31 @@ def _departure_fixture() -> CrustDataReplayRequest:
     return CrustDataReplayRequest.model_validate(raw)
 
 
+def _captured_fixture() -> CrustDataReplayRequest:
+    raw = _fixture().model_dump(mode="json", by_alias=True)
+    raw["fixture_provenance"] = {
+        "kind": "captured",
+        "label": CAPTURED_SOURCE_LABEL,
+        "received_by_configured_callback": True,
+        "callback_authentication": "configured-shared-bearer",
+        "vendor_signature_verified": False,
+        "captured_at": "2026-07-25T18:00:00Z",
+        "capture_evidence_ref": "test://crustdata/capture/ntf-64200",
+        "notice": (
+            "Test-only captured-provenance shape. Production must reference the "
+            "actual sanitized watcher delivery."
+        ),
+    }
+    return CrustDataReplayRequest.model_validate(raw)
+
+
 def test_documentation_reconstructed_fixture_is_explicitly_not_a_capture() -> None:
     request = _fixture()
 
+    assert isinstance(
+        request.fixture_provenance,
+        CrustDataFixtureProvenance,
+    )
     assert request.fixture_provenance.captured_from_crustdata is False
     assert request.fixture_provenance.kind == "documentation-reconstructed"
     assert request.fixture_provenance.label == SOURCE_LABEL
@@ -174,6 +229,152 @@ def test_person_with_no_approval_evidence_produces_no_flags(
     assert result.graph_mutated is False
 
 
+def test_captured_payload_uses_server_owned_identity_binding(
+    tmp_path: Path,
+) -> None:
+    result = _service(
+        tmp_path / "deliveries.json",
+        identity_bindings=_identity_bindings(),
+    ).process(
+        _captured_fixture(),
+        approval_evidence=(_approval(person_id="hex-user-001"),),
+    )
+
+    assert result.source_label == CAPTURED_SOURCE_LABEL
+    assert isinstance(
+        result.fixture_provenance,
+        CrustDataCapturedProvenance,
+    )
+    assert result.fixture_provenance.received_by_configured_callback is True
+    assert result.fixture_provenance.vendor_signature_verified is False
+    assert result.human_review_required is True
+    assert [item.decision_id for item in result.flags] == ["DEC-ALPHA"]
+    assert result.flags[0].person_id == "6324687"
+    assert result.flags[0].identity_binding_evidence_ref == (
+        "provisioning://crustdata/person/6324687"
+    )
+    assert "not live" in result.flags[0].source_label
+
+
+def test_unmapped_captured_person_fails_closed_and_can_be_retried(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "deliveries.json"
+
+    with pytest.raises(
+        CrustDataIdentityMappingError,
+        match="require server-owned identity bindings",
+    ):
+        _service(path).process(
+            _captured_fixture(),
+            approval_evidence=(_approval(person_id="hex-user-001"),),
+        )
+
+    retry = _service(
+        path,
+        identity_bindings=_identity_bindings(),
+    ).process(
+        _captured_fixture(),
+        approval_evidence=(_approval(person_id="hex-user-001"),),
+    )
+
+    assert retry.duplicate is False
+    assert retry.human_review_required is True
+    assert len(retry.flags) == 1
+
+
+@pytest.mark.parametrize(
+    "people",
+    [
+        [
+            {
+                "crustdata_person_id": 6324687,
+                "hexclave_user_id": "hex-user-001",
+                "evidence_ref": "provisioning://one",
+            },
+            {
+                "crustdata_person_id": 6324687,
+                "hexclave_user_id": "hex-user-002",
+                "evidence_ref": "provisioning://two",
+            },
+        ],
+        [
+            {
+                "crustdata_person_id": 6324687,
+                "hexclave_user_id": "hex-user-001",
+                "evidence_ref": "provisioning://one",
+            },
+            {
+                "crustdata_person_id": 6324688,
+                "hexclave_user_id": "hex-user-001",
+                "evidence_ref": "provisioning://two",
+            },
+        ],
+    ],
+)
+def test_identity_bindings_reject_ambiguous_mappings(
+    people: list[dict[str, object]],
+) -> None:
+    with pytest.raises(ValueError, match="only one"):
+        CrustDataPersonIdentityBindings.model_validate(
+            {"schema_version": 1, "people": people}
+        )
+
+
+def test_identity_bindings_reject_malformed_json() -> None:
+    with pytest.raises(
+        CrustDataIdentityMappingError,
+        match="identity bindings are invalid",
+    ):
+        CrustDataPersonIdentityBindings.from_json("{")
+
+
+def test_capture_store_persists_owner_only_replay_and_deduplicates(
+    tmp_path: Path,
+) -> None:
+    directory = tmp_path / "captures"
+    store = FileCrustDataCaptureStore(directory)
+
+    first = store.capture(_fixture().payload)
+    duplicate = store.capture(_fixture().payload)
+
+    assert first.duplicate is False
+    assert duplicate.duplicate is True
+    assert duplicate.capture_id == first.capture_id
+    path = directory / first.capture_file_name
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert directory.stat().st_mode & 0o777 == 0o700
+    captured = CrustDataReplayRequest.model_validate_json(
+        path.read_text(encoding="utf-8")
+    )
+    assert isinstance(
+        captured.fixture_provenance,
+        CrustDataCapturedProvenance,
+    )
+    assert captured.fixture_provenance.received_by_configured_callback is True
+    assert captured.fixture_provenance.vendor_signature_verified is False
+    assert captured.fixture_provenance.label == CAPTURED_SOURCE_LABEL
+
+
+def test_capture_store_discards_unrequested_profile_fields(
+    tmp_path: Path,
+) -> None:
+    raw = _fixture().payload.model_dump(mode="json", by_alias=True)
+    profile = raw["results"][0]["record"]["basic_profile"]
+    profile["personal_email"] = "private@example.test"
+    raw["results"][0]["record"]["all_emails"] = ["private@example.test"]
+    payload = CrustDataPersonWebhookPayload.model_validate(raw)
+
+    receipt = FileCrustDataCaptureStore(tmp_path).capture(payload)
+    captured_text = (tmp_path / receipt.capture_file_name).read_text(
+        encoding="utf-8"
+    )
+
+    assert "private@example.test" not in captured_text
+    assert "personal_email" not in captured_text
+    assert "all_emails" not in captured_text
+
+
 def test_delivery_replay_raises_flags_once_across_a_fresh_store_instance(
     tmp_path: Path,
 ) -> None:
@@ -205,7 +406,9 @@ def _configure_agent_route(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     *,
-    bearer: str | None,
+    replay_bearer: str | None,
+    capture_bearer: str | None = "callback-secret",
+    identity_bindings: str | None = None,
 ) -> Path:
     workspace_path = tmp_path / "workspaces.json"
     monkeypatch.setattr(
@@ -215,7 +418,10 @@ def _configure_agent_route(
             agent_api.settings,
             workspace_store=str(workspace_path),
             crustdata_api_version="2025-11-01",
-            crustdata_webhook_bearer=bearer,
+            crustdata_webhook_bearer=capture_bearer,
+            crustdata_replay_bearer=replay_bearer,
+            crustdata_person_identity_bindings=identity_bindings,
+            crustdata_capture_dir=str(tmp_path / "captures"),
         ),
     )
     monkeypatch.setattr(
@@ -224,6 +430,7 @@ def _configure_agent_route(
         _EmptyWorkspaceRepository(),
     )
     agent_api.crustdata_replay_stores.clear()
+    agent_api.crustdata_capture_stores.clear()
     return tmp_path / "workspaces-crustdata-deliveries.json"
 
 
@@ -261,7 +468,7 @@ def test_replay_route_fails_closed_for_missing_wrong_or_unconfigured_bearer(
     store_path = _configure_agent_route(
         monkeypatch,
         tmp_path,
-        bearer=configured_bearer,
+        replay_bearer=configured_bearer,
     )
     headers = {"Authorization": authorization} if authorization else {}
 
@@ -276,6 +483,241 @@ def test_replay_route_fails_closed_for_missing_wrong_or_unconfigured_bearer(
     assert not store_path.exists()
 
 
+@pytest.mark.parametrize(
+    ("configured_bearer", "authorization", "status_code", "code"),
+    [
+        (
+            "callback-secret",
+            None,
+            401,
+            "CRUSTDATA_AUTHENTICATION_FAILED",
+        ),
+        (
+            "callback-secret",
+            "Bearer wrong-secret",
+            401,
+            "CRUSTDATA_AUTHENTICATION_FAILED",
+        ),
+        (
+            None,
+            "Bearer any-secret",
+            503,
+            "CRUSTDATA_AUTHENTICATION_NOT_CONFIGURED",
+        ),
+    ],
+)
+def test_capture_route_fails_closed_for_missing_wrong_or_unconfigured_bearer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    configured_bearer: str | None,
+    authorization: str | None,
+    status_code: int,
+    code: str,
+) -> None:
+    _configure_agent_route(
+        monkeypatch,
+        tmp_path,
+        replay_bearer="operator-secret",
+        capture_bearer=configured_bearer,
+    )
+    headers = {"Authorization": authorization} if authorization else {}
+
+    response = TestClient(agent_api.app).post(
+        "/intake/crustdata/person/capture",
+        json=_fixture().payload.model_dump(mode="json", by_alias=True),
+        headers=headers,
+    )
+
+    assert response.status_code == status_code
+    assert response.json()["error"]["code"] == code
+    assert not (tmp_path / "captures").exists()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/intake/crustdata/person/capture",
+        "/intake/crustdata/person/replay",
+    ],
+)
+def test_capture_and_replay_reject_a_shared_credential(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    path: str,
+) -> None:
+    store_path = _configure_agent_route(
+        monkeypatch,
+        tmp_path,
+        replay_bearer="shared-secret",
+        capture_bearer="shared-secret",
+    )
+    body = (
+        _fixture().payload.model_dump(mode="json", by_alias=True)
+        if path.endswith("/capture")
+        else _fixture().model_dump(mode="json", by_alias=True)
+    )
+
+    response = TestClient(agent_api.app).post(
+        path,
+        json=body,
+        headers={"Authorization": "Bearer shared-secret"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == (
+        "CRUSTDATA_AUTHENTICATION_CONFIGURATION_INVALID"
+    )
+    assert not store_path.exists()
+    assert not (tmp_path / "captures").exists()
+
+
+def test_replay_route_fails_closed_for_malformed_identity_bindings(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    store_path = _configure_agent_route(
+        monkeypatch,
+        tmp_path,
+        replay_bearer="expected-secret",
+        identity_bindings="{",
+    )
+
+    response = TestClient(agent_api.app).post(
+        "/intake/crustdata/person/replay",
+        json=_fixture().model_dump(mode="json", by_alias=True),
+        headers={"Authorization": "Bearer expected-secret"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == (
+        "CRUSTDATA_IDENTITY_BINDINGS_INVALID"
+    )
+    assert not store_path.exists()
+
+
+def test_capture_route_stores_raw_delivery_without_processing_it(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_agent_route(
+        monkeypatch,
+        tmp_path,
+        replay_bearer="expected-secret",
+    )
+
+    response = TestClient(agent_api.app).post(
+        "/intake/crustdata/person/capture",
+        json=_fixture().payload.model_dump(mode="json", by_alias=True),
+        headers={"Authorization": "Bearer callback-secret"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source_label"] == (
+        "configured CrustData callback payload, captured for replay "
+        "(not processed live; no vendor signature verified)"
+    )
+    assert body["graph_mutated"] is False
+    assert body["human_review_created"] is False
+    capture_path = tmp_path / "captures" / body["capture_file_name"]
+    assert capture_path.exists()
+    assert capture_path.stat().st_mode & 0o777 == 0o600
+    captured = CrustDataReplayRequest.model_validate_json(
+        capture_path.read_text(encoding="utf-8")
+    )
+    assert captured.fixture_provenance.label == CAPTURED_SOURCE_LABEL
+
+
+def test_capture_route_converts_an_invalid_capture_directory_to_503(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_agent_route(
+        monkeypatch,
+        tmp_path,
+        replay_bearer="operator-secret",
+    )
+    (tmp_path / "captures").write_text("not a directory", encoding="utf-8")
+
+    response = TestClient(agent_api.app).post(
+        "/intake/crustdata/person/capture",
+        json=_fixture().payload.model_dump(mode="json", by_alias=True),
+        headers={"Authorization": "Bearer callback-secret"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "CRUSTDATA_CAPTURE_UNAVAILABLE"
+
+
+def test_forged_capture_is_rejected_before_genuine_capture_replays(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    store_path = _configure_agent_route(
+        monkeypatch,
+        tmp_path,
+        replay_bearer="operator-secret",
+        identity_bindings=_identity_bindings().model_dump_json(),
+    )
+    repository = JsonFileLiveWorkspaceRepository(tmp_path / "workspaces.json")
+    workspace_request = LiveWorkspaceImportRequest.model_validate(
+        yaml.safe_load(
+            (REPO_ROOT / "examples" / "writai-workspace.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+    )
+    LiveWorkspaceOrchestrator(
+        repository=repository,
+        supervisor_runtime=FixtureSupervisorRuntime(),
+    ).import_workspace(workspace_request)
+    record = repository.get(workspace_request.id)
+    record.baseline_approval_evidence = _approval(
+        person_id="hex-user-001",
+        workspace_id=workspace_request.id,
+        decision_id=workspace_request.baseline_decision.id,
+    )
+    repository.save(record)
+    monkeypatch.setattr(agent_api, "workspace_repository", repository)
+
+    forged = TestClient(agent_api.app).post(
+        "/intake/crustdata/person/replay",
+        json=_captured_fixture().model_dump(mode="json", by_alias=True),
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+
+    assert forged.status_code == 422
+    assert forged.json()["error"]["code"] == (
+        "CRUSTDATA_CAPTURE_PROVENANCE_INVALID"
+    )
+    assert not store_path.exists()
+
+    captured = TestClient(agent_api.app).post(
+        "/intake/crustdata/person/capture",
+        json=_fixture().payload.model_dump(mode="json", by_alias=True),
+        headers={"Authorization": "Bearer callback-secret"},
+    )
+    capture_path = (
+        tmp_path / "captures" / captured.json()["capture_file_name"]
+    )
+    genuine_body = json.loads(capture_path.read_text(encoding="utf-8"))
+    replayed = TestClient(agent_api.app).post(
+        "/intake/crustdata/person/replay",
+        json=genuine_body,
+        headers={"Authorization": "Bearer operator-secret"},
+    )
+
+    assert captured.status_code == 200
+    assert replayed.status_code == 200
+    assert replayed.json()["duplicate"] is False
+    assert replayed.json()["source_label"] == CAPTURED_SOURCE_LABEL
+    assert len(replayed.json()["flags"]) == 1
+    assert replayed.json()["flags"][0]["identity_binding_evidence_ref"] == (
+        "provisioning://crustdata/person/6324687"
+    )
+    assert store_path.exists()
+
+
 def test_actual_api_response_and_event_are_labelled_replayed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -283,7 +725,7 @@ def test_actual_api_response_and_event_are_labelled_replayed(
     _configure_agent_route(
         monkeypatch,
         tmp_path,
-        bearer="expected-secret",
+        replay_bearer="expected-secret",
     )
     repository = JsonFileLiveWorkspaceRepository(tmp_path / "workspaces.json")
     workspace_request = LiveWorkspaceImportRequest.model_validate(
@@ -330,6 +772,12 @@ def test_actual_api_response_and_event_are_labelled_replayed(
     assert events[0].envelope["event"] == "crustdata.person-review.flagged"
     assert events[0].envelope["data"]["source_label"] == SOURCE_LABEL
     assert events[0].envelope["data"]["source_label"] != "live"
+    serialized_event = json.dumps(events[0].envelope["data"], sort_keys=True)
+    assert "Documentation Example Person" not in serialized_event
+    assert "6324687" not in serialized_event
+    assert workspace_request.id not in serialized_event
+    assert workspace_request.baseline_decision.id not in serialized_event
+    assert "approval://alpha" not in serialized_event
 
 
 def test_malformed_payload_is_rejected_without_partial_replay_write(
@@ -339,7 +787,7 @@ def test_malformed_payload_is_rejected_without_partial_replay_write(
     store_path = _configure_agent_route(
         monkeypatch,
         tmp_path,
-        bearer="expected-secret",
+        replay_bearer="expected-secret",
     )
     malformed = _fixture().model_dump(mode="json", by_alias=True)
     malformed["payload"]["results"] = []

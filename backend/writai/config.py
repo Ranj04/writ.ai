@@ -125,6 +125,13 @@ class Settings:
     hexclave_permission_cache_ttl_seconds: float = float(
         os.getenv("HEXCLAVE_PERMISSION_CACHE_TTL_SECONDS", "60")
     )
+    hexclave_webhook_secret: str | None = (
+        os.getenv("HEXCLAVE_WEBHOOK_SECRET") or None
+    )
+    hexclave_webhook_evidence_store: str = os.getenv(
+        "HEXCLAVE_WEBHOOK_EVIDENCE_STORE",
+        ".writai/hexclave-webhook-events.json",
+    )
     writai_hook_endpoint: str = os.getenv(
         "WRITAI_HOOK_ENDPOINT",
         "http://localhost:8002/supervisor/sessions",
@@ -176,6 +183,16 @@ class Settings:
     )
     crustdata_webhook_bearer: str | None = (
         os.getenv("CRUSTDATA_WEBHOOK_BEARER") or None
+    )
+    crustdata_replay_bearer: str | None = (
+        os.getenv("CRUSTDATA_REPLAY_BEARER") or None
+    )
+    crustdata_person_identity_bindings: str | None = (
+        os.getenv("CRUSTDATA_PERSON_IDENTITY_BINDINGS") or None
+    )
+    crustdata_capture_dir: str = os.getenv(
+        "CRUSTDATA_CAPTURE_DIR",
+        ".writai/crustdata-captures",
     )
 
 

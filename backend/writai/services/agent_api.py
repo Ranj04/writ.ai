@@ -18,6 +18,7 @@ from writai.auth.hexclave import (
     HexclavePermissionError,
     HexclaveUserApiKeyIdentityResolver,
 )
+from writai.auth.hexclave_webhooks import HexclaveCacheInvalidationRequest
 from writai.config import settings
 from writai.domain import (
     AgentPlan,
@@ -38,13 +39,22 @@ from writai.intake.approval import (
     pending_from_workspace,
 )
 from writai.intake.crustdata import (
+    CrustDataAuthenticationConfigurationError,
     CrustDataAuthenticationError,
     CrustDataAuthenticationNotConfigured,
+    CrustDataCapturedProvenance,
+    CrustDataCapturedReplayError,
+    CrustDataCaptureError,
+    CrustDataIdentityMappingError,
     CrustDataPayloadError,
+    CrustDataPersonIdentityBindings,
     CrustDataPersonObservationService,
+    CrustDataPersonWebhookPayload,
     CrustDataReplayRequest,
     CrustDataWebhookBearerVerifier,
+    FileCrustDataCaptureStore,
     approval_evidence_from_workspace_records,
+    require_distinct_crustdata_bearers,
 )
 from writai.intake.replay import (
     CrustDataDeliveryReplayError,
@@ -144,6 +154,8 @@ approval_assertion_use_stores: dict[
 ] = {}
 crustdata_replay_store_lock = RLock()
 crustdata_replay_stores: dict[Path, JsonCrustDataDeliveryReplayStore] = {}
+crustdata_capture_store_lock = RLock()
+crustdata_capture_stores: dict[Path, FileCrustDataCaptureStore] = {}
 scenario_runner = ScenarioRunner()
 workspace_repository = JsonFileLiveWorkspaceRepository(settings.workspace_store)
 supervisor_runtime = ClaudeCodeSupervisorRuntime()
@@ -275,6 +287,16 @@ def _workspace_permission_checker(
             )
             hexclave_permission_checkers[cache_key] = checker
         return checker
+
+
+def _clear_hexclave_permission_caches() -> int:
+    """Clear every process-local permission result without producing a verdict."""
+
+    with hexclave_client_lock:
+        checkers = tuple(hexclave_permission_checkers.values())
+        for checker in checkers:
+            checker.clear_cache()
+        return len(checkers)
 
 
 def _require_workspace_slack_identity(
@@ -659,6 +681,16 @@ def _crustdata_replay_store() -> JsonCrustDataDeliveryReplayStore:
         return store
 
 
+def _crustdata_capture_store() -> FileCrustDataCaptureStore:
+    path = Path(settings.crustdata_capture_dir).expanduser()
+    with crustdata_capture_store_lock:
+        store = crustdata_capture_stores.get(path)
+        if store is None:
+            store = FileCrustDataCaptureStore(path)
+            crustdata_capture_stores[path] = store
+        return store
+
+
 def _require_demo_reset() -> None:
     if not settings.demo_reset_enabled:
         raise ApiError(
@@ -671,6 +703,27 @@ def _require_demo_reset() -> None:
 @app.get("/health")
 def health() -> dict[str, str]:
     return correlated_payload({"status": "ok"})
+
+
+@app.post("/internal/hexclave/permission-cache/invalidate")
+def invalidate_hexclave_permission_cache(
+    invalidation: HexclaveCacheInvalidationRequest,
+    request: Request,
+) -> dict[str, object]:
+    """Clear cached permission results after a verified authority-service event."""
+
+    require_internal_service(request, secret=settings.grant_secret)
+    caches_cleared = _clear_hexclave_permission_caches()
+    return correlated_payload(
+        {
+            "status": "permission-cache-invalidated",
+            "delivery_id": invalidation.delivery_id,
+            "event_type": invalidation.event_type,
+            "evidence_ref": invalidation.evidence_ref,
+            "caches_cleared": caches_cleared,
+            "graph_mutated": False,
+        }
+    )
 
 
 @app.post("/demo/reset")
@@ -827,17 +880,27 @@ def events(request: Request) -> StreamingResponse:
     )
 
 
-@app.post("/intake/crustdata/person/replay")
-def replay_crustdata_person_delivery(
-    replay: CrustDataReplayRequest,
+@app.post("/intake/crustdata/person/capture")
+def capture_crustdata_person_delivery(
+    payload: CrustDataPersonWebhookPayload,
     authorization: Annotated[str | None, Header()] = None,
 ) -> dict[str, object]:
-    """Replay one authenticated watcher fixture into human review flags."""
+    """Capture one bearer-authenticated, minimized delivery without processing it."""
 
     try:
+        require_distinct_crustdata_bearers(
+            webhook_bearer=settings.crustdata_webhook_bearer,
+            replay_bearer=settings.crustdata_replay_bearer,
+        )
         CrustDataWebhookBearerVerifier(
             expected_bearer=settings.crustdata_webhook_bearer or ""
         ).require(authorization)
+    except CrustDataAuthenticationConfigurationError as exc:
+        raise ApiError(
+            status_code=503,
+            code="CRUSTDATA_AUTHENTICATION_CONFIGURATION_INVALID",
+            message=str(exc),
+        ) from exc
     except CrustDataAuthenticationNotConfigured as exc:
         raise ApiError(
             status_code=503,
@@ -852,15 +915,89 @@ def replay_crustdata_person_delivery(
         ) from exc
 
     try:
+        receipt = _crustdata_capture_store().capture(payload)
+    except CrustDataCaptureError as exc:
+        raise ApiError(
+            status_code=503,
+            code="CRUSTDATA_CAPTURE_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        ) from exc
+    return correlated_payload(receipt)
+
+
+@app.post("/intake/crustdata/person/replay")
+def replay_crustdata_person_delivery(
+    replay: CrustDataReplayRequest,
+    authorization: Annotated[str | None, Header()] = None,
+) -> dict[str, object]:
+    """Replay one operator-authorized watcher fixture into human review flags."""
+
+    try:
+        require_distinct_crustdata_bearers(
+            webhook_bearer=settings.crustdata_webhook_bearer,
+            replay_bearer=settings.crustdata_replay_bearer,
+        )
+        CrustDataWebhookBearerVerifier(
+            expected_bearer=settings.crustdata_replay_bearer or ""
+        ).require(authorization)
+    except CrustDataAuthenticationConfigurationError as exc:
+        raise ApiError(
+            status_code=503,
+            code="CRUSTDATA_AUTHENTICATION_CONFIGURATION_INVALID",
+            message=str(exc),
+        ) from exc
+    except CrustDataAuthenticationNotConfigured as exc:
+        raise ApiError(
+            status_code=503,
+            code="CRUSTDATA_AUTHENTICATION_NOT_CONFIGURED",
+            message=str(exc),
+        ) from exc
+    except CrustDataAuthenticationError as exc:
+        raise ApiError(
+            status_code=401,
+            code="CRUSTDATA_AUTHENTICATION_FAILED",
+            message=str(exc),
+        ) from exc
+
+    try:
+        if isinstance(
+            replay.fixture_provenance,
+            CrustDataCapturedProvenance,
+        ):
+            _crustdata_capture_store().require_stored(replay)
+        identity_bindings = CrustDataPersonIdentityBindings.from_json(
+            settings.crustdata_person_identity_bindings
+        )
         result = CrustDataPersonObservationService(
             replay_store=_crustdata_replay_store(),
             expected_api_version=settings.crustdata_api_version,
+            identity_bindings=identity_bindings,
         ).process(
             replay,
             approval_evidence=approval_evidence_from_workspace_records(
                 workspace_repository.list()
             ),
         )
+    except CrustDataIdentityMappingError as exc:
+        raise ApiError(
+            status_code=503,
+            code="CRUSTDATA_IDENTITY_BINDINGS_INVALID",
+            message=str(exc),
+        ) from exc
+    except CrustDataCapturedReplayError as exc:
+        raise ApiError(
+            status_code=422,
+            code="CRUSTDATA_CAPTURE_PROVENANCE_INVALID",
+            message=str(exc),
+        ) from exc
+    except CrustDataCaptureError as exc:
+        raise ApiError(
+            status_code=503,
+            code="CRUSTDATA_CAPTURE_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        ) from exc
     except CrustDataPayloadError as exc:
         raise ApiError(
             status_code=422,
@@ -880,7 +1017,14 @@ def replay_crustdata_person_delivery(
             "crustdata.person-review.flagged"
             if result.flags
             else "crustdata.person-review.observed",
-            result,
+            {
+                "status": result.status,
+                "source_label": result.source_label,
+                "duplicate": result.duplicate,
+                "graph_mutated": result.graph_mutated,
+                "human_review_required": result.human_review_required,
+                "review_flag_count": len(result.flags),
+            },
         )
     return correlated_payload(result)
 
