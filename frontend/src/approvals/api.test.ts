@@ -277,7 +277,7 @@ describe("approveChange", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(result.source).toBe("fixture");
     expect(result.note).toContain("writai approve");
-    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("NOT SIGNED IN"));
   });
 
   it("rehearses a refusal rather than claiming the change was applied", async () => {

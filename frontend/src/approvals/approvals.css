@@ -109,6 +109,20 @@
   justify-content: flex-end;
 }
 
+.ap-root .ap-header__signin {
+  min-height: 36px;
+  padding: 7px 13px;
+  border: 1px solid var(--sl-border);
+  border-radius: var(--sl-radius-control);
+  background: var(--sl-white);
+  color: var(--sl-ink);
+  font-size: 0.8rem;
+}
+
+.ap-header__signin:hover {
+  border-color: var(--sl-border-strong);
+}
+
 .ap-page {
   width: min(100%, 1080px);
   margin: 0 auto;

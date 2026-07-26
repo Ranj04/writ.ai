@@ -118,7 +118,10 @@ def test_cli_change_uses_authenticated_proposal_bound_server_path(
         },
     }
     client = Client([workspace, _preview(), approved_workspace])
-    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "authenticated-user-api-key")
+    monkeypatch.setenv(
+        "HEXCLAVE_APPROVER_USER_API_KEY",
+        "authenticated-user-api-key",
+    )
     monkeypatch.setattr("builtins.input", lambda: "y")
     exit_code = cli_approve.run(
         client=client,
@@ -158,7 +161,8 @@ def test_cli_change_fails_closed_without_authenticated_credential(
     monkeypatch,
     capsys,
 ) -> None:
-    monkeypatch.delenv("WRITAI_HOOK_API_KEY", raising=False)
+    monkeypatch.delenv("HEXCLAVE_APPROVER_USER_API_KEY", raising=False)
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "hook-auth-is-not-human-auth")
     client = Client([_workspace()])
 
     exit_code = cli_approve.run(
@@ -173,7 +177,9 @@ def test_cli_change_fails_closed_without_authenticated_credential(
 
     assert exit_code == 2
     assert len(client.calls) == 1
-    assert "APPROVAL_AUTHENTICATION_REQUIRED" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "HEXCLAVE_APPROVER_USER_API_KEY" in error
+    assert "APPROVAL_AUTHENTICATION_REQUIRED" in error
 
 
 def test_cli_change_uses_server_preview_counts_and_honors_default_no(
@@ -187,7 +193,10 @@ def test_cli_change_uses_server_preview_counts_and_honors_default_no(
         "total_assignment_count": 9,
     }
     client = Client([_workspace(), server_preview])
-    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "authenticated-user-api-key")
+    monkeypatch.setenv(
+        "HEXCLAVE_APPROVER_USER_API_KEY",
+        "authenticated-user-api-key",
+    )
     monkeypatch.setattr("builtins.input", lambda: "")
 
     exit_code = cli_approve.run(

@@ -97,16 +97,28 @@ def test_agent_hexclave_factories_use_configured_transport_controls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     checker_arguments: list[dict[str, object]] = []
-    resolver_arguments: list[dict[str, object]] = []
+    access_resolver_arguments: list[dict[str, object]] = []
+    api_key_resolver_arguments: list[dict[str, object]] = []
+    chained_resolver_arguments: list[tuple[object, ...]] = []
     checker = object()
+    access_resolver = object()
+    api_key_resolver = object()
     resolver = object()
 
     def checker_factory(**kwargs: object) -> object:
         checker_arguments.append(kwargs)
         return checker
 
-    def resolver_factory(**kwargs: object) -> object:
-        resolver_arguments.append(kwargs)
+    def access_resolver_factory(**kwargs: object) -> object:
+        access_resolver_arguments.append(kwargs)
+        return access_resolver
+
+    def api_key_resolver_factory(**kwargs: object) -> object:
+        api_key_resolver_arguments.append(kwargs)
+        return api_key_resolver
+
+    def chained_resolver_factory(*resolvers: object) -> object:
+        chained_resolver_arguments.append(resolvers)
         return resolver
 
     monkeypatch.setattr(
@@ -127,8 +139,18 @@ def test_agent_hexclave_factories_use_configured_transport_controls(
     )
     monkeypatch.setattr(
         agent_api,
+        "HexclaveAccessTokenIdentityResolver",
+        access_resolver_factory,
+    )
+    monkeypatch.setattr(
+        agent_api,
         "HexclaveUserApiKeyIdentityResolver",
-        resolver_factory,
+        api_key_resolver_factory,
+    )
+    monkeypatch.setattr(
+        agent_api,
+        "ChainedHexclaveIdentityResolver",
+        chained_resolver_factory,
     )
 
     first_checker = agent_api._workspace_permission_checker(
@@ -143,12 +165,17 @@ def test_agent_hexclave_factories_use_configured_transport_controls(
     assert first_checker is second_checker is checker
     assert first_resolver is second_resolver is resolver
     assert len(checker_arguments) == 1
-    assert len(resolver_arguments) == 1
+    assert len(access_resolver_arguments) == 1
+    assert len(api_key_resolver_arguments) == 1
+    assert chained_resolver_arguments == [(access_resolver, api_key_resolver)]
     assert checker_arguments[0]["team_id"] == "hex-team-workspace"
     assert checker_arguments[0]["api_url"] == (
         "https://verified.hexclave.example/api/v1"
     )
     assert checker_arguments[0]["cache_ttl_seconds"] == 17
-    assert resolver_arguments[0]["api_url"] == (
+    assert access_resolver_arguments[0]["api_url"] == (
+        "https://verified.hexclave.example/api/v1"
+    )
+    assert api_key_resolver_arguments[0]["api_url"] == (
         "https://verified.hexclave.example/api/v1"
     )

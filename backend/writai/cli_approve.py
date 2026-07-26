@@ -788,10 +788,10 @@ def run(*, client: ApprovalClient, args: argparse.Namespace) -> int:
             )
             return 2
         pending = workspace_pending
-    approval_token = os.getenv("WRITAI_HOOK_API_KEY", "").strip()
+    approval_token = os.getenv("HEXCLAVE_APPROVER_USER_API_KEY", "").strip()
     if not approval_token:
         print(
-            "writai: WRITAI_HOOK_API_KEY is required for authenticated "
+            "writai: HEXCLAVE_APPROVER_USER_API_KEY is required for authenticated "
             "approval. [APPROVAL_AUTHENTICATION_REQUIRED]",
             file=sys.stderr,
         )

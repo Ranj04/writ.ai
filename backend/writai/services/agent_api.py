@@ -13,6 +13,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from writai.auth.hexclave import (
+    ChainedHexclaveIdentityResolver,
+    HexclaveAccessTokenIdentityResolver,
     HexclaveConfigurationError,
     HexclavePermissionChecker,
     HexclavePermissionError,
@@ -144,7 +146,7 @@ hexclave_permission_checkers: dict[
     tuple[str, str, bytes, float, str], HexclavePermissionChecker
 ] = {}
 hexclave_identity_resolvers: dict[
-    tuple[str, str, bytes], HexclaveUserApiKeyIdentityResolver
+    tuple[str, str, bytes], ChainedHexclaveIdentityResolver
 ] = {}
 state_lock = RLock()
 decision_approval_lock = RLock()
@@ -342,7 +344,7 @@ def _require_workspace_slack_identity(
         )
 
 
-def _approval_identity_resolver() -> HexclaveUserApiKeyIdentityResolver:
+def _approval_identity_resolver() -> ChainedHexclaveIdentityResolver:
     secret_fingerprint = sha256(
         (settings.hexclave_secret_key or "").encode()
     ).digest()
@@ -354,10 +356,17 @@ def _approval_identity_resolver() -> HexclaveUserApiKeyIdentityResolver:
     with hexclave_client_lock:
         resolver = hexclave_identity_resolvers.get(cache_key)
         if resolver is None:
-            resolver = HexclaveUserApiKeyIdentityResolver(
-                project_id=settings.hexclave_project_id or "",
-                secret_key=settings.hexclave_secret_key or "",
-                api_url=settings.hexclave_api_url,
+            resolver = ChainedHexclaveIdentityResolver(
+                HexclaveAccessTokenIdentityResolver(
+                    project_id=settings.hexclave_project_id or "",
+                    secret_key=settings.hexclave_secret_key or "",
+                    api_url=settings.hexclave_api_url,
+                ),
+                HexclaveUserApiKeyIdentityResolver(
+                    project_id=settings.hexclave_project_id or "",
+                    secret_key=settings.hexclave_secret_key or "",
+                    api_url=settings.hexclave_api_url,
+                ),
             )
             hexclave_identity_resolvers[cache_key] = resolver
         return resolver

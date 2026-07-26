@@ -8,6 +8,7 @@ import { WhyView } from "./WhyView";
 import { isWhyPath } from "./ApprovalsRoute";
 import { BlastRadius } from "./components/BlastRadius";
 import { EmptyQueue } from "./components/EmptyQueue";
+import { ApprovalsHeader } from "./components/ApprovalsHeader";
 import { PendingQueue } from "./components/PendingQueue";
 import { FIXTURE_PENDING_CHANGE } from "./fixtures";
 import type { ApprovalReceipt, PendingChange } from "./model";
@@ -230,6 +231,33 @@ describe("ApprovalScreen", () => {
 
   it("disables approval while the post is in flight", () => {
     expect(screen({ phase: "approving" })).toContain("disabled");
+  });
+});
+
+describe("ApprovalsHeader", () => {
+  it("keeps Hexclave sign-in reachable when the approval queue is empty", () => {
+    vi.stubEnv("VITE_WRITAI_HEXCLAVE_SIGN_IN", "1");
+    try {
+      const markup = renderToStaticMarkup(
+        <ApprovalsHeader view="approvals" />,
+      );
+
+      expect(markup).toContain("Sign in with Hexclave");
+      expect(markup).toContain('type="button"');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("does not offer an inert sign-in button when Hexclave is disabled", () => {
+    vi.stubEnv("VITE_WRITAI_HEXCLAVE_SIGN_IN", "0");
+    try {
+      expect(
+        renderToStaticMarkup(<ApprovalsHeader view="approvals" />),
+      ).not.toContain("Sign in with Hexclave");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

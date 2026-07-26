@@ -194,8 +194,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, avoids a cycle
 class HexclaveAccessTokenIdentityResolver:
     """Resolve a browser SDK access token to its Hexclave user id.
 
-    `@hexclave/react` signs a person in and hands the page an `Authorization`
-    header. That is an ACCESS TOKEN, not a user API key, so it does not resolve
+    `@hexclave/react` signs a person in and exposes the raw access token through
+    `getAccessToken()`. That is not a user API key, so it does not resolve
     through `/user-api-keys/check` — a token posted there is simply rejected,
     which would read as "unauthorised" when the person is in fact signed in.
 

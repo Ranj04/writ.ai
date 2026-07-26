@@ -1,3 +1,8 @@
+import {
+  hexclaveSignInEnabled,
+  redirectToHexclaveSignIn,
+} from "../../hexclave/client";
+
 /**
  * The app chrome, reproduced locally for this route.
  *
@@ -47,7 +52,19 @@ export function ApprovalsHeader({ view }: { view: "approvals" | "why" }) {
         </a>
       </nav>
 
-      <div className="ap-header__utilities" />
+      <div className="ap-header__utilities">
+        {hexclaveSignInEnabled() ? (
+          <button
+            type="button"
+            className="ap-header__signin"
+            onClick={() => {
+              void redirectToHexclaveSignIn();
+            }}
+          >
+            Sign in with Hexclave
+          </button>
+        ) : null}
+      </div>
     </header>
   );
 }

@@ -23,6 +23,7 @@ import { HexclaveClientApp } from "@hexclave/react";
  */
 function createClient() {
   return new HexclaveClientApp({
+    projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID,
     tokenStore: "cookie",
     urls: { default: { type: "hosted" } },
   });
@@ -53,13 +54,16 @@ let cached: HexclaveClient | null | undefined;
  * `writai doctor hexclave`), and verify `/approvals` still loads before relying
  * on it in front of anyone.
  */
-function signInEnabled(): boolean {
-  return import.meta.env.VITE_WRITAI_HEXCLAVE_SIGN_IN === "1";
+export function hexclaveSignInEnabled(): boolean {
+  return (
+    import.meta.env.VITE_WRITAI_HEXCLAVE_SIGN_IN === "1" &&
+    Boolean(import.meta.env.VITE_HEXCLAVE_PROJECT_ID?.trim())
+  );
 }
 
 export function hexclaveClient(): HexclaveClient | null {
   if (cached !== undefined) return cached;
-  if (!signInEnabled()) {
+  if (!hexclaveSignInEnabled()) {
     cached = null;
     return cached;
   }
@@ -79,7 +83,29 @@ export function hexclaveClient(): HexclaveClient | null {
 }
 
 /**
- * The bearer value for the current signed-in user, or `null` when nobody is
+ * Start Hexclave's hosted sign-in flow and return to the current page.
+ *
+ * This is intentionally separate from the approval action: authentication
+ * proves who the human is, but it does not confirm or apply a decision.
+ */
+export async function redirectToHexclaveSignIn(): Promise<boolean> {
+  const app = hexclaveClient();
+  if (app === null) return false;
+  try {
+    await app.redirectToSignIn();
+    return true;
+  } catch (error) {
+    console.warn(
+      `[writai/hexclave] sign-in redirect failed (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    );
+    return false;
+  }
+}
+
+/**
+ * The raw access token for the current signed-in user, or `null` when nobody is
  * signed in — or when Hexclave is not configured at all.
  *
  * Returning `null` rather than throwing is load-bearing: the approval screen
@@ -97,16 +123,17 @@ export async function hexclaveApprovalToken(): Promise<string | null> {
     // unreachable or unprovisioned project must not leave the approve button
     // spinning forever. Timing out means "no identity", which the screen
     // already renders as an honest rehearsal.
-    const header = await Promise.race([
-      app.getAuthorizationHeader(),
+    const token = await Promise.race([
+      app.getAccessToken(),
       new Promise<null>((resolve) =>
         setTimeout(() => resolve(null), TOKEN_TIMEOUT_MS),
       ),
     ]);
-    if (typeof header !== "string" || !header.trim()) return null;
-    // The SDK returns a full `Authorization` header value. The server takes a
-    // bare token in the approval envelope, so strip a Bearer prefix if present.
-    return header.replace(/^Bearer\s+/i, "").trim() || null;
+    if (typeof token !== "string" || !token.trim()) return null;
+    // The backend forwards this exact raw token as x-stack-access-token. Do not
+    // use getAuthorizationHeader(): that wraps access + refresh state in a
+    // stackauth_ envelope, which is not a user access token.
+    return token.trim();
   } catch (error) {
     // Not signed in, or offline. Both mean "no identity", and neither may
     // approve anything.
