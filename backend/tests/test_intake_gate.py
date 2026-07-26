@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from dragback.auth.hexclave import HexclavePermissionError
-from dragback.intake.gate import (
+from writai.auth.hexclave import HexclavePermissionError
+from writai.intake.gate import (
     DeterministicIntakeGate,
     IntakeGateDisposition,
     IntakeGateReason,

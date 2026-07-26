@@ -7,8 +7,8 @@ from threading import Event as ThreadEvent
 from typing import cast
 
 import pytest
-from dragback.authority.engine import IntentAuthority
-from dragback.domain import (
+from writai.authority.engine import IntentAuthority
+from writai.domain import (
     AgentPlan,
     ApprovalStatus,
     Artifact,
@@ -22,10 +22,10 @@ from dragback.domain import (
     Verdict,
     VerificationCode,
 )
-from dragback.grants import GrantSigner
-from dragback.graph.memory import MemoryGraphStore
-from dragback.integrations.callwright import FixtureCallwrightClient
-from dragback.notify.escalate import (
+from writai.grants import GrantSigner
+from writai.graph.memory import MemoryGraphStore
+from writai.integrations.callwright import FixtureCallwrightClient
+from writai.notify.escalate import (
     AuthorizedInterruptEscalation,
     GrantGatedExecutorPort,
     InterruptAcknowledgementReader,
@@ -34,16 +34,16 @@ from dragback.notify.escalate import (
     InterruptEscalationScanner,
     build_interrupt_escalation_plan,
 )
-from dragback.services import executor_api
-from dragback.services.escalation_api import (
+from writai.services import executor_api
+from writai.services.escalation_api import (
     compose_interrupt_escalation_router,
 )
-from dragback.services.support import (
+from writai.services.support import (
     INTERNAL_SERVICE_AUTH_HEADER,
     install_api_support,
     internal_service_token,
 )
-from dragback.workspaces.models import (
+from writai.workspaces.models import (
     ApprovedWorkspaceMutation,
     LiveWorkspaceImportRequest,
     LiveWorkspaceRecord,
@@ -51,19 +51,19 @@ from dragback.workspaces.models import (
     WorkspaceEvent,
     WorkspaceExecutionResult,
 )
-from dragback.workspaces.repository import JsonFileLiveWorkspaceRepository
-from dragback.workspaces.runtimes.claude_code import (
+from writai.workspaces.repository import JsonFileLiveWorkspaceRepository
+from writai.workspaces.runtimes.claude_code import (
     ClaudeCodeSupervisorRuntime,
 )
-from dragback.workspaces.session_binding import (
+from writai.workspaces.session_binding import (
     ClaudeCodeSessionRegistry,
     SupervisorAssignmentTarget,
 )
-from dragback.workspaces.session_enforcement import (
+from writai.workspaces.session_enforcement import (
     ClaudeCodeSessionEnforcement,
     RepositorySupervisorAssignmentGateway,
 )
-from dragback.workspaces.supervisor import (
+from writai.workspaces.supervisor import (
     SupervisorAssignment,
     SupervisorAssignmentState,
     SupervisorExecutionMode,
@@ -71,7 +71,7 @@ from dragback.workspaces.supervisor import (
     SupervisorRuntimeProvider,
     WorkspaceSupervisor,
 )
-from dragback.workspaces.transport import LiveWorkspaceTransport
+from writai.workspaces.transport import LiveWorkspaceTransport
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr, ValidationError

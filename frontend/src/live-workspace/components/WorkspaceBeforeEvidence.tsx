@@ -68,7 +68,7 @@ export function WorkspaceBeforeEvidence({
           <span>Before the new decision</span>
           <h2 id={titleId}>Existing evidence, ticket, and agent plan</h2>
           <p>
-            This is the exact baseline Dragback compares with a later approved
+            This is the exact baseline writ.ai compares with a later approved
             change. The ticket remains unchanged.
           </p>
         </div>
@@ -103,7 +103,7 @@ export function WorkspaceBeforeEvidence({
             </div>
           </div>
           <p>
-            Dragback creates scoped subagent runs from this plan. The runtime
+            writ.ai creates scoped subagent runs from this plan. The runtime
             can propose work, but it cannot authorize itself.
           </p>
         </article>
@@ -130,7 +130,7 @@ export function WorkspaceBeforeEvidence({
 
       <p className="lw-before-evidence__note">
         A new decision is checked against this stored plan. If its approved
-        scope reaches the plan through the graph, Dragback requires the
+        scope reaches the plan through the graph, writ.ai requires the
         assigned agent to replan.
       </p>
     </section>

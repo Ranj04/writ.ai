@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from dragback.intake.slack import (
+from writai.intake.slack import (
     CHANNEL_MESSAGE_SLUG,
     REACTION_ADDED_SLUG,
     ComposioSlackWebhookVerifier,
@@ -17,7 +17,7 @@ from dragback.intake.slack import (
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
-SECRET = "whsec_dragback_test"
+SECRET = "whsec_writai_test"
 
 
 class FixtureSchemaTriggers:
@@ -86,7 +86,7 @@ class CanonicalHmacTriggers(FixtureSchemaTriggers):
 def _message_event(
     *,
     slug: str = CHANNEL_MESSAGE_SLUG,
-    connection_user_id: str = "dragback-user-emanuel",
+    connection_user_id: str = "writai-user-emanuel",
 ) -> dict[str, object]:
     return {
         "version": "V3",
@@ -98,7 +98,7 @@ def _message_event(
             "toolkit_slug": "SLACK",
             "payload": {
                 "channel": "C-COMPLIANCE",
-                "team_id": "T-DRAGBACK",
+                "team_id": "T-WRITAI",
                 "text": "Approved: exports must be admin-only, effective immediately.",
                 "ts": "1784952300.000001",
                 "user": "U-COMPLIANCE",
@@ -125,7 +125,7 @@ def test_get_type_is_checked_before_any_webhook_is_parsed() -> None:
     assert triggers.calls[2][0] == "parse"
     assert message.author_user_id == "U-COMPLIANCE"
     assert message.source_ref == (
-        "slack://T-DRAGBACK/C-COMPLIANCE/1784952300.000001"
+        "slack://T-WRITAI/C-COMPLIANCE/1784952300.000001"
     )
     assert message.delivered_at.tzinfo is not None
     assert message.event_id == "msg-fixture-1"

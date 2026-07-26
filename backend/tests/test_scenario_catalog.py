@@ -4,24 +4,24 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from dragback.authority.engine import IntentAuthority
-from dragback.config import settings
-from dragback.domain import (
+from writai.authority.engine import IntentAuthority
+from writai.config import settings
+from writai.domain import (
     ApprovalStatus,
     ArtifactKind,
     EdgeKind,
     ValidityStatus,
     Verdict,
 )
-from dragback.grants import GrantSigner
-from dragback.graph.memory import MemoryGraphStore
-from dragback.scenarios import (
+from writai.grants import GrantSigner
+from writai.graph.memory import MemoryGraphStore
+from writai.scenarios import (
     SCENARIO_AUTHORITY_POLICY,
     ScenarioDefinition,
     get_scenario,
     list_scenarios,
 )
-from dragback.scenarios.validation import SCENARIO_AUTHORITY_THRESHOLD
+from writai.scenarios.validation import SCENARIO_AUTHORITY_THRESHOLD
 from pydantic import ValidationError
 
 EXPECTED_SCENARIO_IDS = {

@@ -1,4 +1,4 @@
-"""Stage seeder for the five-session Dragback demo.
+"""Stage seeder for the five-session writ.ai demo.
 
 Re-runnable. Every run deletes and rebuilds the scratch workspace store, so the
 starting state is byte-identical each time. That matters because deny-once is
@@ -9,7 +9,7 @@ the demo looks broken.
     PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py --serve    # seed + serve
 
 Never writes to ~/.claude/settings.json. Only .claude/settings.local.json inside
-the scratch session directories under /tmp/dragback-stage/.
+the scratch session directories under /tmp/writai-stage/.
 """
 from __future__ import annotations
 
@@ -24,40 +24,40 @@ from typing import cast
 
 import os
 
-STAGE = Path("/tmp/dragback-stage")
+STAGE = Path("/tmp/writai-stage")
 STORE = STAGE / "live-workspaces.json"
-# MUST precede every dragback import. `agent_api` constructs its repository,
+# MUST precede every writai import. `agent_api` constructs its repository,
 # assignment gateway and session router at import time, and the router closes
 # over those objects; reassigning module attributes later leaves the live route
 # serving the production store. That failure mode looks exactly like a working
 # demo right up until nothing is denied.
-os.environ["DRAGBACK_WORKSPACE_STORE"] = str(STORE)
+os.environ["WRITAI_WORKSPACE_STORE"] = str(STORE)
 # The session routes authenticate the hook and fail closed when no key is set,
 # so the demo needs one on both sides. Local-only, and never a real secret.
-DEMO_HOOK_API_KEY = "dragback-demo-hook-key"
-os.environ.setdefault("DRAGBACK_HOOK_API_KEY", DEMO_HOOK_API_KEY)
+DEMO_HOOK_API_KEY = "writai-demo-hook-key"
+os.environ.setdefault("WRITAI_HOOK_API_KEY", DEMO_HOOK_API_KEY)
 
 import uvicorn  # noqa: E402
 import yaml  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from dragback.services import agent_api, authority_api  # noqa: E402
-from dragback.supervisor_contract import InterruptRequest  # noqa: E402
-from dragback.workspaces.interrupt_port import (  # noqa: E402
+from writai.services import agent_api, authority_api  # noqa: E402
+from writai.supervisor_contract import InterruptRequest  # noqa: E402
+from writai.workspaces.interrupt_port import (  # noqa: E402
     WorkspaceSupervisorInterruptPort,
 )
-from dragback.domain import utc_now  # noqa: E402
-from dragback.hashing import stable_hash  # noqa: E402
-from dragback.intake.approval import (  # noqa: E402
+from writai.domain import utc_now  # noqa: E402
+from writai.hashing import stable_hash  # noqa: E402
+from writai.intake.approval import (  # noqa: E402
     ApprovalChannel,
     ApprovalEvidence,
 )
-from dragback.workspaces.models import (  # noqa: E402
+from writai.workspaces.models import (  # noqa: E402
     LiveWorkspaceImportRequest,
     WorkspaceApprovalRequest,
     WorkspaceProposalRequest,
 )
-from dragback.workspaces.repository import (  # noqa: E402
+from writai.workspaces.repository import (  # noqa: E402
     JsonFileLiveWorkspaceRepository,
 )
 
@@ -65,9 +65,9 @@ REPO = Path(__file__).resolve().parents[2]
 EXAMPLES = REPO / "examples"
 WORKSPACE_ID = "csv-exports"
 HOOK_DIR = Path(__file__).resolve().parents[2] / "hooks"
-HOOK_TARGET = HOOK_DIR / "dragback_pre_tool_use.py"
-HOOK_START = HOOK_DIR / "dragback_session_start.py"
-HOOK_END = HOOK_DIR / "dragback_session_end.py"
+HOOK_TARGET = HOOK_DIR / "writai_pre_tool_use.py"
+HOOK_START = HOOK_DIR / "writai_session_start.py"
+HOOK_END = HOOK_DIR / "writai_session_end.py"
 AGENT_PORT = 8002
 AUTHORITY_PORT = 8001
 
@@ -387,7 +387,7 @@ def _approval(
 #: trade-off (ASSUMPTIONS A-5) and it bypasses no authority check — but it must
 #: not be reachable by accident, so it is gated on an explicit opt-in that the
 #: demo sets and nothing else does.
-SEED_UNAUTHENTICATED_APPROVAL_ENV = "DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL"
+SEED_UNAUTHENTICATED_APPROVAL_ENV = "WRITAI_DEMO_UNAUTHENTICATED_APPROVAL"
 
 
 def _require_unauthenticated_approval_optin() -> None:
@@ -442,7 +442,7 @@ def seed_graph() -> JsonFileLiveWorkspaceRepository:
     orchestrator = agent_api.workspace_orchestrator
     orchestrator.import_workspace(
         LiveWorkspaceImportRequest.model_validate(
-            _load("dragback-five-sessions.yaml")
+            _load("writai-five-sessions.yaml")
         )
     )
     orchestrator.approve_baseline(
@@ -460,7 +460,7 @@ def seed_graph() -> JsonFileLiveWorkspaceRepository:
     orchestrator.propose_decision(
         WORKSPACE_ID,
         WorkspaceProposalRequest.model_validate(
-            _load("dragback-five-sessions-change.yaml")
+            _load("writai-five-sessions-change.yaml")
         ),
     )
     orchestrator.approve_decision(
@@ -496,13 +496,13 @@ def _hook_command(script: Path, port: int) -> str:
     and is allowed everything — which looks exactly like a working demo.
     """
 
-    endpoint = f"DRAGBACK_HOOK_ENDPOINT=http://127.0.0.1:{port}/supervisor/sessions "
-    key = os.environ["DRAGBACK_HOOK_API_KEY"]
+    endpoint = f"WRITAI_HOOK_ENDPOINT=http://127.0.0.1:{port}/supervisor/sessions "
+    key = os.environ["WRITAI_HOOK_API_KEY"]
     if key != DEMO_HOOK_API_KEY:
         # An overridden key is a real secret. Settings files are world-readable,
         # so inherit it from the launching shell instead of writing it to disk.
         return f"{endpoint}python3 {script}"
-    return f"DRAGBACK_HOOK_API_KEY={key} {endpoint}python3 {script}"
+    return f"WRITAI_HOOK_API_KEY={key} {endpoint}python3 {script}"
 
 
 def _settings_local(port: int) -> str:
@@ -536,9 +536,9 @@ def seed_sessions(port: int = AGENT_PORT) -> list[Path]:
     directories: list[Path] = []
     for session in SESSIONS:
         directory = STAGE / session["slug"]
-        (directory / ".dragback").mkdir(parents=True, exist_ok=True)
+        (directory / ".writai").mkdir(parents=True, exist_ok=True)
         (directory / ".claude").mkdir(parents=True, exist_ok=True)
-        (directory / ".dragback" / "task").write_text(
+        (directory / ".writai" / "task").write_text(
             session["task"], encoding="utf-8"
         )
         (directory / ".claude" / "settings.local.json").write_text(

@@ -4,7 +4,7 @@ import asyncio
 import json
 from typing import cast
 
-from dragback.services.events import (
+from writai.services.events import (
     EventBroker,
     StreamEvent,
     snapshot_event,

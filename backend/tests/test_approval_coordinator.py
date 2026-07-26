@@ -4,14 +4,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from dragback.intake.approval import (
+from writai.intake.approval import (
     ApprovalChannel,
     ApprovalCoordinator,
     ApprovalDisposition,
     ApprovalEvidence,
     PendingApproval,
 )
-from dragback.supervisor_contract import InterruptResult
+from writai.supervisor_contract import InterruptResult
 
 
 class Checker:
@@ -213,7 +213,7 @@ def test_no_new_channel_can_bypass_the_shared_permission_check() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     sites = {
         path.relative_to(repo_root).as_posix()
-        for path in (*(repo_root / "backend" / "dragback").rglob("*.py"),
+        for path in (*(repo_root / "backend" / "writai").rglob("*.py"),
                      *(repo_root / "scripts").rglob("*.py"))
         if "ApprovalEvidence(" in path.read_text(encoding="utf-8")
     }
@@ -221,11 +221,11 @@ def test_no_new_channel_can_bypass_the_shared_permission_check() -> None:
     assert sites == {
         # The shared path itself: ApprovalCoordinator.approve, which is the
         # ONLY one that runs a permission check.
-        "backend/dragback/intake/approval.py",
+        "backend/writai/intake/approval.py",
         # Builds the envelope handed to the coordinator; it does not approve.
-        "backend/dragback/services/agent_api.py",
+        "backend/writai/services/agent_api.py",
         # Demo-only, and both refuse without
-        # DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1. They bypass the CHANNEL
+        # WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1. They bypass the CHANNEL
         # authentication and no authority check, and they are disclosed on the
         # real-vs-simulated panel.
         "scripts/demo/seed.py",

@@ -236,7 +236,7 @@ export function WorkspaceImpact({
           <div>
             <h3 id="selective-impact-title">Work affected by the change</h3>
             <p>
-              Dragback stops only tasks whose scopes conflict with the new
+              writ.ai stops only tasks whose scopes conflict with the new
               decision.
             </p>
           </div>
@@ -289,13 +289,13 @@ export function WorkspaceImpact({
               {complete
                 ? "The executor accepted the authorization for this exact corrected plan."
                 : planEditable
-                  ? "Dragback prepared a correction from the approved decision. Review it, then save it for a new authorization."
+                  ? "writ.ai prepared a correction from the approved decision. Review it, then save it for a new authorization."
                   : workspace.status === "plan-updated"
                     ? "The saved plan is locked while the authority evaluates it."
                     : replacementFailed
                       ? callwrightPlan
-                        ? "The last executor check did not apply. Recheck this same authorization; Dragback will not issue a new grant or replay an ambiguous call."
-                        : "The last executor check did not apply. Retry this same authorization; Dragback will not issue a new grant."
+                        ? "The last executor check did not apply. Recheck this same authorization; writ.ai will not issue a new grant or replay an ambiguous call."
+                        : "The last executor check did not apply. Retry this same authorization; writ.ai will not issue a new grant."
                       : "The corrected plan has an authorization. One executor check remains."}
             </p>
           </div>

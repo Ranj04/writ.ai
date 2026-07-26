@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 #
-# Shared configuration and output helpers for the Dragback demo launcher.
+# Shared configuration and output helpers for the writ.ai demo launcher.
 #
 # Sourced, never executed. Bash and python3 standard library only: no jq, no yq,
 # no tmux requirement. Every optional tool is detected, never assumed.
@@ -22,13 +22,13 @@ RECORDING_DIR="$DEMO_DIR/recordings"
 PROMPT_DIR="$DEMO_DIR/prompts"
 
 # Session directories live OUTSIDE the repository on purpose. A demo session
-# started inside DragBack would inherit the repo's CLAUDE.md and start reading
+# started inside writ.ai would inherit the repo's CLAUDE.md and start reading
 # the implementation contract instead of doing its canned work.
-DEMO_ROOT="${DRAGBACK_DEMO_ROOT:-$(cd "$REPO_DIR/.." && pwd)/dragback-demo}"
+DEMO_ROOT="${WRITAI_DEMO_ROOT:-$(cd "$REPO_DIR/.." && pwd)/writai-demo}"
 
 # reset.sh refuses to delete a directory tree that does not carry this marker,
-# so a mistyped DRAGBACK_DEMO_ROOT can never take somebody's work with it.
-DEMO_ROOT_MARKER=".dragback-demo-root"
+# so a mistyped WRITAI_DEMO_ROOT can never take somebody's work with it.
+DEMO_ROOT_MARKER=".writai-demo-root"
 
 SESSION_MANIFEST="$STATE_DIR/sessions.tsv"
 SERVICE_PID_FILE="$STATE_DIR/service-pids"
@@ -44,9 +44,9 @@ DEMO_HOST="127.0.0.1"
 # 8002, so the defaults are what the demo runs on. They are overridable only so a
 # second checkout on the same machine can rehearse without stopping the first
 # one's services — reset.sh only ever touches the ports it was told about.
-AUTHORITY_PORT="${DRAGBACK_DEMO_AUTHORITY_PORT:-8001}"
-AGENT_PORT="${DRAGBACK_DEMO_AGENT_PORT:-8002}"
-EXECUTOR_PORT="${DRAGBACK_DEMO_EXECUTOR_PORT:-8003}"
+AUTHORITY_PORT="${WRITAI_DEMO_AUTHORITY_PORT:-8001}"
+AGENT_PORT="${WRITAI_DEMO_AGENT_PORT:-8002}"
+EXECUTOR_PORT="${WRITAI_DEMO_EXECUTOR_PORT:-8003}"
 
 AUTHORITY_URL="http://$DEMO_HOST:$AUTHORITY_PORT"
 AGENT_URL="http://$DEMO_HOST:$AGENT_PORT"
@@ -54,8 +54,8 @@ EXECUTOR_URL="http://$DEMO_HOST:$EXECUTOR_PORT"
 
 # The shipped five-session fixture, proven by backend/tests/test_five_session_demo.py.
 WORKSPACE_ID="csv-exports"
-WORKSPACE_FIXTURE="examples/dragback-five-sessions.yaml"
-CHANGE_FIXTURE="examples/dragback-five-sessions-change.yaml"
+WORKSPACE_FIXTURE="examples/writai-five-sessions.yaml"
+CHANGE_FIXTURE="examples/writai-five-sessions-change.yaml"
 CHANGE_DECISION_ID="DEC-018"
 BASELINE_ROLE="approve_product"
 CHANGE_ROLE="approve_compliance"
@@ -65,7 +65,7 @@ PRESERVED_SCOPE="export.generation"
 INTERRUPTED_SCOPE="export.authorization"
 
 DEFAULT_SESSIONS="5"
-TMUX_SESSION="dragback-demo"
+TMUX_SESSION="writai-demo"
 
 DEMO_API="$DEMO_DIR/demo_api.py"
 
@@ -87,28 +87,28 @@ DEMO_API="$DEMO_DIR/demo_api.py"
 # working. Resolve it once here, export it, and let all three inherit it.
 #
 # Precedence: the shell wins, then .env, then the local demo default. reset.sh
-# resolves DRAGBACK_WORKSPACE_STORE the same way and for the same reason.
-DEMO_HOOK_API_KEY="dragback-demo-hook-key"
+# resolves WRITAI_WORKSPACE_STORE the same way and for the same reason.
+DEMO_HOOK_API_KEY="writai-demo-hook-key"
 HOOK_API_KEY_SOURCE="default"
 
-if [[ -n "${DRAGBACK_HOOK_API_KEY:-}" ]]; then
+if [[ -n "${WRITAI_HOOK_API_KEY:-}" ]]; then
   HOOK_API_KEY_SOURCE="environment"
 else
   hook_key_configured=""
   if [[ -f "$REPO_DIR/.env" ]]; then
     # One key, read with a literal pattern — never eval the .env file.
-    hook_key_configured="$(grep -E '^[[:space:]]*DRAGBACK_HOOK_API_KEY=' "$REPO_DIR/.env" 2>/dev/null \
+    hook_key_configured="$(grep -E '^[[:space:]]*WRITAI_HOOK_API_KEY=' "$REPO_DIR/.env" 2>/dev/null \
       | tail -n 1 | cut -d= -f2- | tr -d '"'"'"' \r' || true)"
   fi
   if [[ -n "$hook_key_configured" ]]; then
-    DRAGBACK_HOOK_API_KEY="$hook_key_configured"
+    WRITAI_HOOK_API_KEY="$hook_key_configured"
     HOOK_API_KEY_SOURCE=".env"
   else
-    DRAGBACK_HOOK_API_KEY="$DEMO_HOOK_API_KEY"
+    WRITAI_HOOK_API_KEY="$DEMO_HOOK_API_KEY"
   fi
   unset hook_key_configured
 fi
-export DRAGBACK_HOOK_API_KEY
+export WRITAI_HOOK_API_KEY
 
 # --------------------------------------------------------------------------- #
 # Output — legible from fifteen feet, so short lines and no dense logs
@@ -148,8 +148,8 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # The helper scripts in this directory stay 3.9-compatible so they run on the
 # system python of a stock macOS when the venv is missing.
 service_python() {
-  if [[ -n "${DRAGBACK_DEMO_PYTHON:-}" ]]; then
-    printf '%s\n' "$DRAGBACK_DEMO_PYTHON"
+  if [[ -n "${WRITAI_DEMO_PYTHON:-}" ]]; then
+    printf '%s\n' "$WRITAI_DEMO_PYTHON"
   elif [[ -x "$REPO_DIR/.venv/bin/python" ]]; then
     printf '%s\n' "$REPO_DIR/.venv/bin/python"
   else
@@ -161,26 +161,26 @@ helper_python() {
   if have python3; then printf 'python3\n'; else service_python; fi
 }
 
-# `dragback ...`, however it is installed here.
-dragback_cli() {
-  if [[ -x "$REPO_DIR/.venv/bin/dragback" ]]; then
-    printf '%s\n' "$REPO_DIR/.venv/bin/dragback"
-  elif have dragback; then
-    command -v dragback
+# `writai ...`, however it is installed here.
+writai_cli() {
+  if [[ -x "$REPO_DIR/.venv/bin/writai" ]]; then
+    printf '%s\n' "$REPO_DIR/.venv/bin/writai"
+  elif have writai; then
+    command -v writai
   else
     printf '\n'
   fi
 }
 
-# Run one dragback command against the local agent service. Never fatal on its
+# Run one writai command against the local agent service. Never fatal on its
 # own: the caller decides what a failure means.
-run_dragback() {
+run_writai() {
   local cli
-  cli="$(dragback_cli)"
+  cli="$(writai_cli)"
   if [[ -z "$cli" ]]; then
     local python_bin
     python_bin="$(service_python)"
-    ( cd "$REPO_DIR" && PYTHONPATH=backend "$python_bin" -m dragback.cli \
+    ( cd "$REPO_DIR" && PYTHONPATH=backend "$python_bin" -m writai.cli \
         --agent-url "$AGENT_URL" "$@" )
     return $?
   fi
@@ -189,12 +189,12 @@ run_dragback() {
 
 # Approve the workspace baseline without a Hexclave token.
 #
-# `dragback workspace approve-baseline` is disabled on purpose — Lane B routes
+# `writai workspace approve-baseline` is disabled on purpose — Lane B routes
 # every approval through an authenticated envelope so the approver's permission
 # is verified — and its replacement is a browser UI that needs a token no local
 # demo has. `approve_in_process.py` calls the same orchestrator method the route
 # calls, bypassing the channel authentication and no authority check, and it
-# refuses unless DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1 is set.
+# refuses unless WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 is set.
 approve_baseline_in_process() {
   local workspace_id="$1" role="$2" python_bin
   python_bin="$(service_python)"
@@ -203,7 +203,7 @@ approve_baseline_in_process() {
 }
 
 # The same seam for the pending decision change. `fire.sh` only reaches this
-# after `dragback approve change` has printed the blast radius, taken the
+# after `writai approve change` has printed the blast radius, taken the
 # operator's confirmation, and failed to resolve an approver identity.
 approve_change_in_process() {
   local workspace_id="$1" role="$2" decision_id="$3" python_bin
@@ -242,10 +242,10 @@ port_pids() {
   lsof -ti "tcp:$port" -sTCP:LISTEN 2>/dev/null || true
 }
 
-is_dragback_service() {
+is_writai_service() {
   local pid="$1" command_line
   command_line="$(ps -o command= -p "$pid" 2>/dev/null || true)"
-  [[ "$command_line" == *"dragback.services"* ]]
+  [[ "$command_line" == *"writai.services"* ]]
 }
 
 # --------------------------------------------------------------------------- #
@@ -309,7 +309,7 @@ is_demo_root() {
 }
 
 # Claiming a directory as the demo root is what later authorises `rm -rf` on it,
-# so the claim is where the guard belongs. DRAGBACK_DEMO_ROOT is an operator
+# so the claim is where the guard belongs. WRITAI_DEMO_ROOT is an operator
 # variable and a typo in it should cost nothing.
 mark_demo_root() {
   local resolved parent_home
@@ -317,20 +317,20 @@ mark_demo_root() {
   parent_home="$(canonical "$HOME")"
 
   if [[ -z "$resolved" || "$resolved" == "/" ]]; then
-    bad "DRAGBACK_DEMO_ROOT resolves to the filesystem root. Refusing."
+    bad "WRITAI_DEMO_ROOT resolves to the filesystem root. Refusing."
     return 1
   fi
   if [[ "$resolved" == "$parent_home" ]]; then
-    bad "DRAGBACK_DEMO_ROOT is your home directory. Refusing."
+    bad "WRITAI_DEMO_ROOT is your home directory. Refusing."
     return 1
   fi
   if [[ "$resolved" == "$(canonical "$REPO_DIR")" ]]; then
-    bad "DRAGBACK_DEMO_ROOT is the repository itself. Refusing."
+    bad "WRITAI_DEMO_ROOT is the repository itself. Refusing."
     return 1
   fi
   if [[ -d "$resolved" && ! -f "$resolved/$DEMO_ROOT_MARKER" ]]; then
     if [[ -n "$(ls -A "$resolved" 2>/dev/null || true)" ]]; then
-      bad "DRAGBACK_DEMO_ROOT already exists and is not empty:"
+      bad "WRITAI_DEMO_ROOT already exists and is not empty:"
       say "  $resolved"
       say "reset.sh deletes this tree recursively, so the launcher will not claim"
       say "a directory it did not create. Point it somewhere else."
@@ -369,8 +369,8 @@ session_dir() { printf '%s/session-%s\n' "$DEMO_ROOT" "$1"; }
 # (OAuth in ~/.superset/config.json, or SUPERSET_API_KEY).
 # --------------------------------------------------------------------------- #
 
-SUPERSET_PROJECT="${DRAGBACK_DEMO_SUPERSET_PROJECT:-}"
-SUPERSET_BASE_BRANCH="${DRAGBACK_DEMO_SUPERSET_BASE_BRANCH:-main}"
+SUPERSET_PROJECT="${WRITAI_DEMO_SUPERSET_PROJECT:-}"
+SUPERSET_BASE_BRANCH="${WRITAI_DEMO_SUPERSET_BASE_BRANCH:-main}"
 SUPERSET_WORKSPACE_FILE="$STATE_DIR/superset-workspaces"
 
 # Usable only when the CLI exists AND a project was named. Everything else
@@ -384,8 +384,8 @@ superset_available() {
 # Echoes "<workspace_id><US><worktree_path>" on success; non-zero on any failure.
 provision_superset_workspace() {
   local index="$1" task_id="$2" name branch output
-  name="dragback-demo-session-$index"
-  branch="dragback-demo/session-$index-$task_id"
+  name="writai-demo-session-$index"
+  branch="writai-demo/session-$index-$task_id"
 
   output="$(superset workspaces create \
     --project "$SUPERSET_PROJECT" \

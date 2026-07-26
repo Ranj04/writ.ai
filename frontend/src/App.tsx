@@ -2,9 +2,9 @@ import { ApprovalsRoute } from "./approvals/ApprovalsRoute";
 import { LiveWorkspaceRoute } from "./live-workspace/LiveWorkspaceRoute";
 import { ScenarioLabRoute } from "./scenario-lab/ScenarioLabRoute";
 
-export type DragbackRoute = "workspace" | "examples" | "approvals";
+export type WritaiRoute = "workspace" | "examples" | "approvals";
 
-export function routeForPath(pathname: string): DragbackRoute {
+export function routeForPath(pathname: string): WritaiRoute {
   if (pathname.startsWith("/approvals")) return "approvals";
   return pathname.startsWith("/scenario-lab") ? "examples" : "workspace";
 }

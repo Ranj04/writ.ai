@@ -6,20 +6,20 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from dragback.domain import ApprovalStatus, Artifact, ArtifactKind
-from dragback.intake.gate import (
+from writai.domain import ApprovalStatus, Artifact, ArtifactKind
+from writai.intake.gate import (
     DeterministicIntakeGate,
     GateResult,
     IntakeGateDisposition,
     IntakeGateReason,
 )
-from dragback.intake.slack import SlackIntakeOutcome, VerifiedSlackMessage
-from dragback.services import authority_api
-from dragback.services.support import ApiError
-from dragback.workspaces.authority_contexts import (
+from writai.intake.slack import SlackIntakeOutcome, VerifiedSlackMessage
+from writai.services import authority_api
+from writai.services.support import ApiError
+from writai.workspaces.authority_contexts import (
     DynamicAuthorityContextNotFound,
 )
-from dragback.workspaces.models import (
+from writai.workspaces.models import (
     SlackUserIdentityBinding,
     WorkspaceProposalRequest,
     WorkspaceSlackBinding,
@@ -30,7 +30,7 @@ from fastapi.testclient import TestClient
 def _message() -> VerifiedSlackMessage:
     return VerifiedSlackMessage(
         event_id="evt-1",
-        connection_user_id="dragback-user",
+        connection_user_id="writai-user",
         author_user_id="U1",
         team_id="T1",
         channel_id="C1",
@@ -171,7 +171,7 @@ def _bound_state(
     *,
     workspace_id: str = "csv-exports",
     slack_team_id: str = "T1",
-    connection_user_id: str = "dragback-user",
+    connection_user_id: str = "writai-user",
 ) -> SimpleNamespace:
     return SimpleNamespace(
         baseline_decision_id="DEC-004",

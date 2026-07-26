@@ -27,14 +27,14 @@ SEED_PATH = REPO_ROOT / "scripts" / "demo" / "seed.py"
 def seed() -> Iterator[ModuleType]:
     """Import the seeder by path. It is a script, not a package.
 
-    Importing it rewrites ``DRAGBACK_WORKSPACE_STORE`` to the stage store — it
+    Importing it rewrites ``WRITAI_WORKSPACE_STORE`` to the stage store — it
     has to, because `agent_api` builds its repository at import time — so the
     environment is restored afterwards rather than leaked into the rest of the
     suite.
     """
 
     before = dict(os.environ)
-    spec = importlib.util.spec_from_file_location("dragback_demo_seed", SEED_PATH)
+    spec = importlib.util.spec_from_file_location("writai_demo_seed", SEED_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -109,6 +109,6 @@ def test_the_documented_commands_carry_the_opt_in() -> None:
             if "scripts/demo/seed.py" not in line or not line.startswith("  PYTHON"):
                 continue
             preceding = text.splitlines()[max(0, line_number - 1)]
-            assert "DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1" in preceding, (
+            assert "WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1" in preceding, (
                 f"{name}:{line_number + 1} invokes the seeder without the opt-in"
             )

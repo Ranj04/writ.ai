@@ -12,27 +12,27 @@ Same discipline as `supervisor_contract.py`: agree the seam, then run flat out.
 
 | Item | Owns | Must not touch |
 |---|---|---|
-| A2 | `backend/dragback/workspaces/session_binding.py`, `backend/tests/test_session_binding.py` | everything else |
-| A3 | `backend/dragback/services/supervisor_check.py`, the `/supervisor/...` routes in `backend/dragback/services/agent_api.py`, `backend/tests/test_supervisor_check.py` | `session_binding.py` |
+| A2 | `backend/writai/workspaces/session_binding.py`, `backend/tests/test_session_binding.py` | everything else |
+| A3 | `backend/writai/services/supervisor_check.py`, the `/supervisor/...` routes in `backend/writai/services/agent_api.py`, `backend/tests/test_supervisor_check.py` | `session_binding.py` |
 | A4+A6 | `hooks/**`, `backend/tests/test_hooks.py` | all backend modules |
-| A5 | `backend/dragback/cli_dev.py`, `backend/tests/test_cli_dev.py` | everything else |
+| A5 | `backend/writai/cli_dev.py`, `backend/tests/test_cli_dev.py` | everything else |
 
-**Frozen and off-limits to every item:** `backend/dragback/cli.py`,
-`backend/dragback/config.py`, `backend/dragback/supervisor_contract.py`,
-`backend/dragback/workspaces/supervisor.py`,
-`backend/dragback/workspaces/interrupt_port.py`.
+**Frozen and off-limits to every item:** `backend/writai/cli.py`,
+`backend/writai/config.py`, `backend/writai/supervisor_contract.py`,
+`backend/writai/workspaces/supervisor.py`,
+`backend/writai/workspaces/interrupt_port.py`.
 
 ---
 
 ## A2 — the session binding module
 
-`backend/dragback/workspaces/session_binding.py`. Exact public API:
+`backend/writai/workspaces/session_binding.py`. Exact public API:
 
 ```python
 class SessionBindingSource(StrEnum):
-    EXPLICIT_ATTACH = "explicit-attach"   # dragback dev attach, highest precedence
+    EXPLICIT_ATTACH = "explicit-attach"   # writai dev attach, highest precedence
     BRANCH_NAME     = "branch-name"       # feat/TASK-102-csv-export
-    REPO_FILE       = "repo-file"         # .dragback/task
+    REPO_FILE       = "repo-file"         # .writai/task
     UNBOUND         = "unbound"           # registers fine, allowed everything, visible
 
 
@@ -47,8 +47,8 @@ class SessionRegisterRequest(BaseModel):
     """Facts the SessionStart hook reports. The CLIENT NEVER RESOLVES A BINDING."""
     cwd: str
     branch: str | None = None
-    attached_assignment_id: str | None = None   # contents of .dragback/attach
-    task_file_task_id: str | None = None        # contents of .dragback/task
+    attached_assignment_id: str | None = None   # contents of .writai/attach
+    task_file_task_id: str | None = None        # contents of .writai/task
 
 
 class SessionBinding(BaseModel):
@@ -174,7 +174,7 @@ denying. Returns the updated binding.
 
 ### `GET /supervisor/sessions`
 
-Every binding, for `dragback dev status`. Unbound sessions are included and
+Every binding, for `writai dev status`. Unbound sessions are included and
 visibly unbound — that is the point.
 
 ---
@@ -186,18 +186,18 @@ the hook runs in the developer's environment, not ours.
 
 | File | Purpose |
 |---|---|
-| `hooks/dragback_session_start.py` | reads branch + `.dragback/attach` + `.dragback/task`, POSTs `register` |
-| `hooks/dragback_pre_tool_use.py` | POSTs `check`, emits the permission decision |
-| `hooks/dragback_session_end.py` | DELETEs the session |
-| `hooks/dragback_hook_lib.py` | shared: config, HTTP, on-disk verdict cache, notify |
+| `hooks/writai_session_start.py` | reads branch + `.writai/attach` + `.writai/task`, POSTs `register` |
+| `hooks/writai_pre_tool_use.py` | POSTs `check`, emits the permission decision |
+| `hooks/writai_session_end.py` | DELETEs the session |
+| `hooks/writai_hook_lib.py` | shared: config, HTTP, on-disk verdict cache, notify |
 | `hooks/settings.example.json` | project settings wiring all three hooks |
 | `hooks/managed-settings.example.json` | org settings with `"allowManagedHooksOnly": true` |
 | `hooks/README.md` | install, and an honest statement of what fails open |
 
 Config comes from the environment, matching `.env.example`:
-`DRAGBACK_HOOK_ENDPOINT` (default `http://localhost:8002/supervisor/sessions`),
-`DRAGBACK_HOOK_TIMEOUT_SECONDS` (default `3`),
-`DRAGBACK_HOOK_CACHE_PATH` (default `.dragback/hook-verdict-cache.json`).
+`WRITAI_HOOK_ENDPOINT` (default `http://localhost:8002/supervisor/sessions`),
+`WRITAI_HOOK_TIMEOUT_SECONDS` (default `3`),
+`WRITAI_HOOK_CACHE_PATH` (default `.writai/hook-verdict-cache.json`).
 
 ### PreToolUse output
 
@@ -224,7 +224,7 @@ Non-negotiables, each of which needs a test:
 
 ### A6 — desktop notification
 
-In `dragback_hook_lib.py`, called only on deny: `osascript -e 'display
+In `writai_hook_lib.py`, called only on deny: `osascript -e 'display
 notification …'` on darwin, `notify-send` on linux. Never let a notification
 failure change the verdict or raise — wrap it and swallow.
 
@@ -232,13 +232,13 @@ failure change the verdict or raise — wrap it and swallow.
 
 ## A5 — the dev CLI
 
-`backend/dragback/cli_dev.py`. The parser is already registered and its command
+`backend/writai/cli_dev.py`. The parser is already registered and its command
 surface is fixed: `attach`, `status`, `why`, `ack`, `watch`. Implement `run()`.
 
-`client` is a `dragback.cli.DragbackClient`; use `client.request(Route(...))`.
+`client` is a `writai.cli.WritaiClient`; use `client.request(Route(...))`.
 Import `Route` lazily inside the function to avoid an import cycle.
 
-- `attach ASSIGNMENT_ID --workspace WS` — writes `.dragback/attach` in the cwd.
+- `attach ASSIGNMENT_ID --workspace WS` — writes `.writai/attach` in the cwd.
   Local file only; no HTTP. Print the path written.
 - `status [--workspace WS]` — `GET /supervisor/sessions`. Table: session, task,
   source, state. Unbound sessions render as `unbound` and are **not** hidden.

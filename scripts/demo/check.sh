@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Dragback demo readiness checklist.
+# writ.ai demo readiness checklist.
 #
 # One short line per item, green or red, readable at a glance under pressure.
 # Exits non-zero only when something is red — a warning is a thing to know, not
@@ -36,7 +36,7 @@ HELPER_PYTHON="$(helper_python)"
 # directory is worse than useless.
 mkdir -p "$STATE_DIR"
 
-banner "DRAGBACK DEMO — READINESS"
+banner "WRITAI DEMO — READINESS"
 
 # --------------------------------------------------------------------------- #
 # 1. Services
@@ -325,11 +325,11 @@ fi
 step "Enforcement"
 
 missing_scripts=0
-for script in dragback_session_start.py dragback_pre_tool_use.py dragback_session_end.py; do
+for script in writai_session_start.py writai_pre_tool_use.py writai_session_end.py; do
   [[ -f "$REPO_DIR/hooks/$script" ]] || missing_scripts=$((missing_scripts + 1))
 done
 if (( missing_scripts == 0 )); then
-  if "$HELPER_PYTHON" -m py_compile "$REPO_DIR"/hooks/dragback_*.py >/dev/null 2>&1; then
+  if "$HELPER_PYTHON" -m py_compile "$REPO_DIR"/hooks/writai_*.py >/dev/null 2>&1; then
     pass "hook scripts present and importable by python3"
   else
     fail "hooks/ does not compile under $HELPER_PYTHON"
@@ -343,7 +343,7 @@ if [[ -f "$SESSION_MANIFEST" ]] && (( expected > 0 )); then
   bound_files=0
   while IFS=$'\037' read -r index task_id assignment_id agent_name scopes directory prompt_index title requirement; do
     [[ -f "$directory/.claude/settings.json" ]] && configured=$((configured + 1))
-    [[ -f "$directory/.dragback/task" ]] && bound_files=$((bound_files + 1))
+    [[ -f "$directory/.writai/task" ]] && bound_files=$((bound_files + 1))
   done < "$SESSION_MANIFEST"
   if (( configured == expected )); then
     pass "hook config present in all $expected session directories"
@@ -351,9 +351,9 @@ if [[ -f "$SESSION_MANIFEST" ]] && (( expected > 0 )); then
     fail "hook config missing in $((expected - configured)) of $expected session directories"
   fi
   if (( bound_files == expected )); then
-    pass ".dragback/task written in all $expected session directories"
+    pass ".writai/task written in all $expected session directories"
   else
-    fail ".dragback/task missing in $((expected - bound_files)) of $expected session directories"
+    fail ".writai/task missing in $((expected - bound_files)) of $expected session directories"
   fi
 fi
 
@@ -363,31 +363,31 @@ fi
 
 step "Approval"
 
-cli="$(dragback_cli)"
+cli="$(writai_cli)"
 if [[ -n "$cli" ]]; then
-  pass "dragback CLI at $cli"
+  pass "writai CLI at $cli"
 else
-  soft "no dragback console script; falling back to python -m dragback.cli"
+  soft "no writai console script; falling back to python -m writai.cli"
 fi
 
-if run_dragback approve --help >/dev/null 2>&1; then
-  approve_output="$(run_dragback approve pending 2>&1 || true)"
+if run_writai approve --help >/dev/null 2>&1; then
+  approve_output="$(run_writai approve pending 2>&1 || true)"
   if [[ "$approve_output" == *"NOT_IMPLEMENTED"* ]]; then
-    soft "dragback approve exists but is not implemented yet (Lane B)"
+    soft "writai approve exists but is not implemented yet (Lane B)"
     note "This was true when Lane C was written; it is implemented now."
   else
-    pass "dragback approve is runnable"
+    pass "writai approve is runnable"
   fi
 else
-  fail "dragback approve is not runnable"
+  fail "writai approve is not runnable"
 fi
 
-# The fire path is `dragback approve change`, NOT `workspace approve-change`.
+# The fire path is `writai approve change`, NOT `workspace approve-change`.
 # The latter is disabled on purpose: it took --role on trust, and Lane B
 # replaced it with a command that resolves the approver through the real
 # permission check. Probing the disabled one would report the fire path as
 # broken exactly when it is correct.
-if run_dragback approve change --help >/dev/null 2>&1; then
+if run_writai approve change --help >/dev/null 2>&1; then
   pass "fire path available: workspace propose-change + approve change"
 else
   fail "the fire path (approve change) is not runnable"
@@ -397,10 +397,10 @@ fi
 # in-process seam and its opt-in. A missing opt-in stops up.sh dead, and finding
 # that out backstage is the entire point of this checklist.
 if [[ -x "$DEMO_DIR/approve_in_process.py" || -f "$DEMO_DIR/approve_in_process.py" ]]; then
-  if [[ "${DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL:-}" == "1" ]]; then
+  if [[ "${WRITAI_DEMO_UNAUTHENTICATED_APPROVAL:-}" == "1" ]]; then
     pass "baseline approval opt-in set (channel auth bypassed, demo only)"
   else
-    soft "DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL is not set"
+    soft "WRITAI_DEMO_UNAUTHENTICATED_APPROVAL is not set"
     note "up.sh cannot approve the baseline without it. export it before arming."
   fi
 else

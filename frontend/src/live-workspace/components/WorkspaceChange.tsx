@@ -122,7 +122,7 @@ export function WorkspaceChange({
                 <p>{approved.decision.text}</p>
               ) : null}
               <p>
-                The ticket was not edited. Dragback found affected work through
+                The ticket was not edited. writ.ai found affected work through
                 the provenance graph.
               </p>
             </div>
@@ -173,7 +173,7 @@ export function WorkspaceChange({
           </h3>
           <p>
             {proposed
-              ? "Dragback authenticates the user, then checks permission, scope containment, confidence, and requirement shape."
+              ? "writ.ai authenticates the user, then checks permission, scope containment, confidence, and requirement shape."
               : applied
                 ? "The executor checks the stored authorization against the new decision version. Secret tokens stay on the server."
                 : "Submitting records a proposal only. Active work remains authorized until approval."}

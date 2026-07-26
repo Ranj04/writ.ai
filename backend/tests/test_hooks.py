@@ -37,7 +37,7 @@ SECRET = "sk-super-secret-token-do-not-transmit"
 def _load_hook_module(name: str) -> ModuleType:
     """Import a hook script by path under its real module name.
 
-    The real name matters: the scripts ``import dragback_hook_lib``, so registering
+    The real name matters: the scripts ``import writai_hook_lib``, so registering
     it in ``sys.modules`` first makes the tests and the scripts share one module
     object and monkeypatching works.
     """
@@ -53,10 +53,10 @@ def _load_hook_module(name: str) -> ModuleType:
     return module
 
 
-lib = _load_hook_module("dragback_hook_lib")
-pre_tool_use = _load_hook_module("dragback_pre_tool_use")
-session_start = _load_hook_module("dragback_session_start")
-session_end = _load_hook_module("dragback_session_end")
+lib = _load_hook_module("writai_hook_lib")
+pre_tool_use = _load_hook_module("writai_pre_tool_use")
+session_start = _load_hook_module("writai_session_start")
+session_end = _load_hook_module("writai_session_end")
 
 
 # --------------------------------------------------------------------------------------
@@ -68,7 +68,7 @@ def _config(tmp_path: Path, **overrides: Any) -> Any:
     defaults: dict[str, Any] = {
         "endpoint": "http://localhost:8002/supervisor/sessions",
         "timeout_seconds": 3.0,
-        "cache_path": tmp_path / ".dragback" / "hook-verdict-cache.json",
+        "cache_path": tmp_path / ".writai" / "hook-verdict-cache.json",
         "api_key": "",
         "notifications_enabled": False,
     }
@@ -81,13 +81,13 @@ def _event(**overrides: Any) -> dict[str, Any]:
 
     event: dict[str, Any] = {
         "session_id": "SESSION-abc123",
-        "transcript_path": "/Users/dev/.claude/projects/dragback/transcript.jsonl",
-        "cwd": "/Users/dev/code/dragback",
+        "transcript_path": "/Users/dev/.claude/projects/writai/transcript.jsonl",
+        "cwd": "/Users/dev/code/writai",
         "permission_mode": "acceptEdits",
         "tool_name": "Edit",
         "tool_use_id": "toolu_01",
         "tool_input": {
-            "file_path": "/Users/dev/code/dragback/backend/dragback/secrets.py",
+            "file_path": "/Users/dev/code/writai/backend/writai/secrets.py",
             "old_string": f"API_KEY = '{SECRET}'",
             "new_string": f"API_KEY = '{SECRET}-rotated'",
         },
@@ -120,7 +120,7 @@ def _deny_verdict() -> dict[str, Any]:
         "task_id": "TASK-102",
         "redirect_instruction": "Gate the export control behind an administrator check.",
         "provenance_path": ["DEC-018", "DEC-004", "SPEC-009", "TICKET-100", "TASK-102"],
-        "evidence_ref": "https://dragback.local/evidence/DEC-018",
+        "evidence_ref": "https://writai.local/evidence/DEC-018",
         "decision_snapshot": "graph-v18",
         "correlation_id": "corr-2",
     }
@@ -259,7 +259,7 @@ def test_pre_tool_use_body_never_carries_tool_input_or_paths(tmp_path: Path) -> 
     serialized = json.dumps(call["body"]) + call["url"]
     assert SECRET not in serialized
     assert "transcript.jsonl" not in serialized
-    assert "/Users/dev/code/dragback" not in serialized
+    assert "/Users/dev/code/writai" not in serialized
 
 
 def test_no_secret_appears_in_the_bytes_actually_transmitted(
@@ -311,9 +311,9 @@ def test_unreachable_supervisor_denies_through_the_real_script(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     port = _closed_port()
-    monkeypatch.setenv("DRAGBACK_HOOK_ENDPOINT", f"http://127.0.0.1:{port}/supervisor/sessions")
-    monkeypatch.setenv("DRAGBACK_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("DRAGBACK_HOOK_NOTIFY", "0")
+    monkeypatch.setenv("WRITAI_HOOK_ENDPOINT", f"http://127.0.0.1:{port}/supervisor/sessions")
+    monkeypatch.setenv("WRITAI_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("WRITAI_HOOK_NOTIFY", "0")
 
     stdout = io.StringIO()
     assert pre_tool_use.main(io.StringIO(json.dumps(_event())), stdout) == 0
@@ -389,7 +389,7 @@ def test_timeout_defaults_to_three_seconds() -> None:
     ],
 )
 def test_timeout_is_parsed_and_never_disabled(raw: str, expected: float) -> None:
-    env = {"DRAGBACK_HOOK_TIMEOUT_SECONDS": raw}
+    env = {"WRITAI_HOOK_TIMEOUT_SECONDS": raw}
     assert lib.HookConfig.from_env(env=env, cwd="/tmp").timeout_seconds == expected
 
 
@@ -573,7 +573,7 @@ def test_deny_context_carries_redirect_provenance_and_evidence(tmp_path: Path) -
     context = result["additionalContext"]
     assert "Gate the export control behind an administrator check." in context
     assert "DEC-018 → DEC-004 → SPEC-009 → TICKET-100 → TASK-102" in context
-    assert "https://dragback.local/evidence/DEC-018" in context
+    assert "https://writai.local/evidence/DEC-018" in context
     assert len(context) < lib.MAX_ADDITIONAL_CONTEXT_CHARS
 
 
@@ -587,7 +587,7 @@ def test_oversized_verdict_is_truncated_under_ten_thousand_characters(tmp_path: 
         "correlation_id": "C" * 5_000,
         "redirect_instruction": "I" * 80_000,
         "provenance_path": [f"NODE-{index}-" + "x" * 900 for index in range(500)],
-        "evidence_ref": "https://dragback.local/evidence/" + "e" * 50_000,
+        "evidence_ref": "https://writai.local/evidence/" + "e" * 50_000,
     }
     output = lib.build_pre_tool_use_output(
         _event(), config=_config(tmp_path), transport=_Recorder(monstrous)
@@ -682,9 +682,9 @@ def test_script_writes_json_to_stdout_and_exits_zero(
     tmp_path: Path, supervisor: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     supervisor.respond_with(_deny_verdict())
-    monkeypatch.setenv("DRAGBACK_HOOK_ENDPOINT", supervisor.base_url)
-    monkeypatch.setenv("DRAGBACK_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
-    monkeypatch.setenv("DRAGBACK_HOOK_NOTIFY", "0")
+    monkeypatch.setenv("WRITAI_HOOK_ENDPOINT", supervisor.base_url)
+    monkeypatch.setenv("WRITAI_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("WRITAI_HOOK_NOTIFY", "0")
 
     stdout = io.StringIO()
     assert pre_tool_use.main(io.StringIO(json.dumps(_event())), stdout) == 0
@@ -701,9 +701,9 @@ def test_script_writes_json_to_stdout_and_exits_zero(
 def test_session_start_posts_only_where_the_session_is(tmp_path: Path) -> None:
     """The client reports location only; the service reads the marker files."""
 
-    (tmp_path / ".dragback").mkdir()
-    (tmp_path / ".dragback" / "attach").write_text("ASSIGNMENT-TASK-102\n")
-    (tmp_path / ".dragback" / "task").write_text("TASK-102\n")
+    (tmp_path / ".writai").mkdir()
+    (tmp_path / ".writai" / "attach").write_text("ASSIGNMENT-TASK-102\n")
+    (tmp_path / ".writai" / "task").write_text("TASK-102\n")
 
     binding = {"source": "explicit", "assignment_id": "A-1", "task_id": "TASK-102"}
     recorder = _Recorder({"binding": binding})
@@ -750,7 +750,7 @@ def test_git_branch_tolerates_failure_and_detached_head() -> None:
     assert lib.git_branch("/tmp", runner=ok) == "feat/TASK-102-csv-export"
     assert lib.git_branch("/tmp", runner=detached) is None
     assert lib.git_branch("/tmp", runner=broken) is None
-    assert lib.git_branch("/nonexistent-directory-for-dragback") is None
+    assert lib.git_branch("/nonexistent-directory-for-writai") is None
 
 
 def test_session_start_survives_an_unreachable_supervisor(tmp_path: Path) -> None:
@@ -821,8 +821,8 @@ def test_notification_failure_does_not_change_the_emitted_decision(
     tmp_path: Path, supervisor: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     supervisor.respond_with(_deny_verdict())
-    monkeypatch.setenv("DRAGBACK_HOOK_ENDPOINT", supervisor.base_url)
-    monkeypatch.setenv("DRAGBACK_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("WRITAI_HOOK_ENDPOINT", supervisor.base_url)
+    monkeypatch.setenv("WRITAI_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
 
     def exploding_notifier(*_args: Any, **_kwargs: Any) -> bool:
         raise RuntimeError("notification subsystem is on fire")
@@ -853,7 +853,7 @@ def test_notify_denied_fires_once_per_deny() -> None:
 
 
 def test_notifications_are_easy_to_disable() -> None:
-    disabled = lib.HookConfig.from_env(env={"DRAGBACK_HOOK_NOTIFY": "0"}, cwd="/tmp")
+    disabled = lib.HookConfig.from_env(env={"WRITAI_HOOK_NOTIFY": "0"}, cwd="/tmp")
     assert disabled.notifications_enabled is False
     calls: list[Any] = []
     assert lib.notify_denied(disabled, "blocked", runner=calls.append, system="darwin") is False
@@ -862,20 +862,20 @@ def test_notifications_are_easy_to_disable() -> None:
 
 
 def test_notification_command_per_platform() -> None:
-    darwin = lib.notification_command("darwin", "Dragback", 'say "hi"')
+    darwin = lib.notification_command("darwin", "writ.ai", 'say "hi"')
     assert darwin is not None and darwin[0] == "osascript"
     assert '\\"hi\\"' in darwin[2]
-    linux = lib.notification_command("linux", "Dragback", "blocked")
-    assert linux == ["notify-send", "Dragback", "blocked"]
-    assert lib.notification_command("win32", "Dragback", "blocked") is None
+    linux = lib.notification_command("linux", "writ.ai", "blocked")
+    assert linux == ["notify-send", "writ.ai", "blocked"]
+    assert lib.notification_command("win32", "writ.ai", "blocked") is None
 
 
 def test_no_notification_on_allow(
     tmp_path: Path, supervisor: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     supervisor.respond_with(_allow_verdict())
-    monkeypatch.setenv("DRAGBACK_HOOK_ENDPOINT", supervisor.base_url)
-    monkeypatch.setenv("DRAGBACK_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
+    monkeypatch.setenv("WRITAI_HOOK_ENDPOINT", supervisor.base_url)
+    monkeypatch.setenv("WRITAI_HOOK_CACHE_PATH", str(tmp_path / "cache.json"))
 
     fired: list[Any] = []
 
@@ -911,7 +911,7 @@ def test_readme_states_what_still_fails_open() -> None:
 def test_hooks_import_no_third_party_packages() -> None:
     """The hook runs in the developer's environment. stdlib only, no exceptions."""
 
-    banned = ("httpx", "requests", "pydantic", "fastapi", "dragback.", "yaml")
+    banned = ("httpx", "requests", "pydantic", "fastapi", "writai.", "yaml")
     for script in sorted(HOOKS_DIR.glob("*.py")):
         source = script.read_text()
         for name in banned:
@@ -996,8 +996,8 @@ def test_the_ack_is_recorded_only_after_the_verdict_reaches_stdout(
     """
 
     cache = tmp_path / "cache.json"
-    monkeypatch.setenv("DRAGBACK_HOOK_CACHE_PATH", str(cache))
-    monkeypatch.setenv("DRAGBACK_HOOK_NOTIFY", "0")
+    monkeypatch.setenv("WRITAI_HOOK_CACHE_PATH", str(cache))
+    monkeypatch.setenv("WRITAI_HOOK_NOTIFY", "0")
     monkeypatch.setattr(lib, "http_transport", _Recorder(_redirect_verdict()))
 
     class _Unwritable(io.StringIO):

@@ -64,7 +64,7 @@ evidence ref, and the `confirmed_proposal_fingerprint` /
 on a proposal that changed after the approver saw it (both come from the preview).
 
 The one thing it will not do is carry a credential I baked into the bundle. The
-token is read at runtime from `globalThis.__DRAGBACK_APPROVAL_TOKEN__`; a `VITE_*`
+token is read at runtime from `globalThis.__WRITAI_APPROVAL_TOKEN__`; a `VITE_*`
 variable would have been inlined by Vite and shipped to every visitor. **With no
 token set — the default — nothing is posted** and the screen renders a labelled
 rehearsal.
@@ -72,7 +72,7 @@ rehearsal.
 To exercise the live path in a browser:
 
 ```js
-window.__DRAGBACK_APPROVAL_TOKEN__ = "<a Hexclave-resolvable token>";
+window.__WRITAI_APPROVAL_TOKEN__ = "<a Hexclave-resolvable token>";
 ```
 
 then approve. The receipt is then read from the returned workspace's
@@ -81,7 +81,7 @@ preview's prediction. If those disagree, the screen shows what happened.
 
 **Still for a human:** how `WORKSPACE_UI` authenticates in production. Probably a
 server-side session exchanging a login for a short-lived token, which is a backend
-change. Until then `dragback approve` has the real identity behind it.
+change. Until then `writai approve` has the real identity behind it.
 
 **There is no code path where a rehearsal renders "Applied".** No token, a server
 refusal, or a response without a partition all produce *"Rehearsal · nothing was
@@ -178,7 +178,7 @@ back — it does not mark anything approved locally and then tell the server.
    and approve round trips have still never run against a real service** — those
    are unit-tested against payloads copied field-for-field from Lane B's Pydantic
    models and nothing more (ASSUMPTIONS.md A6: starting the real agent service
-   writes `.dragback/live-workspaces.json`, which Lane C's `reset.sh` deletes,
+   writes `.writai/live-workspaces.json`, which Lane C's `reset.sh` deletes,
    and other agents were live on this machine). Expect first-run fixes there to
    be field-name details, not structure.
 2. **No author is shown.** `PendingApproval` carries no author name, so the

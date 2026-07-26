@@ -9,21 +9,21 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
-from dragback.cli import run
-from dragback.intake.approval import ApprovalChannel, ApprovalEvidence
-from dragback.intake.crustdata import (
+from writai.cli import run
+from writai.intake.approval import ApprovalChannel, ApprovalEvidence
+from writai.intake.crustdata import (
     CrustDataPersonObservationService,
     CrustDataReplayRequest,
 )
-from dragback.intake.replay import (
+from writai.intake.replay import (
     CrustDataDeliveryKey,
     JsonCrustDataDeliveryReplayStore,
 )
-from dragback.services import agent_api
-from dragback.workspaces.models import LiveWorkspaceImportRequest, LiveWorkspaceRecord
-from dragback.workspaces.orchestrator import LiveWorkspaceOrchestrator
-from dragback.workspaces.repository import JsonFileLiveWorkspaceRepository
-from dragback.workspaces.supervisor import FixtureSupervisorRuntime
+from writai.services import agent_api
+from writai.workspaces.models import LiveWorkspaceImportRequest, LiveWorkspaceRecord
+from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
+from writai.workspaces.repository import JsonFileLiveWorkspaceRepository
+from writai.workspaces.supervisor import FixtureSupervisorRuntime
 from fastapi.testclient import TestClient
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -288,7 +288,7 @@ def test_actual_api_response_and_event_are_labelled_replayed(
     repository = JsonFileLiveWorkspaceRepository(tmp_path / "workspaces.json")
     workspace_request = LiveWorkspaceImportRequest.model_validate(
         yaml.safe_load(
-            (REPO_ROOT / "examples" / "dragback-workspace.yaml").read_text(
+            (REPO_ROOT / "examples" / "writai-workspace.yaml").read_text(
                 encoding="utf-8"
             )
         )
@@ -357,8 +357,8 @@ def test_malformed_payload_is_rejected_without_partial_replay_write(
 
 def test_crustdata_path_has_no_invalidation_or_authority_mutation_call() -> None:
     paths = (
-        REPO_ROOT / "backend" / "dragback" / "intake" / "crustdata.py",
-        REPO_ROOT / "backend" / "dragback" / "intake" / "replay.py",
+        REPO_ROOT / "backend" / "writai" / "intake" / "crustdata.py",
+        REPO_ROOT / "backend" / "writai" / "intake" / "replay.py",
     )
 
     for path in paths:

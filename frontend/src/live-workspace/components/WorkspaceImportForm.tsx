@@ -170,11 +170,11 @@ export function WorkspaceImportForm({
           <section className="lw-extraction-review" aria-live="polite">
             <strong>Document converted to a reviewable draft</strong>
             <p>
-              Dragback extracted a proposed decision, ticket, tasks, scopes,
+              writ.ai extracted a proposed decision, ticket, tasks, scopes,
               and agent plan. This file is treated as a workspace snapshot;
               its baseline evidence and initial plan appear as “Before the new
               decision” on the next screen. Screenshot text is read with local
-              OCR. Dragback cannot approve this draft automatically.
+              OCR. writ.ai cannot approve this draft automatically.
             </p>
             {extractionWarnings.length > 0 ? (
               <ul>
@@ -242,7 +242,7 @@ export function WorkspaceImportForm({
           <p>
             {extractedDraft
               ? "This is the draft extracted from your document. Confirm every field before continuing."
-              : "This is the exact document Dragback will validate. Advanced users can edit it before continuing."}
+              : "This is the exact document writ.ai will validate. Advanced users can edit it before continuing."}
           </p>
           <CodeDocumentEditor
             id="workspace-document"

@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-from dragback import runtime as runtime_module
-from dragback.authority.engine import DEFAULT_AUTHORITY_POLICY
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.graph.memory import MemoryGraphStore
+from writai import runtime as runtime_module
+from writai.authority.engine import DEFAULT_AUTHORITY_POLICY
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.graph.memory import MemoryGraphStore
 
 
 def _disable_reset(monkeypatch: pytest.MonkeyPatch) -> None:

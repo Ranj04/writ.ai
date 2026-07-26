@@ -104,7 +104,7 @@ const GUIDE_BY_STATUS: Record<LiveWorkspaceStatus, Omit<WorkspaceGuide, "step" |
     instruction:
       "Review what was imported and choose the role allowed to approve its governed scopes.",
     next:
-      "Dragback will create the first approved decision version. The plan can then be checked against it.",
+      "writ.ai will create the first approved decision version. The plan can then be checked against it.",
     busyMessage: "Verifying the approver and creating the baseline…",
     stateLabel: "Approval required",
     tone: "neutral",
@@ -112,9 +112,9 @@ const GUIDE_BY_STATUS: Record<LiveWorkspaceStatus, Omit<WorkspaceGuide, "step" |
   "baseline-approved": {
     title: "Authorize the current plan",
     instruction:
-      "Ask Dragback to compare every plan action with the approved baseline.",
+      "Ask writ.ai to compare every plan action with the approved baseline.",
     next:
-      "If the plan matches, Dragback approves this exact plan for the current company decisions.",
+      "If the plan matches, writ.ai approves this exact plan for the current company decisions.",
     busyMessage: "Evaluating the plan and issuing its authorization…",
     stateLabel: "Ready to authorize",
     tone: "neutral",
@@ -124,7 +124,7 @@ const GUIDE_BY_STATUS: Record<LiveWorkspaceStatus, Omit<WorkspaceGuide, "step" |
     instruction:
       "Submit the new decision as a proposal. A proposal alone cannot change the graph or stop work.",
     next:
-      "An authoritative role must approve the proposal before Dragback updates the graph.",
+      "An authoritative role must approve the proposal before writ.ai updates the graph.",
     busyMessage: "Recording the proposal without changing the approved graph…",
     stateLabel: "Plan authorized",
     tone: "neutral",
@@ -154,7 +154,7 @@ const GUIDE_BY_STATUS: Record<LiveWorkspaceStatus, Omit<WorkspaceGuide, "step" |
     instruction:
       "Review the stopped task, update the plan, and save the correction.",
     next:
-      "Dragback saves the plan, checks it against the new decision, then requests a new authorization.",
+      "writ.ai saves the plan, checks it against the new decision, then requests a new authorization.",
     busyMessage: "Saving the corrected plan and requesting a new authorization…",
     stateLabel: "Old authorization rejected",
     tone: "attention",

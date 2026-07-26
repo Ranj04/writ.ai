@@ -33,17 +33,17 @@ export CODEX_HOME="$HOME/.codex-demo" && mkdir -p "$CODEX_HOME"
 
 ## The critical constraint: what you depend on does not exist yet
 
-The hook, the `/check` endpoint, the session binding, and `dragback approve` are being written **right now, in parallel with you**. You must build against the contract below, not against working code.
+The hook, the `/check` endpoint, the session binding, and `writai approve` are being written **right now, in parallel with you**. You must build against the contract below, not against working code.
 
 Therefore: **every script must degrade gracefully and report, never crash.** If a component is missing, say so in the readiness output and continue doing what you can. A script that exits 1 because the hook isn't merged yet is useless to us at 2am.
 
 **Contract you may rely on** (do not invent beyond it):
 
 - Three services on `localhost:8001` (authority), `8002` (agent), `8003` (executor). Each answers `GET /health` with `{"status": "ok"}`. Start them with `make authority`, `make agent`, `make executor`.
-- A session binds to a task by a file at `<repo>/.dragback/task` containing a single task id, e.g. `TASK-102`.
+- A session binds to a task by a file at `<repo>/.writai/task` containing a single task id, e.g. `TASK-102`.
 - A Claude Code session registers itself on start via a `SessionStart` hook and is checked before each tool call via a `PreToolUse` hook. Hook configuration lives in `.claude/settings.json` inside each session's directory.
-- `dragback approve --text "<message>"` triggers a decision change. **Assume this signature; if it differs, read the real one and adapt.**
-- Existing state to clear on reset: `.dragback/` in the repo root and in each demo directory.
+- `writai approve --text "<message>"` triggers a decision change. **Assume this signature; if it differs, read the real one and adapt.**
+- Existing state to clear on reset: `.writai/` in the repo root and in each demo directory.
 
 ---
 
@@ -51,13 +51,13 @@ Therefore: **every script must degrade gracefully and report, never crash.** If 
 
 ### 1. `scripts/demo/reset.sh` — build this first
 
-Ten seconds, idempotent, safe to run twice. Removes demo worktrees and directories, clears `.dragback/` state, kills stray service processes and agent sessions, reseeds the graph.
+Ten seconds, idempotent, safe to run twice. Removes demo worktrees and directories, clears `.writai/` state, kills stray service processes and agent sessions, reseeds the graph.
 
 This is first because rehearsal count is what makes a demo good, and reset time is what caps rehearsal count.
 
 ### 2. `scripts/demo/up.sh` — arm everything, then wait
 
-Starts the three services and waits for `/health`. Creates five demo directories, each with its `.dragback/task` file and its `.claude/settings.json` hook config. Launches a Claude Code session in each with a canned starter prompt. Then **stops and waits** — it must never trigger the change itself. Arming and firing stay separate so the operator can arm during the previous team's demo.
+Starts the three services and waits for `/health`. Creates five demo directories, each with its `.writai/task` file and its `.claude/settings.json` hook config. Launches a Claude Code session in each with a canned starter prompt. Then **stops and waits** — it must never trigger the change itself. Arming and firing stay separate so the operator can arm during the previous team's demo.
 
 Default to five sessions, `--sessions N` to override. Three bound to a task carrying the `export.authorization` scope, two to `export.generation`. Read the actual task ids from the seeded graph rather than hardcoding them if you can; hardcode with a loud comment if you cannot.
 
@@ -74,7 +74,7 @@ Prints a green/red line per item and exits non-zero only if something is red:
 - N sessions registered
 - each session bound to the expected task
 - hook config present in each session directory
-- `dragback approve` present and runnable
+- `writai approve` present and runnable
 
 This exists so failures are discovered backstage instead of on stage. Make the output large and scannable — this gets read at a glance under pressure.
 

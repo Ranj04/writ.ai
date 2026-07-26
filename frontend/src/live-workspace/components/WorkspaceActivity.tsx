@@ -158,7 +158,7 @@ export function WorkspaceActivity({
         </details>
       ) : (
         <p className="lw-activity__empty">
-          Updates appear here as Dragback validates, approves, and verifies
+          Updates appear here as writ.ai validates, approves, and verifies
           your work.
         </p>
       )}

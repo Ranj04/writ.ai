@@ -17,8 +17,8 @@ load_dotenv()
 
 from composio import Composio  # noqa: E402
 
-REPO_OWNER = "Eman-Gon"
-REPO_NAME = "DragBack"
+REPO_OWNER = "Ranj04"
+REPO_NAME = "writ.ai"
 COMPOSIO_USER_ID = "default"
 
 

@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 
 import httpx
 import pytest
-from dragback.domain import ApprovalStatus, ArtifactKind
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.intake.approval import (
+from writai.domain import ApprovalStatus, ArtifactKind
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.intake.approval import (
     ApprovalChannel,
     ApprovalCoordinator,
     ApprovalDisposition,
@@ -15,18 +15,18 @@ from dragback.intake.approval import (
     PendingApproval,
     pending_from_workspace,
 )
-from dragback.intake.decisions import build_workspace_proposal
-from dragback.llm import (
+from writai.intake.decisions import build_workspace_proposal
+from writai.llm import (
     GeminiDecisionExtractor,
     GeminiExtractionError,
     evidence_span_error,
 )
-from dragback.workspaces.authority_contexts import (
+from writai.workspaces.authority_contexts import (
     DynamicAuthorityContextCreateRequest,
     DynamicAuthorityContextRegistry,
     DynamicMutationApprovalRequest,
 )
-from dragback.workspaces.models import WorkspaceApprovalRequest
+from writai.workspaces.models import WorkspaceApprovalRequest
 
 SOURCE_TEXT = "Compliance approved this change: exports must be admin-only for every account."
 QUOTE = "exports must be admin-only"

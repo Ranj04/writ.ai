@@ -48,7 +48,7 @@ Where does the token come from?
 channel, evidence ref, and the `confirmed_proposal_fingerprint` /
 `confirmed_proposal_instance_id` pair the server requires so an approval cannot
 land on a proposal that changed after the approver saw it. The token is read at
-runtime from `globalThis.__DRAGBACK_APPROVAL_TOKEN__`. **When it is absent —
+runtime from `globalThis.__WRITAI_APPROVAL_TOKEN__`. **When it is absent —
 which is the default — nothing is posted and the screen renders a labelled
 rehearsal.**
 
@@ -60,7 +60,7 @@ the wiring real and testable instead of stubbed.
 
 **Still for a human:** how a `WORKSPACE_UI` approval should authenticate in
 production — most likely a server-side session exchanging a login for a
-short-lived token, which is a backend change. Until then `dragback approve` is
+short-lived token, which is a backend change. Until then `writai approve` is
 the path with a real identity behind it.
 
 **What the screen never does:** claim an approval happened. Without a token, on a
@@ -138,8 +138,8 @@ Lane B's Pydantic models (`WorkspaceApprovalPreview`, `PendingApproval`,
 `SupervisorAssignment`, `LiveWorkspaceView`) and left the network path unexercised.
 
 **Conservative because** starting the agent service writes
-`.dragback/live-workspaces.json` in the shared repo root, and Lane C's `reset.sh`
-deletes `.dragback/` — two other agents are running on this machine all night and
+`.writai/live-workspaces.json` in the shared repo root, and Lane C's `reset.sh`
+deletes `.writai/` — two other agents are running on this machine all night and
 a half-seeded workspace store is a bad thing to hand someone at 9am.
 
 **Known gap, stated plainly in HANDOFF.md:** the JSON shapes are verified against

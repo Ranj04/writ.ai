@@ -166,7 +166,7 @@ export const RAW_WORKSPACE: RawWorkspaceFixture = {
   replacement_verification: null,
   supervisor: {
     id: "SUPERVISOR-REFUND-OPERATIONS",
-    name: "Dragback Supervisor",
+    name: "writ.ai Supervisor",
     state: "interrupting",
     adapter: "fixture-agent-runtime",
     execution_mode: "simulated",

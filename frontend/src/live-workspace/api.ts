@@ -301,7 +301,7 @@ function mapSupervisor(
   if (!raw) return null;
   return {
     id: raw.id,
-    name: raw.name ?? "Dragback Supervisor",
+    name: raw.name ?? "writ.ai Supervisor",
     state: raw.state,
     adapter: raw.adapter ?? "fixture-agent-runtime",
     executionMode: raw.execution_mode ?? "simulated",

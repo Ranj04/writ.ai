@@ -29,14 +29,14 @@ LIB_PATH = DEMO_DIR / "lib.sh"
 UP_PATH = DEMO_DIR / "up.sh"
 DEMO_API_PATH = DEMO_DIR / "demo_api.py"
 
-DEMO_KEY = "dragback-demo-hook-key"
+DEMO_KEY = "writai-demo-hook-key"
 
 
 @pytest.fixture(scope="module")
 def demo_api() -> Iterator[ModuleType]:
     """Import the helper by path. It is a 3.9-compatible script, not a package."""
 
-    spec = importlib.util.spec_from_file_location("dragback_demo_api", DEMO_API_PATH)
+    spec = importlib.util.spec_from_file_location("writai_demo_api", DEMO_API_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -65,8 +65,8 @@ def _resolve(repo: Path, env: dict[str, str]) -> dict[str, str]:
     script = (
         'source "$1"\n'
         'printf "%s\\n" "$HOOK_API_KEY_SOURCE"\n'
-        'printf "%s\\n" "$DRAGBACK_HOOK_API_KEY"\n'
-        'if env | grep -q "^DRAGBACK_HOOK_API_KEY="; then\n'
+        'printf "%s\\n" "$WRITAI_HOOK_API_KEY"\n'
+        'if env | grep -q "^WRITAI_HOOK_API_KEY="; then\n'
         '  printf "exported\\n"\n'
         "else\n"
         '  printf "not-exported\\n"\n'
@@ -85,9 +85,9 @@ def _resolve(repo: Path, env: dict[str, str]) -> dict[str, str]:
 
 
 def test_the_shell_environment_wins(fake_repo: Path) -> None:
-    (fake_repo / ".env").write_text("DRAGBACK_HOOK_API_KEY=from-dotenv\n", encoding="utf-8")
+    (fake_repo / ".env").write_text("WRITAI_HOOK_API_KEY=from-dotenv\n", encoding="utf-8")
 
-    resolved = _resolve(fake_repo, {"DRAGBACK_HOOK_API_KEY": "from-shell"})
+    resolved = _resolve(fake_repo, {"WRITAI_HOOK_API_KEY": "from-shell"})
 
     assert resolved["key"] == "from-shell"
     assert resolved["source"] == "environment"
@@ -102,7 +102,7 @@ def test_dotenv_is_used_when_the_shell_is_silent(fake_repo: Path) -> None:
     """
 
     (fake_repo / ".env").write_text(
-        "DRAGBACK_ENV=development\nDRAGBACK_HOOK_API_KEY=from-dotenv\n",
+        "WRITAI_ENV=development\nWRITAI_HOOK_API_KEY=from-dotenv\n",
         encoding="utf-8",
     )
 
@@ -122,7 +122,7 @@ def test_the_demo_default_is_the_last_resort(fake_repo: Path) -> None:
 def test_an_empty_dotenv_assignment_does_not_read_as_a_key(fake_repo: Path) -> None:
     """`.env.example` ships the key empty. Copying it must not disable the demo."""
 
-    (fake_repo / ".env").write_text("DRAGBACK_HOOK_API_KEY=\n", encoding="utf-8")
+    (fake_repo / ".env").write_text("WRITAI_HOOK_API_KEY=\n", encoding="utf-8")
 
     resolved = _resolve(fake_repo, {})
 
@@ -132,13 +132,13 @@ def test_an_empty_dotenv_assignment_does_not_read_as_a_key(fake_repo: Path) -> N
 
 def test_a_quoted_dotenv_value_is_unwrapped(fake_repo: Path) -> None:
     (fake_repo / ".env").write_text(
-        'DRAGBACK_HOOK_API_KEY="quoted-key"\n', encoding="utf-8"
+        'WRITAI_HOOK_API_KEY="quoted-key"\n', encoding="utf-8"
     )
 
     assert _resolve(fake_repo, {})["key"] == "quoted-key"
 
 
-@pytest.mark.parametrize("env", [{}, {"DRAGBACK_HOOK_API_KEY": "from-shell"}])
+@pytest.mark.parametrize("env", [{}, {"WRITAI_HOOK_API_KEY": "from-shell"}])
 def test_the_key_is_always_exported(fake_repo: Path, env: dict[str, str]) -> None:
     """A plain shell variable never reaches uvicorn or demo_api.py."""
 
@@ -150,7 +150,7 @@ def test_the_dotenv_file_is_never_evaluated(fake_repo: Path) -> None:
 
     marker = fake_repo / "executed"
     (fake_repo / ".env").write_text(
-        f"DRAGBACK_HOOK_API_KEY=parsed-not-run\nEVIL=$(touch {marker})\n",
+        f"WRITAI_HOOK_API_KEY=parsed-not-run\nEVIL=$(touch {marker})\n",
         encoding="utf-8",
     )
 
@@ -169,7 +169,7 @@ def test_up_sh_passes_the_key_to_every_service() -> None:
 
     source = UP_PATH.read_text(encoding="utf-8")
     launch = source.split("exec nohup env", 1)[1].split("--host", 1)[0]
-    assert '"DRAGBACK_HOOK_API_KEY=$DRAGBACK_HOOK_API_KEY"' in launch
+    assert '"WRITAI_HOOK_API_KEY=$WRITAI_HOOK_API_KEY"' in launch
 
 
 def test_up_sh_reports_which_key_it_resolved() -> None:
@@ -186,7 +186,7 @@ def _write_settings(demo_api: ModuleType, dest: Path) -> int:
             str(REPO_ROOT),
             "http://127.0.0.1:8002",
             "/usr/bin/python3",
-            ".dragback/hook-verdict-cache.json",
+            ".writai/hook-verdict-cache.json",
             "1",
         ]
     )
@@ -200,13 +200,13 @@ def test_settings_carry_the_key_to_the_hooks(
     """Under tmux the panes inherit the tmux SERVER's environment, not the
     launcher's, so this file is the only path that reliably reaches the hooks."""
 
-    monkeypatch.setenv("DRAGBACK_HOOK_API_KEY", DEMO_KEY)
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", DEMO_KEY)
     dest = tmp_path / "settings.json"
 
     assert _write_settings(demo_api, dest) == demo_api.EXIT_OK
 
     written = json.loads(dest.read_text(encoding="utf-8"))
-    assert written["env"]["DRAGBACK_HOOK_API_KEY"] == DEMO_KEY
+    assert written["env"]["WRITAI_HOOK_API_KEY"] == DEMO_KEY
 
 
 def test_a_settings_file_holding_a_key_is_owner_only(
@@ -217,7 +217,7 @@ def test_a_settings_file_holding_a_key_is_owner_only(
     """lib.sh may resolve a real per-developer token out of .env, and this file
     lives under the demo root. Assume it is a secret."""
 
-    monkeypatch.setenv("DRAGBACK_HOOK_API_KEY", "a-real-looking-token")
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "a-real-looking-token")
     dest = tmp_path / "settings.json"
 
     assert _write_settings(demo_api, dest) == demo_api.EXIT_OK
@@ -233,7 +233,7 @@ def test_an_existing_settings_file_is_restricted_too(
 ) -> None:
     """chmod runs after the write; a rerun over a world-readable file must fix it."""
 
-    monkeypatch.setenv("DRAGBACK_HOOK_API_KEY", "a-real-looking-token")
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "a-real-looking-token")
     dest = tmp_path / "settings.json"
     dest.write_text("{}\n", encoding="utf-8")
     dest.chmod(0o644)
@@ -251,16 +251,16 @@ def test_settings_still_carry_no_tool_input_or_transcript_data(
     """The privacy rule covers what the hook is configured to send, not just what
     it sends: the env block is the hook's whole configuration surface."""
 
-    monkeypatch.setenv("DRAGBACK_HOOK_API_KEY", DEMO_KEY)
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", DEMO_KEY)
     dest = tmp_path / "settings.json"
     _write_settings(demo_api, dest)
 
     env_block = json.loads(dest.read_text(encoding="utf-8"))["env"]
     assert set(env_block) == {
-        "DRAGBACK_HOOK_ENDPOINT",
-        "DRAGBACK_HOOK_TIMEOUT_SECONDS",
-        "DRAGBACK_HOOK_CACHE_PATH",
-        "DRAGBACK_HOOK_API_KEY",
+        "WRITAI_HOOK_ENDPOINT",
+        "WRITAI_HOOK_TIMEOUT_SECONDS",
+        "WRITAI_HOOK_CACHE_PATH",
+        "WRITAI_HOOK_API_KEY",
     }
 
 
@@ -268,6 +268,6 @@ def test_the_example_env_warns_that_an_empty_key_denies_everything() -> None:
     """It ships empty, so the file itself has to say what empty costs."""
 
     text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
-    block = text.split("DRAGBACK_HOOK_API_KEY=", 1)[0]
+    block = text.split("WRITAI_HOOK_API_KEY=", 1)[0]
     tail = block[block.rindex("# Claude Code hook enforcement") :]
     assert "HOOK_AUTHENTICATION_NOT_CONFIGURED" in tail

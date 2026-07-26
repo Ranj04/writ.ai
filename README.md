@@ -1,10 +1,10 @@
-# Dragback
+# writ.ai
 
 **Continuous decision-provenance control for autonomous coding agents.**
 
-> Tests prove the code works. Dragback proves the work is still wanted.
+> Tests prove the code works. writ.ai proves the work is still wanted.
 
-Dragback detects when an approved upstream company decision changes while a coding-agent run is active. It traces the change through a typed provenance graph, selectively invalidates only affected downstream work, rejects authorizations bound to stale graph snapshots, and moves the agent loop to `REPLAN`, `BLOCK`, or `HUMAN_REVIEW`.
+writ.ai detects when an approved upstream company decision changes while a coding-agent run is active. It traces the change through a typed provenance graph, selectively invalidates only affected downstream work, rejects authorizations bound to stale graph snapshots, and moves the agent loop to `REPLAN`, `BLOCK`, or `HUMAN_REVIEW`.
 
 This repository is a Codex-ready hackathon starter. The deterministic demo works without external API keys. Neo4j and Anthropic integrations are included as optional extension points.
 
@@ -13,7 +13,7 @@ This repository is a Codex-ready hackathon starter. The deterministic demo works
 Codex and human contributors should read these files in order:
 
 1. [`AGENTS.md`](AGENTS.md) — implementation rules and non-negotiable invariants.
-2. [`dragback.md`](dragback.md) — complete product brief.
+2. [`writai.md`](writai.md) — complete product brief.
 3. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — service and data flow.
 4. [`docs/GRAPH_SCHEMA.md`](docs/GRAPH_SCHEMA.md) — nodes, edges, scopes, and traversal semantics.
 5. [`TASKS.md`](TASKS.md) — prioritized work queue.
@@ -78,7 +78,7 @@ a locally bundled English OCR model. Document uploads are converted into an untr
 containing a decision proposal, specification, ticket, tasks, plan, scopes, and authority roles.
 The OCR confidence is preserved in evidence metadata, and the user must explicitly confirm the
 extracted fields before server validation. That human confirmation is recorded separately;
-extraction never approves a decision or issues a verdict. Dragback then persists the workspace,
+extraction never approves a decision or issues a verdict. writ.ai then persists the workspace,
 constructs and validates its provenance graph, and walks you through the real enforcement
 lifecycle:
 
@@ -104,14 +104,14 @@ demo can be rehearsed repeatedly without deleting earlier audit records. Direct 
 retain their declared IDs and still reject duplicates:
 
 ```bash
-dragback workspace import examples/dragback-workspace.yaml
-dragback workspace approve-baseline refund-operations --role finance-admin
-dragback workspace authorize refund-operations
+writai workspace import examples/writai-workspace.yaml
+writai workspace approve-baseline refund-operations --role finance-admin
+writai workspace authorize refund-operations
 ```
 
 The complete CLI flow, exit-code contract, and reusable GitHub Action are documented in
 [`docs/LIVE_WORKSPACE_CLI.md`](docs/LIVE_WORKSPACE_CLI.md). Persistent state defaults to
-`.dragback/live-workspaces.json`; change it with `DRAGBACK_WORKSPACE_STORE`.
+`.writai/live-workspaces.json`; change it with `WRITAI_WORKSPACE_STORE`.
 
 ## Fastest start
 
@@ -183,7 +183,7 @@ Copy the environment template:
 cp .env.example .env
 ```
 
-- Set `DRAGBACK_GRAPH_BACKEND=neo4j` and provide Neo4j credentials to use a real graph database.
+- Set `WRITAI_GRAPH_BACKEND=neo4j` and provide Neo4j credentials to use a real graph database.
 - The optional Anthropic adapter is an explicit extension point, not part of the live demo path.
   Install `.[llm]`, set `ANTHROPIC_API_KEY` and `ANTHROPIC_MODEL`, then wire the adapter through
   `TrustedDecisionContext` supplied by authenticated ingestion. Exact source spans are checked
@@ -193,7 +193,7 @@ cp .env.example .env
 
 The local memory backend keeps zero-config fixture seeding in development/demo environments.
 Neo4j never enables destructive startup seeding or `/graph/reset` by default: set
-`DRAGBACK_DEMO_RESET_ENABLED=true` explicitly and use only a dedicated Dragback demo database.
+`WRITAI_DEMO_RESET_ENABLED=true` explicitly and use only a dedicated writ.ai demo database.
 Scenario Lab does not use this destructive reset path; its per-run stores are always isolated
 `MemoryGraphStore` instances.
 
@@ -205,7 +205,7 @@ command history and source control.
 
 ```bash
 pip install -e ".[dev,graph]"
-DRAGBACK_RUN_NEO4J_TESTS=1 python -m pytest -m neo4j
+WRITAI_RUN_NEO4J_TESTS=1 python -m pytest -m neo4j
 ```
 
 The suite seeds `graph-v17` repeatedly and compares the persisted graph, selective invalidation
@@ -217,10 +217,10 @@ tests skip and the normal deterministic suite needs no Neo4j credentials.
 ```text
 AGENTS.md                         Codex operating instructions
 TASKS.md                          prioritized implementation queue
-dragback.md                       complete product brief
+writai.md                       complete product brief
 docs/                             architecture, graph, API, demo, and test docs
 fixtures/                         seeded company artifacts and decision changes
-backend/dragback/                 Python package
+backend/writai/                 Python package
   authority/                      authority and selective invalidation engine
   graph/                          in-memory and Neo4j stores
   llm/                            fixture and Anthropic extraction adapters
@@ -233,7 +233,7 @@ scripts/                          bootstrap, demo, service, and validation scrip
 
 ## Add an Example
 
-1. Add a definition in `backend/dragback/scenarios/catalog.py`. Use scenario-namespaced artifact,
+1. Add a definition in `backend/writai/scenarios/catalog.py`. Use scenario-namespaced artifact,
    action, plan, ticket, and run IDs; only the canonical CSV scenario retains its familiar IDs.
 2. Provide the graph seed, initial `AgentRun`, approved `DecisionMutation`, fixture-driven corrected
    `AgentPlan`, presentation copy, and assertion-only expectations. Keep expectations separate from

@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from dragback.intake.replay import (
+from writai.intake.replay import (
     JsonSlackDeliveryReplayStore,
     SlackDeliveryKey,
 )
@@ -12,7 +12,7 @@ from dragback.intake.replay import (
 def _key() -> SlackDeliveryKey:
     return SlackDeliveryKey(
         workspace_id="csv-exports",
-        connection_user_id="dragback-user",
+        connection_user_id="writai-user",
         trigger_kind="SLACK_CHANNEL_MESSAGE_RECEIVED",
         event_id="msg-delivery-1",
     )

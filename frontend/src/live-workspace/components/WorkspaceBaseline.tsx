@@ -90,7 +90,7 @@ export function WorkspaceBaseline({
         <div>
           <h3 id="baseline-action-title">Approve this baseline</h3>
           <p>
-            Authenticate with a Hexclave user API key. Dragback derives the
+            Authenticate with a Hexclave user API key. writ.ai derives the
             user and checks the required permission on the server.
           </p>
         </div>

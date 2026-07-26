@@ -5,14 +5,14 @@
   "metadata": {
     "trigger_id": "trigger_fixture_001",
     "trigger_slug": "SLACK_CHANNEL_MESSAGE_RECEIVED",
-    "user_id": "dragback-user-emanuel",
+    "user_id": "writai-user-emanuel",
     "connected_account_id": "ca_fixture_001",
     "auth_config_id": "ac_fixture_001"
   },
   "data": {
     "channel": "C-COMPLIANCE",
     "channel_type": "channel",
-    "team_id": "T-DRAGBACK",
+    "team_id": "T-WRITAI",
     "text": "Approved: exports must be admin-only, effective immediately.",
     "ts": "1784952300.000001",
     "user": "U-COMPLIANCE"

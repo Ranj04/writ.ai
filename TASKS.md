@@ -1,4 +1,4 @@
-# Dragback task queue
+# writ.ai task queue
 
 ## P0 — preserve the core proof
 
@@ -70,7 +70,7 @@ See `INTEGRATION_REPORT.md` for evidence against every item below.
 - [x] Merge `lane-a`, `lane-d-approvals`, `lane-c-demo` and Lane E's PR workflow.
 - [x] One hook implementation ships; the managed settings name it.
 - [x] `GET /supervisor/sessions` carries the assignment state each session is judged on.
-- [x] `.dragback/attach` wired end to end (built by sol).
+- [x] `.writai/attach` wired end to end (built by sol).
 - [x] CI `--require-grant` on by default, scoped so an unbound branch still passes.
 - [x] `check.sh` hard-fails, loudly, on the three silent demo-killers.
 - [x] CrustData person watcher — replayed, never labelled live (built by sol).

@@ -21,7 +21,7 @@ describe("Live Workspace components", () => {
     const html = renderToStaticMarkup(
       <WorkspaceImportForm
         content={SAMPLE_WORKSPACE_JSON}
-        sourceName="dragback.json"
+        sourceName="writai.json"
         format="json"
         readiness={workspaceReadiness(SAMPLE_WORKSPACE)}
         extractedDraft={false}
@@ -45,7 +45,7 @@ describe("Live Workspace components", () => {
       'accept=".yaml,.yml,.json,.pdf,.docx,.md,.markdown,.txt,.png,.jpg,.jpeg,.webp',
     );
     expect(html).toContain("Review or edit the workspace document");
-    expect(html).toContain("What Dragback needs");
+    expect(html).toContain("What writ.ai needs");
     expect(html).toContain("Download VOYAGR demo JSON");
     expect(html).toContain("Download document template");
     expect(html).toContain("or a screenshot");
@@ -57,7 +57,7 @@ describe("Live Workspace components", () => {
     const html = renderToStaticMarkup(
       <WorkspaceImportForm
         content="id: refund-operations"
-        sourceName="dragback.yaml"
+        sourceName="writai.yaml"
         format="yaml"
         readiness={workspaceReadiness({})}
         extractedDraft={false}
@@ -77,7 +77,7 @@ describe("Live Workspace components", () => {
       />,
     );
     expect(html).toContain("Workspace YAML");
-    expect(html).toContain("dragback.yaml · fresh run ID assigned");
+    expect(html).toContain("writai.yaml · fresh run ID assigned");
     expect(html).not.toContain("Workspace JSON");
   });
 
@@ -190,7 +190,7 @@ describe("Live Workspace components", () => {
     expect(html).toContain("Starter example · fresh ID each run");
     expect(html).toContain("voyagr-reservation-run-");
     expect(html).toContain(
-      "This is the exact document Dragback will validate.",
+      "This is the exact document writ.ai will validate.",
     );
     expect(html).not.toContain("Example workflow");
   });
@@ -337,7 +337,7 @@ describe("Live Workspace components", () => {
       expect(html).toContain("documentation-reconstructed, not captured");
       // The seeder's bypass is named, scoped, and shown to be gated.
       expect(html).toContain("approves without channel authentication");
-      expect(html).toContain("DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1");
+      expect(html).toContain("WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1");
       expect(html).toContain("Every authority check still runs");
       // The known durability limits.
       expect(html).toContain("process-local");
@@ -353,7 +353,7 @@ describe("Live Workspace components", () => {
       />,
     );
 
-    expect(interruptedHtml).toContain("Dragback Supervisor");
+    expect(interruptedHtml).toContain("writ.ai Supervisor");
     expect(interruptedHtml).toContain("Deterministic authority");
     expect(interruptedHtml).toContain("Simulated adapter");
     expect(interruptedHtml).toContain("Refund Calculation Subagent");
@@ -367,7 +367,7 @@ describe("Live Workspace components", () => {
     expect(interruptedHtml).toContain("The executor rejected the old grant");
     expect(interruptedHtml).not.toContain("Cancel signal accepted");
     expect(interruptedHtml).toContain(
-      "dragback agent run refund-operations --task TASK-003 --provider claude-code",
+      "writai agent run refund-operations --task TASK-003 --provider claude-code",
     );
 
     const redirected = mapLiveWorkspace({
@@ -746,7 +746,7 @@ describe("Live Workspace components", () => {
         busyMessage={guide.busyMessage}
       />,
     );
-    expect(guideHtml).toContain("Dragback is working");
+    expect(guideHtml).toContain("writ.ai is working");
     expect(guideHtml).toContain("Please wait");
     expect(guideHtml).toContain("Keep this page open");
     expect(activityHtml).toContain("Working on this step");

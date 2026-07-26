@@ -4,34 +4,34 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from dragback.domain import (
+from writai.domain import (
     AgentPlan,
     ApprovalStatus,
     Artifact,
     ArtifactKind,
     PlanAction,
 )
-from dragback.services.supervisor_api import (
+from writai.services.supervisor_api import (
     HOOK_API_KEY_HEADER,
     HookApiKeyVerifier,
     build_supervisor_session_router,
 )
-from dragback.services.support import install_api_support
-from dragback.supervisor_contract import InterruptRequest
-from dragback.workspaces.live_interrupt import LiveClaudeCodeInterruptPort
-from dragback.workspaces.models import (
+from writai.services.support import install_api_support
+from writai.supervisor_contract import InterruptRequest
+from writai.workspaces.live_interrupt import LiveClaudeCodeInterruptPort
+from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
     LiveWorkspaceRecord,
 )
-from dragback.workspaces.runtimes.claude_code import (
+from writai.workspaces.runtimes.claude_code import (
     ClaudeCodeSupervisorRuntime,
 )
-from dragback.workspaces.session_binding import (
+from writai.workspaces.session_binding import (
     ClaudeCodeSessionRegistry,
     SessionBindingSource,
     SupervisorAssignmentTarget,
 )
-from dragback.workspaces.session_enforcement import (
+from writai.workspaces.session_enforcement import (
     SPENT_DENY_STATES,
     ClaudeCodeSessionEnforcement,
     ClaudePreToolUseRequest,
@@ -40,7 +40,7 @@ from dragback.workspaces.session_enforcement import (
     HookPermissionDecision,
     RepositorySupervisorAssignmentGateway,
 )
-from dragback.workspaces.supervisor import (
+from writai.workspaces.supervisor import (
     FixtureSupervisorRuntime,
     SupervisorAssignmentState,
     SupervisorExecutionMode,
@@ -424,8 +424,8 @@ def test_binding_precedence_is_explicit_then_branch_then_task_file(
         workspace_id="csv-exports",
         assignment_id="ASSIGNMENT-TASK-102",
     )
-    (tmp_path / ".dragback").mkdir()
-    (tmp_path / ".dragback" / "task").write_text(
+    (tmp_path / ".writai").mkdir()
+    (tmp_path / ".writai" / "task").write_text(
         "TASK-101\n",
         encoding="utf-8",
     )
@@ -475,7 +475,7 @@ def test_attach_file_binds_explicitly_before_branch_and_task_file(
         )
         for item in record.supervisor.assignments
     ]
-    marker_directory = tmp_path / ".dragback"
+    marker_directory = tmp_path / ".writai"
     marker_directory.mkdir()
     (marker_directory / "attach").write_text(
         "ASSIGNMENT-TASK-102\n",
@@ -516,7 +516,7 @@ def test_unknown_attach_file_denies_rather_than_becoming_unbound(
         )
         for item in record.supervisor.assignments
     ]
-    marker_directory = tmp_path / ".dragback"
+    marker_directory = tmp_path / ".writai"
     marker_directory.mkdir()
     (marker_directory / "attach").write_text("ASSIGNMENT-UNKNOWN\n")
     (marker_directory / "task").write_text("TASK-101\n")
@@ -550,7 +550,7 @@ def test_attach_file_matching_multiple_workspaces_denies(
             assignment=assignment,
         ),
     ]
-    marker_directory = tmp_path / ".dragback"
+    marker_directory = tmp_path / ".writai"
     marker_directory.mkdir()
     (marker_directory / "attach").write_text(f"{assignment.id}\n")
 
@@ -586,9 +586,9 @@ def test_an_unreadable_attach_file_is_ignored_rather_than_stripping_enforcement(
     file, because an unbound session is allowed everything. So an *unreadable*
     marker falls through to the remaining rules and the session still binds —
     and the binding says the marker was skipped, so the reason is visible in
-    `dragback dev why` rather than swallowed.
+    `writai dev why` rather than swallowed.
 
-    `scripts/ci/dragback_ci_check.py` falls through on exactly these cases too.
+    `scripts/ci/writai_ci_check.py` falls through on exactly these cases too.
     The service and the PR check must not disagree about what binds.
     """
 
@@ -602,7 +602,7 @@ def test_an_unreadable_attach_file_is_ignored_rather_than_stripping_enforcement(
         )
         for item in record.supervisor.assignments
     ]
-    marker_directory = tmp_path / ".dragback"
+    marker_directory = tmp_path / ".writai"
     marker_directory.mkdir()
     attach_path = marker_directory / "attach"
     if marker_kind == "symlink":
@@ -626,7 +626,7 @@ def test_an_unreadable_attach_file_is_ignored_rather_than_stripping_enforcement(
     assert binding.assignment is not None
     assert binding.assignment.task_id == "TASK-101"
     assert expected_detail in binding.detail
-    assert ".dragback/attach was ignored" in binding.detail
+    assert ".writai/attach was ignored" in binding.detail
 
 
 @pytest.mark.parametrize(
@@ -646,7 +646,7 @@ def test_an_unreadable_attach_file_with_nothing_else_to_bind_is_unbound(
         SupervisorAssignmentTarget(workspace_id="csv-exports", assignment=item)
         for item in record.supervisor.assignments
     ]
-    marker_directory = tmp_path / ".dragback"
+    marker_directory = tmp_path / ".writai"
     marker_directory.mkdir()
     attach_path = marker_directory / "attach"
     if marker_kind == "symlink":
@@ -667,7 +667,7 @@ def test_an_unreadable_attach_file_with_nothing_else_to_bind_is_unbound(
 
     assert binding.source is SessionBindingSource.UNBOUND
     assert binding.assignment is None
-    assert ".dragback/attach was ignored" in binding.detail
+    assert ".writai/attach was ignored" in binding.detail
 
 
 def test_pre_tool_request_rejects_private_hook_fields() -> None:
@@ -701,7 +701,7 @@ def test_session_start_router_reads_attach_file_and_binds_explicitly(
             api_key_verifier=HookApiKeyVerifier(expected_api_key="key"),
         )
     )
-    marker_directory = tmp_path / ".dragback"
+    marker_directory = tmp_path / ".writai"
     marker_directory.mkdir()
     (marker_directory / "attach").write_text(
         "ASSIGNMENT-TASK-102\n",
@@ -1166,7 +1166,7 @@ def test_an_unresolvable_attachment_denies_instead_of_switching_enforcement_off(
             runtime=runtime,
         ),
     )
-    marker = tmp_path / ".dragback"
+    marker = tmp_path / ".writai"
     marker.mkdir()
     (marker / "attach").write_text("ASSIGNMENT-DOES-NOT-EXIST\n", encoding="utf-8")
 

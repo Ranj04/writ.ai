@@ -19,7 +19,7 @@ pass unchanged.
 | 1 | `main ← lane-a` | Fast-forward. Lane A had already merged Lane B, and Lane E's `scripts/ci/` was already tracked. 579 passed. |
 | 2 | `main ← lane-d-approvals` | Frontend only. Two doc conflicts. 579 passed, frontend 165. |
 | 3 | `main ← lane-c-demo` | Five conflicts. 579 passed. |
-| 4 | Lane E's PR workflow | `.github/workflows/dragback-pr-authorization.yml` was untracked in the working tree; committed. |
+| 4 | Lane E's PR workflow | `.github/workflows/writai-pr-authorization.yml` was untracked in the working tree; committed. |
 
 Local `main` was 27 commits behind `origin/main` at the start — `origin/main`
 already equalled `lane-a`. Lane C and Lane D were both branched from the *stale*
@@ -41,7 +41,7 @@ most of what follows.
 
 ### 1. Two hook implementations → one
 
-Lane A's `hooks/dragback_*.py` ships. Lane B's `hooks/claude_code_hook.py` is
+Lane A's `hooks/writai_*.py` ships. Lane B's `hooks/claude_code_hook.py` is
 deleted.
 
 **The live risk was not the duplicate file.** It was that
@@ -89,7 +89,7 @@ shape stays flat, because the existing readers accept a bare binding and read
 
 | # | Item | Built by | Reviewed by | State |
 |---|---|---|---|---|
-| 3 | `.dragback/attach` wired end to end | **sol** | fable | **Done**, 1 defect found and fixed |
+| 3 | `.writai/attach` wired end to end | **sol** | fable | **Done**, 1 defect found and fixed |
 | 4 | CI `--require-grant` on by default | fable | sol | **Done** |
 | 5 | `check.sh` hard-fails on the three silent killers | fable | sol | **Done**, 4 defects found |
 | 6 | CrustData observation path | **sol** | fable | **Done**, fixture is reconstructed — see below |
@@ -98,23 +98,23 @@ shape stays flat, because the existing readers accept a bare binding and read
 | 9 | Gate the seeder's auth bypass | fable | sol | **Done** |
 | 10 | Real-vs-simulated panel | fable | sol | **Done** |
 
-### 3 — `.dragback/attach` (built by sol)
+### 3 — `.writai/attach` (built by sol)
 
-`dragback dev attach` wrote a file the server never read:
+`writai dev attach` wrote a file the server never read:
 `ClaudeCodeSessionRegistry.attach()` was only ever called from tests, so the
 marker that is **first** in the documented binding order was a no-op against the
 live service.
 
-The registry now reads `.dragback/attach` during `register()` and honours it in
+The registry now reads `.writai/attach` during `register()` and honours it in
 the explicit slot. The read mirrors `_read_task_file` exactly — `lstat` first,
 refuse a symlink or non-regular file, refuse oversized, tolerate
 `OSError`/`UnicodeError`.
 
 **Format decision (sol's):** the file keeps carrying the assignment id alone, so
-stage directories that already ran `dragback dev attach` keep working. The match
+stage directories that already ran `writai dev attach` keep working. The match
 is therefore on assignment id across all candidates, and an id naming more than
 one workspace's assignment never resolves to a guess. This is the same rule
-`scripts/ci/dragback_ci_check.py` already applies, so the PR check and the
+`scripts/ci/writai_ci_check.py` already applies, so the PR check and the
 service agree.
 
 **This marker took two rounds of review to get right**, and the final shape came
@@ -122,8 +122,8 @@ out of both:
 
 - **fable, reviewing sol:** an *unreadable* marker — a symlink, an oversized
   file, more than one line — stopped at UNBOUND. An unbound session is allowed
-  everything, so a corrupt `.dragback/attach` **switched enforcement off**. It
-  now falls through to the branch task id and `.dragback/task`, with the binding
+  everything, so a corrupt `.writai/attach` **switched enforcement off**. It
+  now falls through to the branch task id and `.writai/task`, with the binding
   detail recording that the marker was ignored and why. That also matches the CI
   check's `read_marker_file`, which falls through on exactly these cases.
 - **sol, reviewing fable:** stopping there was not enough. A marker that *is*
@@ -180,7 +180,7 @@ Running it against a live seeded service found four defects:
 3. **`demo_api.py` sent no hook API key**, so `GET /supervisor/sessions` answered
    401 and the check reported "did not answer with a session list" against a
    service that was working fine.
-4. **The generated session settings omitted `DRAGBACK_HOOK_API_KEY`.** The
+4. **The generated session settings omitted `WRITAI_HOOK_API_KEY`.** The
    service fails closed without it, so every hook call would be rejected and
    deny — including the two sessions whose *survival* is the proof.
 
@@ -245,14 +245,14 @@ are the mock's own values, and the token block is duplicated on purpose.
 
 All three items (`--record`, tmux, Superset) were already shipped by Lane C's
 final commit. **Running the launcher against the merged tree found something
-worse:** `up.sh` and `fire.sh` both call `dragback workspace approve-baseline` /
+worse:** `up.sh` and `fire.sh` both call `writai workspace approve-baseline` /
 `approve-change`, and Lane B **disabled both on purpose** — they took `--role` on
 trust, and every approval now goes through an `ApprovalAttemptEnvelope` carrying
 a Hexclave-resolvable token. Lane C was built on `main` before that landed, so
 the launcher stopped dead at *"baseline approved … failed"* and never reached a
 session, a pane, or a recording.
 
-- `approve-change` **has** a working replacement — `dragback approve change` is
+- `approve-change` **has** a working replacement — `writai approve change` is
   implemented now, contrary to Lane C's note that it was a `NOT_IMPLEMENTED`
   placeholder. `fire.sh` uses it and `check.sh` probes it instead of the disabled
   one. It prints the blast radius and asks the operator to confirm, which is the
@@ -276,7 +276,7 @@ ran; the real CLI remains unexercised, exactly as Lane C recorded.
 ### 9 — The seeder's auth bypass is now opt-in
 
 `seed.py` and `approve_in_process.py` both refuse unless
-`DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1`. Only the exact value `1` counts — a
+`WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1`. Only the exact value `1` counts — a
 half-set variable is not consent. The gate runs **before** the stage directory is
 deleted, which is asserted. The refusal names the variable and says what is and
 is not bypassed. The runbook and handoff commands carry the opt-in so nobody
@@ -462,7 +462,7 @@ human review; it did not create an authority verdict or graph write.
 The explicit delta remains the deterministic fallback used by the staged demo:
 
 ```bash
-dragback approve --text "<the message>" --scope export.authorization \
+writai approve --text "<the message>" --scope export.authorization \
   --was all_users --now admin_only
 ```
 
@@ -482,7 +482,7 @@ implies that a real Composio webhook or Hexclave-authenticated approval ran.
 
 **No. Message text is supplied by hand.** `COMPOSIO_API_KEY` is set, but
 `COMPOSIO_WEBHOOK_SECRET`, `COMPOSIO_SLACK_AUTH_CONFIG_ID` and
-`DRAGBACK_SLACK_CHANNEL_ID` are all empty. `ComposioSlackWebhookVerifier`
+`WRITAI_SLACK_CHANNEL_ID` are all empty. `ComposioSlackWebhookVerifier`
 raises `SlackWebhookError("COMPOSIO_WEBHOOK_SECRET must be configured.")` at
 construction, so no signed delivery can be verified and none has been. The
 verification code is real and tested; it has never been fed a live delivery.
@@ -561,7 +561,7 @@ Neither reviewed its own work.
 
 | Item | Built | Reviewed | Outcome |
 |---|---|---|---|
-| `.dragback/attach` wiring | sol | fable | 1 defect found (enforcement-off via corrupt marker), fixed |
+| `.writai/attach` wiring | sol | fable | 1 defect found (enforcement-off via corrupt marker), fixed |
 | CrustData observation path | sol | fable | Accepted; fixture provenance verified honest |
 | Hook consolidation | fable | sol | See below |
 | Session-list enrichment | fable | sol | See below |
@@ -572,7 +572,7 @@ Neither reviewed its own work.
 
 ### Defects the reviews found
 
-**fable reviewing sol — `.dragback/attach`:** an unreadable marker resolved to
+**fable reviewing sol — `.writai/attach`:** an unreadable marker resolved to
 UNBOUND, and an unbound session is allowed everything, so writing one corrupt
 file in a working directory switched enforcement off for that session. Fixed by
 falling through to the remaining binding rules while recording in the binding
@@ -601,11 +601,11 @@ deferred.**
 
 1. **The check could be rewritten by the branch it checks.** The workflow ran
    `scripts/ci/` *from the PR head*, so one commit changing
-   `dragback_ci_check.py` to `sys.exit(0)` disabled the backstop — and the same
-   step handed that edited code `DRAGBACK_CI_API_KEY`. **The most serious finding
+   `writai_ci_check.py` to `sys.exit(0)` disabled the backstop — and the same
+   step handed that edited code `WRITAI_CI_API_KEY`. **The most serious finding
    in the entire integration.** The checker now comes from the PR base; the head
    is checked out separately as inspected data and nothing from it is executed.
-2 & 5. **`.dragback/attach` was an off switch,** on both sides. An attachment
+2 & 5. **`.writai/attach` was an off switch,** on both sides. An attachment
    read successfully but naming no live assignment resolved to UNBOUND — which
    *passes* the PR check and is *allowed everything* by the hook. One junk marker
    file opted a branch out of enforcement. Now its own state
@@ -626,9 +626,9 @@ deferred.**
 
 **Confirmed and since closed:**
 
-3. **`dragback_ci_check.py` silently discarded malformed workspace or assignment
+3. **`writai_ci_check.py` silently discarded malformed workspace or assignment
    objects**, so a degraded response could empty the candidate set, resolve the
-   branch to UNBOUND and *pass*. Closed with the rule `.dragback/attach` settled:
+   branch to UNBOUND and *pass*. Closed with the rule `.writai/attach` settled:
    absence of binding information is permissive, failure to obtain it is not. A
    clean answer with no candidates still passes; a workspace, supervisor,
    assignments value or assignment that is not the shape it claims raises
@@ -649,7 +649,7 @@ deferred.**
 
 **Deferred deliberately — do not "fix" under time pressure:**
 
-4. **`dragback_ci_check.py` — grant validation ignores `run_id`, `task_id` and
+4. **`writai_ci_check.py` — grant validation ignores `run_id`, `task_id` and
    `plan_hash`.** An ALLOW grant for another run, task or plan passes if its
    snapshot and expiry match.
 
@@ -723,7 +723,7 @@ wifi hiccup mid-approval and the UI contradicted reality on stage.
   whose `supervisor.applied_interrupts` is the server's own record of what it did;
 - if that re-read *also* fails, it stays indeterminate. **A failed read is never
   evidence that nothing happened.** The screen says *Sent · outcome not
-  confirmed*, names the reason, and points at `dragback dev status`.
+  confirmed*, names the reason, and points at `writai dev status`.
 
 Under-reporting a real mutation is the worse error, so the boolean is gone.
 
@@ -808,9 +808,9 @@ python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 PYTHONPATH=backend .venv/bin/python -m pytest
 
 # 2. The demo approves without channel authentication. Say so, once per shell.
-export DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1
-export DRAGBACK_HOOK_API_KEY=dragback-demo-hook-key
-export DRAGBACK_DEMO_PYTHON="$PWD/.venv/bin/python"
+export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
+export WRITAI_HOOK_API_KEY=writai-demo-hook-key
+export WRITAI_DEMO_PYTHON="$PWD/.venv/bin/python"
 
 # 3. Reset, arm, and prove it is armed. Never skip the reset between rehearsals:
 #    deny-once is per assignment.
@@ -821,11 +821,11 @@ scripts/demo/check.sh              # must print READY with 0 silent killers
 # 4. On cue. It prints the blast radius and asks you to confirm. Answer it.
 scripts/demo/fire.sh
 
-# 5. The beat. `dragback` is a console script inside the venv and is NOT on PATH
+# 5. The beat. `writai` is a console script inside the venv and is NOT on PATH
 #    unless you activate it — ASSUMPTIONS A-7. Use the explicit path, or run
 #    `source .venv/bin/activate` first.
-.venv/bin/dragback dev status              # 3 interrupted, 2 continuing
-.venv/bin/dragback dev why <session-id>    # the path from the decision to that task
+.venv/bin/writai dev status              # 3 interrupted, 2 continuing
+.venv/bin/writai dev why <session-id>    # the path from the decision to that task
 scripts/demo/ack.sh                        # the human beat — releases blocked sessions
 
 # 6. If the live run dies.
@@ -837,11 +837,11 @@ do **not** run both at once, they collide on ports and bind sessions to
 different stores:
 
 ```bash
-DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1 \
+WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 \
   PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py --serve
 # wait for "agent service listening", then in two more terminals:
-cd /tmp/dragback-stage/sara  && claude "$(cat PROMPT.txt)"   # survives
-cd /tmp/dragback-stage/priya && claude "$(cat PROMPT.txt)"   # denied once
+cd /tmp/writai-stage/sara  && claude "$(cat PROMPT.txt)"   # survives
+cd /tmp/writai-stage/priya && claude "$(cat PROMPT.txt)"   # denied once
 ```
 
 The frontend must run on **port 5173** — `DEMO_FRONTEND_ORIGINS` allows only

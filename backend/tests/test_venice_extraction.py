@@ -5,8 +5,8 @@ from dataclasses import replace
 
 import httpx
 import pytest
-from dragback.config import settings as default_settings
-from dragback.llm import (
+from writai.config import settings as default_settings
+from writai.llm import (
     LLMProviderConfigurationError,
     VeniceDecisionExtractor,
     VeniceExtractionError,
@@ -19,7 +19,7 @@ SOURCE_TEXT = "Compliance approved this change: exports must be admin-only for e
 def _candidate_json() -> str:
     """A minimal candidate that satisfies DecisionExtractionCandidate."""
 
-    from dragback.fixtures import load_decision_v18
+    from writai.fixtures import load_decision_v18
 
     start = SOURCE_TEXT.index("exports must be admin-only")
     return json.dumps(
@@ -143,7 +143,7 @@ def test_unknown_provider_raises_rather_than_degrading() -> None:
 
 def test_timeout_ms_is_normalised_to_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LLM_TIMEOUT_MS", "12000")
-    from dragback.config import Settings
+    from writai.config import Settings
 
     assert Settings().llm_timeout_seconds == 12.0
 
@@ -151,8 +151,8 @@ def test_timeout_ms_is_normalised_to_seconds(monkeypatch: pytest.MonkeyPatch) ->
 def test_repairs_wrong_offsets_for_a_genuine_quote(monkeypatch: pytest.MonkeyPatch) -> None:
     """Models quote correctly but miscount offsets; the quote still has to be real."""
 
-    from dragback.fixtures import load_decision_v18
-    from dragback.llm import evidence_span_error
+    from writai.fixtures import load_decision_v18
+    from writai.llm import evidence_span_error
 
     quote = "exports must be admin-only"
     bad = json.dumps(
@@ -171,8 +171,8 @@ def test_repairs_wrong_offsets_for_a_genuine_quote(monkeypatch: pytest.MonkeyPat
 def test_does_not_invent_offsets_for_fabricated_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
     """Repair must never rescue a quote that is absent from the source."""
 
-    from dragback.fixtures import load_decision_v18
-    from dragback.llm import evidence_span_error
+    from writai.fixtures import load_decision_v18
+    from writai.llm import evidence_span_error
 
     fabricated = json.dumps(
         {
@@ -186,8 +186,8 @@ def test_does_not_invent_offsets_for_fabricated_evidence(monkeypatch: pytest.Mon
 
 
 def test_repair_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    from dragback.fixtures import load_decision_v18
-    from dragback.llm import evidence_span_error
+    from writai.fixtures import load_decision_v18
+    from writai.llm import evidence_span_error
 
     bad = json.dumps(
         {

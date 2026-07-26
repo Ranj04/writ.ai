@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Approve the workspace baseline in process, for the demo launcher only.
 
-`dragback workspace approve-baseline` is DISABLED on purpose (`cli.py`
+`writai workspace approve-baseline` is DISABLED on purpose (`cli.py`
 `_request_for_command`): Lane B routed every approval through an
 `ApprovalAttemptEnvelope` carrying a Hexclave-resolvable `approval_token`, so
 that the approver's permission is actually verified. Its stated replacement is
@@ -34,7 +34,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "backend"))
 
-OPT_IN_ENV = "DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL"
+OPT_IN_ENV = "WRITAI_DEMO_UNAUTHENTICATED_APPROVAL"
 
 EXIT_OK = 0
 EXIT_USAGE = 2
@@ -43,7 +43,7 @@ EXIT_FAILED = 4
 
 
 def _refuse(message: str) -> int:
-    sys.stderr.write(f"dragback-demo: {message}\n")
+    sys.stderr.write(f"writai-demo: {message}\n")
     return EXIT_REFUSED
 
 
@@ -76,11 +76,11 @@ def main(argv: list[str]) -> int:
         )
 
     # Imported after the gate so a refusal costs nothing and touches no state.
-    from dragback.domain import utc_now
-    from dragback.hashing import stable_hash
-    from dragback.intake.approval import ApprovalChannel, ApprovalEvidence
-    from dragback.services import agent_api
-    from dragback.workspaces.models import WorkspaceApprovalRequest
+    from writai.domain import utc_now
+    from writai.hashing import stable_hash
+    from writai.intake.approval import ApprovalChannel, ApprovalEvidence
+    from writai.services import agent_api
+    from writai.workspaces.models import WorkspaceApprovalRequest
 
     repository = agent_api.workspace_repository
     orchestrator = agent_api.workspace_orchestrator
@@ -88,7 +88,7 @@ def main(argv: list[str]) -> int:
     try:
         record = repository.get(workspace_id)
     except Exception as exc:  # noqa: BLE001 - report, never traceback at the operator
-        sys.stderr.write(f"dragback-demo: cannot read workspace {workspace_id}: {exc}\n")
+        sys.stderr.write(f"writai-demo: cannot read workspace {workspace_id}: {exc}\n")
         return EXIT_FAILED
 
     if decision_id is None:
@@ -105,7 +105,7 @@ def main(argv: list[str]) -> int:
         confirmed_decision_id = decision_id
         missing = "no pending decision change to approve; propose one first"
     if decision is None or instance_id is None:
-        sys.stderr.write(f"dragback-demo: the workspace carries {missing}.\n")
+        sys.stderr.write(f"writai-demo: the workspace carries {missing}.\n")
         return EXIT_FAILED
 
     # Bind to the exact proposal on disk right now. Lane B requires the
@@ -137,7 +137,7 @@ def main(argv: list[str]) -> int:
         else:
             orchestrator.approve_decision(workspace_id, decision_id, request)
     except Exception as exc:  # noqa: BLE001
-        sys.stderr.write(f"dragback-demo: {what} approval refused: {exc}\n")
+        sys.stderr.write(f"writai-demo: {what} approval refused: {exc}\n")
         return EXIT_FAILED
 
     print(f"{what} approved as {role} (channel authentication bypassed, demo only)")

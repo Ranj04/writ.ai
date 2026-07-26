@@ -1,6 +1,6 @@
 """Hook wiring must stay demo-local.
 
-Installing Dragback's hooks into the user-level settings file would point every
+Installing writ.ai's hooks into the user-level settings file would point every
 project on the machine at a service that only runs for the demo. Committing them
 to the tracked `.claude/settings.json` would enforce for every teammate who pulls.
 Both are deliberate decisions to make after the demo, so they are checks, not

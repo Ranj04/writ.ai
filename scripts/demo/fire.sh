@@ -4,12 +4,12 @@
 # that mutates the graph, and it is deliberately separate from up.sh: the
 # operator arms during the previous team's demo and fires on cue.
 #
-# It is NOT a new approval path. It calls the same `dragback workspace
+# It is NOT a new approval path. It calls the same `writai workspace
 # propose-change` / `approve-change` commands a human would type, so the
 # authority service still decides, the role is still checked, and no script here
 # manufactures a verdict.
 #
-# `docs/BUILD_LANE_C.md` assumed `dragback approve --text "<message>"`. That
+# `docs/BUILD_LANE_C.md` assumed `writai approve --text "<message>"`. That
 # command exists in the CLI surface but is a Lane B placeholder that exits 2 with
 # NOT_IMPLEMENTED, so this uses the workspace commands that actually work today.
 # Swap the two lines below when Lane B lands.
@@ -64,7 +64,7 @@ if (( ASSUME_YES == 0 )); then
 fi
 
 step "Proposing the change"
-if run_dragback workspace propose-change "$WORKSPACE_ID" "$CHANGE_FIXTURE"; then
+if run_writai workspace propose-change "$WORKSPACE_ID" "$CHANGE_FIXTURE"; then
   ok "proposal stored — the graph has not moved yet"
 else
   bad "propose-change failed. The graph is unchanged."
@@ -72,8 +72,8 @@ else
 fi
 
 step "Approving as $CHANGE_ROLE"
-# `dragback workspace approve-change` is disabled: Lane B replaced it with
-# `dragback approve change`, which resolves the approver through the real
+# `writai workspace approve-change` is disabled: Lane B replaced it with
+# `writai approve change`, which resolves the approver through the real
 # permission check rather than taking a --role on trust. The role is therefore
 # derived server-side and is no longer passed here — which is the point of the
 # replacement, and the reason this is the fire path rather than a shortcut past
@@ -85,14 +85,14 @@ step "Approving as $CHANGE_ROLE"
 # three sessions stop and which two continue. Only --yes, which is documented as
 # "use in a rehearsal script, not on stage", answers it non-interactively.
 if (( ASSUME_YES )); then
-  approve_confirmed() { printf 'y\n' | run_dragback approve change "$@"; }
+  approve_confirmed() { printf 'y\n' | run_writai approve change "$@"; }
 else
-  approve_confirmed() { run_dragback approve change "$@"; }
+  approve_confirmed() { run_writai approve change "$@"; }
 fi
 
 if approve_confirmed "$WORKSPACE_ID" "$CHANGE_DECISION_ID"; then
   ok "the authority applied the change"
-elif [[ "${DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL:-}" == "1" ]]; then
+elif [[ "${WRITAI_DEMO_UNAUTHENTICATED_APPROVAL:-}" == "1" ]]; then
   # The authenticated path resolves the approver through Hexclave, and
   # HEXCLAVE_* ships empty, so on a local demo it ends in
   # APPROVAL_AUTHENTICATION_FAILED. That is the CORRECT behaviour, not a bug --
@@ -115,14 +115,14 @@ elif [[ "${DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL:-}" == "1" ]]; then
 else
   bad "approve change failed. Run scripts/demo/check.sh."
   note "No approval identity is configured. Either set HEXCLAVE_*, or export"
-  note "DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1 to fire without one."
+  note "WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 to fire without one."
   exit 1
 fi
 
 banner "FIRED — watch the sessions"
 
-say "Explain one interrupt:  dragback --agent-url $AGENT_URL dev why"
-say "See every binding:      dragback --agent-url $AGENT_URL dev status"
-say "Stream transitions:     dragback --agent-url $AGENT_URL dev watch $WORKSPACE_ID"
+say "Explain one interrupt:  writai --agent-url $AGENT_URL dev why"
+say "See every binding:      writai --agent-url $AGENT_URL dev status"
+say "Stream transitions:     writai --agent-url $AGENT_URL dev watch $WORKSPACE_ID"
 printf '\n'
 exit 0

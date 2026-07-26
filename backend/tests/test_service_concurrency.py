@@ -5,8 +5,8 @@ from threading import Event
 
 import httpx
 import pytest
-from dragback.domain import AuthorizationResult, Verdict
-from dragback.services import agent_api, support
+from writai.domain import AuthorizationResult, Verdict
+from writai.services import agent_api, support
 
 
 def test_agent_reset_waits_for_an_in_flight_transition(

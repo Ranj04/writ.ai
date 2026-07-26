@@ -223,7 +223,7 @@ function DecisionStory({ scenario }: { scenario: ScenarioDefinition }) {
       </div>
       <p className="sl-narrative-explanation">
         {scenario.newDecision.reason} The new decision does not directly name
-        the downstream ticket, so Dragback checks the decision lineage next.
+        the downstream ticket, so writ.ai checks the decision lineage next.
       </p>
     </>
   );
@@ -263,7 +263,7 @@ function ImpactStory({
   return (
     <>
       <section className="sl-narrative-lineage" aria-labelledby="lineage-title">
-        <span id="lineage-title">How Dragback found the work</span>
+        <span id="lineage-title">How writ.ai found the work</span>
         <ol>
           {(path.length > 0
             ? path
@@ -290,7 +290,7 @@ function ImpactStory({
       <OutcomeRows outcomes={run?.outcomes ?? []} />
       <p className="sl-narrative-explanation">
         The approved decision never directly names the engineering ticket.
-        Dragback reached the active work through its recorded lineage and
+        writ.ai reached the active work through its recorded lineage and
         changed scopes.
       </p>
     </>
@@ -392,7 +392,7 @@ function storyCopy(
       instruction:
         "Start with the company’s approved decision and the agent’s original plan.",
       next:
-        "Dragback asks the authority whether the original plan is allowed under current company intent.",
+        "writ.ai asks the authority whether the original plan is allowed under current company intent.",
     };
   }
   switch (activeStep) {
@@ -402,7 +402,7 @@ function storyCopy(
         instruction:
           "Review what the company approved and what the coding agent is currently building.",
         next:
-          "An authorized company decision changes. Dragback records it and begins checking related active work.",
+          "An authorized company decision changes. writ.ai records it and begins checking related active work.",
       };
     case "decision":
       return {
@@ -410,11 +410,11 @@ function storyCopy(
         instruction:
           "Compare the prior decision with the newly approved requirement.",
         next:
-          "Reveal the exact active work Dragback found through the decision lineage.",
+          "Reveal the exact active work writ.ai found through the decision lineage.",
       };
     case "impact":
       return {
-        heading: "Dragback found the affected work",
+        heading: "writ.ai found the affected work",
         instruction:
           "See which work conflicts with the change and which work remains safe.",
         next:
@@ -458,7 +458,7 @@ function LiveUpdates({
       {busy ? (
         <p className="sl-live-updates__working" role="status">
           <span aria-hidden="true" />
-          Dragback is checking…
+          writ.ai is checking…
         </p>
       ) : null}
       {events.length > 0 ? (
@@ -568,7 +568,7 @@ export function ScenarioNarrative({
               onClick={primaryAction.onClick}
               disabled={primaryAction.disabled}
             >
-              {primaryAction.busy ? "Dragback is working…" : primaryAction.label}
+              {primaryAction.busy ? "writ.ai is working…" : primaryAction.label}
             </button>
           ) : null}
         </section>

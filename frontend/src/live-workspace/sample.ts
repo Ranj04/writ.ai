@@ -9,7 +9,7 @@ const WORKSPACE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{2,63}$/;
 export const SAMPLE_WORKSPACE: WorkspaceImportDocument = {
   id: "refund-operations",
   name: "Refund operations",
-  description: "A real workspace imported from dragback.yaml",
+  description: "A real workspace imported from writai.yaml",
   graph_version: 17,
   authority_policy: {
     "refund.calculation": ["finance-admin"],

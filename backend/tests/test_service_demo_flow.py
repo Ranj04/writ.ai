@@ -5,8 +5,8 @@ from urllib.parse import urlparse
 
 import httpx
 import pytest
-from dragback.fixtures import load_decision_v18
-from dragback.services import agent_api, authority_api, executor_api, support
+from writai.fixtures import load_decision_v18
+from writai.services import agent_api, authority_api, executor_api, support
 from fastapi.testclient import TestClient
 
 

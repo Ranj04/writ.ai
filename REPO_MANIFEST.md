@@ -3,7 +3,7 @@
 ## Codex context
 
 - `AGENTS.md`
-- `dragback.md`
+- `writai.md`
 - `README.md`
 - `TASKS.md`
 - `docs/CODEX_START_PROMPT.md`
@@ -25,12 +25,12 @@
 
 ## Core implementation
 
-- `backend/dragback/authority/engine.py`
-- `backend/dragback/graph/memory.py`
-- `backend/dragback/graph/neo4j_store.py`
-- `backend/dragback/grants.py`
-- `backend/dragback/loop/workflow.py`
-- `backend/dragback/services/`
+- `backend/writai/authority/engine.py`
+- `backend/writai/graph/memory.py`
+- `backend/writai/graph/neo4j_store.py`
+- `backend/writai/grants.py`
+- `backend/writai/loop/workflow.py`
+- `backend/writai/services/`
 
 ## Demo data
 

@@ -47,13 +47,13 @@ export function AppShell({
         <a
           className="sl-wordmark"
           href="/"
-          aria-label="Dragback Workspace"
+          aria-label="writ.ai Workspace"
           aria-disabled={navigationDisabled || undefined}
           onClick={(event) => {
             if (navigationDisabled) event.preventDefault();
           }}
         >
-          Dragback
+          writ.ai
         </a>
 
         <nav className="sl-header__nav" aria-label="Primary navigation">
@@ -126,7 +126,7 @@ export function AppShell({
 
           <a
             className="sl-docs-link"
-            href="https://github.com/Eman-Gon/lookback#readme"
+            href="https://github.com/Ranj04/writ.ai#readme"
             target="_blank"
             rel="noreferrer"
           >
@@ -181,7 +181,7 @@ export function AppShell({
               Examples
             </button>
             <a
-              href="https://github.com/Eman-Gon/lookback#readme"
+              href="https://github.com/Ranj04/writ.ai#readme"
               target="_blank"
               rel="noreferrer"
             >

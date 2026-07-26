@@ -10,16 +10,16 @@ fixtures, not records retrieved from live Slack, Jira, or coding-agent accounts.
 - `refund-processing-spec.md` — the product and finance specification behind the ticket.
 - `agent-plan.json` — the coding agent's plan for implementing the ticket.
 - `slack-policy-change.json` — a later Slack-style decision requiring human approval.
-- `dragback-workspace.yaml` — the same information normalized into Dragback's import format.
-- `dragback-policy-change.json` — the later decision normalized for the change editor.
+- `writai-workspace.yaml` — the same information normalized into writ.ai's import format.
+- `writai-policy-change.json` — the later decision normalized for the change editor.
 
 ## Demo flow
 
-1. Open Dragback's Workspace page.
-2. Upload `dragback-workspace.yaml`.
+1. Open writ.ai's Workspace page.
+2. Upload `writai-workspace.yaml`.
 3. Approve the baseline as `finance-admin`.
 4. Authorize the initial plan.
-5. Paste `dragback-policy-change.json` into the decision proposal editor when the
+5. Paste `writai-policy-change.json` into the decision proposal editor when the
    interface asks for a change. (The starter refund change shown by the UI is also
    compatible.)
 6. Approve it as `finance-admin`.

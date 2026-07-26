@@ -1,4 +1,4 @@
-from dragback.fixtures import load_decision_v18, load_graph_fixture
+from writai.fixtures import load_decision_v18, load_graph_fixture
 
 
 def test_presentation_fixture_ids_and_story_are_frozen() -> None:

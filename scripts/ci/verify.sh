@@ -21,21 +21,21 @@
 # docs PR is unaffected.
 #
 # Configuration (environment):
-#   DRAGBACK_AGENT_URL          base URL of the agent service (default :8002)
-#   DRAGBACK_CI_TIMEOUT_SECONDS HTTP timeout, seconds (default 10)
-#   DRAGBACK_CI_API_KEY         optional API key, sent as a request header
+#   WRITAI_AGENT_URL          base URL of the agent service (default :8002)
+#   WRITAI_CI_TIMEOUT_SECONDS HTTP timeout, seconds (default 10)
+#   WRITAI_CI_API_KEY         optional API key, sent as a request header
 #
 # Exit codes: 0 authorized · 1 not authorized · 2 unreachable · 3 usage.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHECK="${SCRIPT_DIR}/dragback_ci_check.py"
-TESTS="${SCRIPT_DIR}/test_dragback_ci_check.py"
+CHECK="${SCRIPT_DIR}/writai_ci_check.py"
+TESTS="${SCRIPT_DIR}/test_writai_ci_check.py"
 
 # Prefer a real interpreter over whatever "python" happens to mean today. The
 # check is standard-library only and 3.9-compatible, so any of these work.
-PYTHON="${DRAGBACK_PYTHON:-}"
+PYTHON="${WRITAI_PYTHON:-}"
 if [[ -z "${PYTHON}" ]]; then
   for candidate in python3 python; do
     if command -v "${candidate}" >/dev/null 2>&1; then
@@ -46,12 +46,12 @@ if [[ -z "${PYTHON}" ]]; then
 fi
 
 if [[ -z "${PYTHON}" ]]; then
-  echo "dragback: no python interpreter found; cannot verify. Failing closed." >&2
+  echo "writai: no python interpreter found; cannot verify. Failing closed." >&2
   exit 3
 fi
 
 if [[ ! -f "${CHECK}" ]]; then
-  echo "dragback: ${CHECK} is missing; cannot verify. Failing closed." >&2
+  echo "writai: ${CHECK} is missing; cannot verify. Failing closed." >&2
   exit 3
 fi
 
@@ -59,7 +59,7 @@ if [[ "${1:-}" == "--self-test" ]]; then
   exec "${PYTHON}" "${TESTS}"
 fi
 
-# Run from the repository root so `.dragback/task` and `.dragback/attach`
+# Run from the repository root so `.writai/task` and `.writai/attach`
 # resolve the way they do for a session started at the top of the checkout.
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
@@ -72,17 +72,17 @@ case "${STATUS}" in
   0) ;;
   1)
     echo >&2
-    echo "dragback: this branch is not authorized to merge. Re-plan against the" >&2
+    echo "writai: this branch is not authorized to merge. Re-plan against the" >&2
     echo "          line above, or re-authorize the workspace, then run this again." >&2
     ;;
   2)
     echo >&2
-    echo "dragback: could not reach the agent service, so authorization could not" >&2
-    echo "          be established. Start it (make agent) or set DRAGBACK_AGENT_URL." >&2
+    echo "writai: could not reach the agent service, so authorization could not" >&2
+    echo "          be established. Start it (make agent) or set WRITAI_AGENT_URL." >&2
     ;;
   3)
     echo >&2
-    echo "dragback: the check could not run. See the message above." >&2
+    echo "writai: the check could not run. See the message above." >&2
     ;;
 esac
 

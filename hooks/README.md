@@ -1,30 +1,30 @@
-# Dragback Claude Code hooks
+# writ.ai Claude Code hooks
 
-Three small, standard-library-only command hooks — `dragback_session_start.py`,
-`dragback_pre_tool_use.py` and `dragback_session_end.py` — over one shared
-`dragback_hook_lib.py`.
+Three small, standard-library-only command hooks — `writai_session_start.py`,
+`writai_pre_tool_use.py` and `writai_session_end.py` — over one shared
+`writai_hook_lib.py`.
 
 Install all four files at an organisation-controlled path such as
-`/opt/dragback/hooks/`, then install `managed-settings.example.json` through
+`/opt/writai/hooks/`, then install `managed-settings.example.json` through
 Claude Code's managed-settings mechanism. The example sets
 `allowManagedHooksOnly: true`, so project and user settings cannot replace or
 remove the managed hooks. Change the command paths if your managed installation
 uses another location.
 
-The entry scripts import `dragback_hook_lib` from their own directory, so keep
+The entry scripts import `writai_hook_lib` from their own directory, so keep
 the four files together.
 
 The hook reads these environment variables:
 
-- `DRAGBACK_HOOK_ENDPOINT` — defaults to
+- `WRITAI_HOOK_ENDPOINT` — defaults to
   `http://localhost:8002/supervisor/sessions`.
-- `DRAGBACK_HOOK_API_KEY` — required. The hook sends this per-developer token
-  only in the `X-Dragback-Hook-API-Key` header; it never writes it to the
+- `WRITAI_HOOK_API_KEY` — required. The hook sends this per-developer token
+  only in the `X-writ.ai-Hook-API-Key` header; it never writes it to the
   verdict cache or JSON payload.
-- `DRAGBACK_HOOK_TIMEOUT_SECONDS` — defaults to 3 seconds and must be at most
+- `WRITAI_HOOK_TIMEOUT_SECONDS` — defaults to 3 seconds and must be at most
   30 seconds.
-- `DRAGBACK_HOOK_CACHE_PATH` — defaults to
-  `.dragback/hook-verdict-cache.json`, resolved against the session cwd.
+- `WRITAI_HOOK_CACHE_PATH` — defaults to
+  `.writai/hook-verdict-cache.json`, resolved against the session cwd.
 
 Privacy is enforced in code: `PreToolUse` sends only `session_id`, `tool_name`,
 and a UTC timestamp. It does not send `tool_input`, `cwd`, transcript paths, or

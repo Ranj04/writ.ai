@@ -20,7 +20,7 @@ The web approval screen and the CLI show the same five blocks in the same order:
 This is the most-read text in the demo, and it is read by **both the developer and the model**, so it has to be human-scannable and instruction-clear at once. Budget ~400 characters of the 10,000 available; the cap is not a target.
 
 ```
-  ⏹  DRAGBACK — the decision behind this task changed
+  ⏹  WRITAI — the decision behind this task changed
 
      Approved by Dana Kaur (Compliance) 2 minutes ago:
      "exports must be admin-only, effective immediately"
@@ -30,14 +30,14 @@ This is the most-read text in the demo, and it is read by **both the developer a
      Now required   admin-only check, unauthorized-access test
 
      Why  DEC-018 → SPEC-101 → TICKET-101 → TASK-102 → this session
-          dragback why
+          writai why
 ```
 
 Lead with what survived, not what died. "Still valid" first is the difference between an agent that adapts and an agent that starts over.
 
 ---
 
-## 2. `dragback approve` — Lane B
+## 2. `writai approve` — Lane B
 
 ```
   Extracted from #compliance · Dana Kaur · 2:41 PM
@@ -71,7 +71,7 @@ The blast radius must come from the server's `preview()`. Never compute it in th
 
 ---
 
-## 3. `dragback why` — Lane A
+## 3. `writai why` — Lane A
 
 ```
   Your agent changed direction 40 seconds ago.
@@ -95,7 +95,7 @@ The two-column ending — invalidated beside still-valid — is the product. Do 
 
 ---
 
-## 4. `dragback status` — Lane A
+## 4. `writai status` — Lane A
 
 ```
   5 sessions · graph-v18

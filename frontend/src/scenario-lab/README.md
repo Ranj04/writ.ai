@@ -1,6 +1,6 @@
 # Examples UI
 
-`ScenarioLab` is the internal component name for Dragback's seeded Examples.
+`ScenarioLab` is the internal component name for writ.ai's seeded Examples.
 It does not traverse the graph, compute verdicts, sign grants, or infer expected
 results in the browser.
 

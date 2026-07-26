@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
-from dragback import config
-from dragback import runtime as runtime_module
-from dragback.domain import Artifact, Edge
-from dragback.graph.memory import MemoryGraphStore
-from dragback.services import agent_api
+from writai import config
+from writai import runtime as runtime_module
+from writai.domain import Artifact, Edge
+from writai.graph.memory import MemoryGraphStore
+from writai.services import agent_api
 
 
 class ResetTrackingStore(MemoryGraphStore):
@@ -30,7 +30,7 @@ def test_notification_settings_expose_safe_local_and_durable_controls() -> None:
         public_base_url="http://localhost:8001",
         approval_link_secret="a-distinct-test-secret",
         approval_link_ttl_seconds=900,
-        approval_link_store=".dragback/approval-link-uses.json",
+        approval_link_store=".writai/approval-link-uses.json",
         approval_recipient_bindings=None,
         ntfy_server="https://ntfy.sh",
         ntfy_topic=None,
@@ -43,7 +43,7 @@ def test_notification_settings_expose_safe_local_and_durable_controls() -> None:
     assert configured.public_base_url == "http://localhost:8001"
     assert configured.approval_link_ttl_seconds == 900
     assert configured.approval_link_store == (
-        ".dragback/approval-link-uses.json"
+        ".writai/approval-link-uses.json"
     )
     assert configured.approval_recipient_bindings is None
     assert configured.ntfy_server == "https://ntfy.sh"
@@ -60,9 +60,9 @@ def test_neo4j_never_enables_destructive_reset_by_default(environment: str) -> N
 
 
 def test_explicit_reset_flag_can_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DRAGBACK_DEMO_RESET_ENABLED", "true")
+    monkeypatch.setenv("WRITAI_DEMO_RESET_ENABLED", "true")
 
-    assert config._env_flag("DRAGBACK_DEMO_RESET_ENABLED", False) is True
+    assert config._env_flag("WRITAI_DEMO_RESET_ENABLED", False) is True
 
 
 @pytest.mark.parametrize(

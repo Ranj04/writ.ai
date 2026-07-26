@@ -195,7 +195,7 @@ describe("Live Workspace API mapping", () => {
     const workspace = mapLiveWorkspace(RAW_WORKSPACE);
 
     expect(workspace.supervisor).toMatchObject({
-      name: "Dragback Supervisor",
+      name: "writ.ai Supervisor",
       state: "interrupting",
       adapter: "fixture-agent-runtime",
       executionMode: "simulated",

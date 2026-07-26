@@ -21,7 +21,7 @@ export function ApprovalsHeader({ view }: { view: "approvals" | "why" }) {
   return (
     <header className="ap-header">
       <a className="ap-wordmark" href="/">
-        Dragback
+        writ.ai
       </a>
 
       <nav className="ap-header__nav" aria-label="Primary navigation">

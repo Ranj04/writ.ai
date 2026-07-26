@@ -3,23 +3,23 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from dragback.authority.engine import IntentAuthority
-from dragback.domain import (
+from writai.authority.engine import IntentAuthority
+from writai.domain import (
     ApprovalStatus,
     Artifact,
     ArtifactKind,
     DecisionMutation,
 )
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.grants import GrantSigner
-from dragback.graph.memory import MemoryGraphStore
-from dragback.intake.decisions import (
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.grants import GrantSigner
+from writai.graph.memory import MemoryGraphStore
+from writai.intake.decisions import (
     DecisionDraftError,
     build_workspace_proposal,
     select_seeded_supersession_root,
     select_supersession_target,
 )
-from dragback.llm.extractor import (
+from writai.llm.extractor import (
     DecisionExtractionCandidate,
     EvidenceSpan,
 )

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from dragback.domain import ApprovalStatus, Artifact, ArtifactKind
-from dragback.hashing import stable_hash
+from writai.domain import ApprovalStatus, Artifact, ArtifactKind
+from writai.hashing import stable_hash
 
 
 def _decision(scopes: set[str]) -> Artifact:

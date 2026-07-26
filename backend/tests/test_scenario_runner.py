@@ -1,26 +1,26 @@
 from __future__ import annotations
 
 import pytest
-from dragback.domain import (
+from writai.domain import (
     GrantVerificationRequest,
     LoopState,
     ValidityStatus,
     Verdict,
     VerificationCode,
 )
-from dragback.scenarios import get_scenario
-from dragback.scenarios.authority_contexts import (
+from writai.scenarios import get_scenario
+from writai.scenarios.authority_contexts import (
     ScenarioAuthorityContextNotFound,
     ScenarioAuthorityContextRegistry,
 )
-from dragback.scenarios.run_models import (
+from writai.scenarios.run_models import (
     ScenarioCorrectiveActionLifecycle,
     ScenarioExecutionResult,
     ScenarioResultStatus,
     ScenarioStage,
     ScenarioTaskExpectedStatus,
 )
-from dragback.scenarios.runner import ScenarioRunner
+from writai.scenarios.runner import ScenarioRunner
 
 
 class InProcessScenarioTransport:
@@ -66,7 +66,7 @@ class InProcessScenarioTransport:
             reason=verification.reason,
             verification_code=verification.code,
             pull_request_url=(
-                "https://example.invalid/dragback/scenario-pr"
+                "https://example.invalid/writai/scenario-pr"
                 if verification.valid
                 else None
             ),

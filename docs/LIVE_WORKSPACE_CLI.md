@@ -1,6 +1,6 @@
 # Live Workspace CLI
 
-The Dragback CLI turns the Live Workspace API into an enforceable terminal and CI
+The writ.ai CLI turns the Live Workspace API into an enforceable terminal and CI
 workflow. It imports user-owned YAML or JSON, requests real snapshot-bound
 authorizations, and exits nonzero when the executor rejects a stored grant.
 
@@ -16,32 +16,32 @@ The CLI uses `http://127.0.0.1:8002` by default. Point it at another agent servi
 with either option:
 
 ```bash
-export DRAGBACK_AGENT_URL=https://dragback-agent.example.com
-dragback workspace list
+export WRITAI_AGENT_URL=https://writai-agent.example.com
+writai workspace list
 
-dragback --agent-url https://dragback-agent.example.com workspace list
+writai --agent-url https://writai-agent.example.com workspace list
 ```
 
 `--agent-url`, `--timeout`, and `--json` may appear before or after a workspace
 command.
 
-## Run Codex or Claude Code under Dragback
+## Run Codex or Claude Code under writ.ai
 
 The agent wrapper connects an ordinary developer CLI to one task assignment:
 
 ```bash
-dragback agent run --workspace voyagr-reservation \
+writai agent run --workspace voyagr-reservation \
   --task TASK-CALL-GUEST \
   --provider codex \
   --cwd ./voyagr
 
-dragback agent run --workspace voyagr-reservation \
+writai agent run --workspace voyagr-reservation \
   --task TASK-CALL-GUEST \
   --provider claude-code \
   --cwd ./voyagr
 ```
 
-Dragback first reads the workspace's `supervisor.assignments`, selects the exact
+writ.ai first reads the workspace's `supervisor.assignments`, selects the exact
 task, and verifies its provider binding. An assignment whose provider is
 `generic` may be run with either supported CLI. The wrapper starts child
 processes directly, without a shell. The provider inherits the caller's terminal
@@ -55,14 +55,14 @@ claude --name RUN_ID ASSIGNMENT_PROMPT
 Provider options may be passed only after `--`:
 
 ```bash
-dragback agent run --workspace voyagr-reservation \
+writai agent run --workspace voyagr-reservation \
   --task TASK-CALL-GUEST \
   --provider codex \
   --cwd ./voyagr \
   -- --model gpt-5
 ```
 
-Options that would override Dragback's working directory, run identity, terminal
+Options that would override writ.ai's working directory, run identity, terminal
 control, or provider safety controls are rejected.
 
 After launch, the wrapper listens to
@@ -90,7 +90,7 @@ the assignment prompt nor printed.
 Use a one-shot dry run to inspect what would launch:
 
 ```bash
-dragback agent run --workspace voyagr-reservation \
+writai agent run --workspace voyagr-reservation \
   --task TASK-CALL-GUEST \
   --provider codex \
   --cwd ./voyagr \
@@ -104,7 +104,7 @@ event stream.
 
 The non-dry wrapper subscribes before launch and uses the stream's immediate
 snapshot, closing the fetch-to-subscribe race. It is a long-running supervisor:
-keep it open until Dragback reports the assignment or supervisor `completed`, or
+keep it open until writ.ai reports the assignment or supervisor `completed`, or
 stop it with Ctrl-C. A clean stream disconnect is treated as an error and the
 direct provider child is stopped. Automatic provider-exit acknowledgement and
 descendant-process-tree cleanup require a future PTY proxy and are explicitly
@@ -112,35 +112,35 @@ outside this demo cut.
 
 ## Run the practical refund example
 
-Start the three Dragback services, then run:
+Start the three writ.ai services, then run:
 
 ```bash
 # 1. Import user-owned decisions, work, provenance, and an agent plan.
-dragback workspace import examples/dragback-workspace.yaml
+writai workspace import examples/writai-workspace.yaml
 
 # 2. An authoritative role approves the proposed baseline, creating graph-v17.
-dragback workspace approve-baseline refund-operations --role finance-admin
+writai workspace approve-baseline refund-operations --role finance-admin
 
 # 3. Authorize the initial plan against graph-v17.
-dragback workspace authorize refund-operations
+writai workspace authorize refund-operations
 
 # 4. Propose and approve a new upstream decision, creating graph-v18.
-dragback workspace propose-change refund-operations examples/dragback-change.yaml
-dragback workspace approve-change \
+writai workspace propose-change refund-operations examples/writai-change.yaml
+writai workspace approve-change \
   refund-operations DEC-REFUND-002 --role finance-admin
 
 # 5. The old graph-v17 grant is now rejected. This command exits 1.
-dragback workspace verify refund-operations --grant initial
+writai workspace verify refund-operations --grant initial
 
 # 6. Store the corrected plan and request its replacement authorization.
-dragback workspace update-plan \
-  refund-operations examples/dragback-corrected-plan.json
+writai workspace update-plan \
+  refund-operations examples/writai-corrected-plan.json
 
 # 7. The executor accepts the graph-v18 replacement grant.
-dragback workspace verify refund-operations --grant replacement
+writai workspace verify refund-operations --grant replacement
 ```
 
-The decision change never names `PAY-104`. Dragback reaches it through the
+The decision change never names `PAY-104`. writ.ai reaches it through the
 decision → specification → ticket provenance chain. The calculation task remains
 valid because its scope does not intersect the changed execution policy; the
 automatic issue-refund task is invalidated.
@@ -152,17 +152,17 @@ whether that replacement is allowed.
 ## Commands
 
 ```text
-dragback workspace import FILE
-dragback workspace list
-dragback workspace show WORKSPACE_ID
-dragback workspace approve-baseline WORKSPACE_ID --role ROLE
-dragback workspace authorize WORKSPACE_ID
-dragback workspace propose-change WORKSPACE_ID FILE
-dragback workspace approve-change WORKSPACE_ID DECISION_ID --role ROLE
-dragback workspace cancel-change WORKSPACE_ID
-dragback workspace verify WORKSPACE_ID [--grant initial|replacement]
-dragback workspace update-plan WORKSPACE_ID FILE
-dragback agent run --workspace WORKSPACE_ID --task TASK_ID \
+writai workspace import FILE
+writai workspace list
+writai workspace show WORKSPACE_ID
+writai workspace approve-baseline WORKSPACE_ID --role ROLE
+writai workspace authorize WORKSPACE_ID
+writai workspace propose-change WORKSPACE_ID FILE
+writai workspace approve-change WORKSPACE_ID DECISION_ID --role ROLE
+writai workspace cancel-change WORKSPACE_ID
+writai workspace verify WORKSPACE_ID [--grant initial|replacement]
+writai workspace update-plan WORKSPACE_ID FILE
+writai agent run --workspace WORKSPACE_ID --task TASK_ID \
   --provider {codex,claude-code} [--cwd DIRECTORY] [--dry-run] \
   [--interrupt-timeout SECONDS] [-- PROVIDER_ARGS...]
 ```
@@ -187,7 +187,7 @@ replace the existing initial authorization.
 This makes verification usable as a CI gate:
 
 ```bash
-dragback workspace verify refund-operations --grant initial
+writai workspace verify refund-operations --grant initial
 ```
 
 ## GitHub Actions
@@ -195,10 +195,10 @@ dragback workspace verify refund-operations --grant initial
 The repository includes a composite action:
 
 ```yaml
-- name: Verify Dragback authorization
-  uses: Eman-Gon/lookback/.github/actions/dragback-verify@main
+- name: Verify writ.ai authorization
+  uses: Ranj04/writ.ai/.github/actions/writai-verify@main
   with:
-    agent-url: ${{ secrets.DRAGBACK_AGENT_URL }}
+    agent-url: ${{ secrets.WRITAI_AGENT_URL }}
     workspace-id: refund-operations
     grant: initial
 ```
@@ -222,7 +222,7 @@ The CLI is a client, not an authority:
 - `--role` represents the prototype's explicit approval actor. Production
   deployments should derive that role from authenticated identity instead.
 
-## `dragback dev` — the developer's side
+## `writai dev` — the developer's side
 
 The `dev` group is what a teammate running Claude Code uses. It binds a working
 directory to one assignment, shows what the supervisor believes about every
@@ -231,26 +231,26 @@ decides nothing: the agent service does.
 
 ```bash
 # Bind this repository checkout to one assignment. Local file only, no HTTP.
-dragback dev attach ASSIGNMENT-TASK-102 --workspace refund-operations
+writai dev attach ASSIGNMENT-TASK-102 --workspace refund-operations
 
-# Every registered session, including the ones Dragback could not bind.
-dragback dev status [--workspace refund-operations]
+# Every registered session, including the ones writ.ai could not bind.
+writai dev status [--workspace refund-operations]
 
 # Why this session was interrupted: the path, the scopes, the evidence.
-dragback dev why [SESSION_ID] [--workspace refund-operations]
+writai dev why [SESSION_ID] [--workspace refund-operations]
 
 # Acknowledge the decision that is denying this session outright.
-dragback dev ack SESSION_ID
+writai dev ack SESSION_ID
 
 # Follow supervisor transitions for a workspace as they happen.
-dragback dev watch refund-operations
+writai dev watch refund-operations
 ```
 
-`attach` writes the assignment id to `.dragback/attach` in the current directory,
-creating `.dragback/` if needed, and prints the path. The `SessionStart` hook
+`attach` writes the assignment id to `.writai/attach` in the current directory,
+creating `.writai/` if needed, and prints the path. The `SessionStart` hook
 reports that file; the service, not the CLI, resolves the binding from it.
 
-`status` prints `SESSION`, `TASK`, `SOURCE`, `STATE`. A session Dragback could
+`status` prints `SESSION`, `TASK`, `SOURCE`, `STATE`. A session writ.ai could
 not bind is listed with `unbound` in its task and source columns and counted in a
 closing line — it is registered, allowed everything, and unenforced, and hiding it
 would turn a visible gap into a silent one. `--workspace` narrows the bound rows

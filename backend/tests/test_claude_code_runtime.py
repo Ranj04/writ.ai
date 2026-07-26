@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from dragback.domain import (
+from writai.domain import (
     AgentPlan,
     Artifact,
     ArtifactKind,
@@ -10,16 +10,16 @@ from dragback.domain import (
     InvalidationReport,
     PlanAction,
 )
-from dragback.supervisor_contract import (
+from writai.supervisor_contract import (
     InterruptRequest,
     InterruptResult,
     SupervisorInterruptPort,
 )
-from dragback.workspaces.interrupt_port import WorkspaceSupervisorInterruptPort
-from dragback.workspaces.models import LiveWorkspaceRecord
-from dragback.workspaces.repository import LiveWorkspaceNotFound
-from dragback.workspaces.runtimes.claude_code import ClaudeCodeSupervisorRuntime
-from dragback.workspaces.supervisor import (
+from writai.workspaces.interrupt_port import WorkspaceSupervisorInterruptPort
+from writai.workspaces.models import LiveWorkspaceRecord
+from writai.workspaces.repository import LiveWorkspaceNotFound
+from writai.workspaces.runtimes.claude_code import ClaudeCodeSupervisorRuntime
+from writai.workspaces.supervisor import (
     FixtureSupervisorRuntime,
     SupervisorAssignmentState,
     SupervisorExecutionMode,

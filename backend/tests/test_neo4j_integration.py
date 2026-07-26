@@ -5,17 +5,17 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from dragback.authority.engine import IntentAuthority
-from dragback.domain import Artifact, Edge, Verdict
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.grants import GrantSigner
-from dragback.graph.base import GraphStore
-from dragback.graph.memory import MemoryGraphStore
-from dragback.graph.neo4j_store import Neo4jGraphStore
+from writai.authority.engine import IntentAuthority
+from writai.domain import Artifact, Edge, Verdict
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.grants import GrantSigner
+from writai.graph.base import GraphStore
+from writai.graph.memory import MemoryGraphStore
+from writai.graph.neo4j_store import Neo4jGraphStore
 
 pytestmark = pytest.mark.neo4j
 
-_ENABLE_ENV = "DRAGBACK_RUN_NEO4J_TESTS"
+_ENABLE_ENV = "WRITAI_RUN_NEO4J_TESTS"
 _CONNECTION_ENV = (
     "NEO4J_URI",
     "NEO4J_USERNAME",

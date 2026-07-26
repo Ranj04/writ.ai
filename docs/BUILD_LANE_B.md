@@ -73,7 +73,7 @@ Do not build Block Kit buttons in v1 — the click POSTs to *your* endpoint, whi
 ### Calling Lane A
 
 ```python
-from dragback.supervisor_contract import InterruptRequest, SupervisorInterruptPort
+from writai.supervisor_contract import InterruptRequest, SupervisorInterruptPort
 
 preview = port.preview(request)     # blast radius for the confirmation screen — no mutation
 result  = port.interrupt(request)   # on approval
@@ -97,7 +97,7 @@ for wt in ../db-b3 ../db-b5; do
   ( export CODEX_HOME="$HOME/.codex-$(basename "$wt")"
     mkdir -p "$CODEX_HOME"                     # NOT auto-created; codex hard-fails otherwise
     codex exec -m gpt-5.6-sol -s workspace-write -C "$wt" \
-      --json -o "$wt/.codex-last.md" "$(cat ~/dragback-prompts/$(basename "$wt").md)" \
+      --json -o "$wt/.codex-last.md" "$(cat ~/writai-prompts/$(basename "$wt").md)" \
       < /dev/null > "/tmp/$(basename "$wt").ndjson" 2>&1 ) &
 done
 wait

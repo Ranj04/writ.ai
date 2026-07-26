@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only helpers for the Dragback demo launcher.
+"""Read-only helpers for the writ.ai demo launcher.
 
 Standard library only, and written for Python 3.9 so it runs on a stock macOS
 system python when the repo's .venv is absent. It reads the running services and
@@ -62,9 +62,9 @@ def get_json(url):
     # disclose which machines are running which task. Without this header
     # `GET /supervisor/sessions` answers 401 and the readiness check reports
     # "did not answer with a session list" for a service that is working fine.
-    hook_api_key = (os.environ.get("DRAGBACK_HOOK_API_KEY") or "").strip()
+    hook_api_key = (os.environ.get("WRITAI_HOOK_API_KEY") or "").strip()
     if hook_api_key:
-        request.add_header("X-Dragback-Hook-API-Key", hook_api_key)
+        request.add_header("X-writ.ai-Hook-API-Key", hook_api_key)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             body = response.read().decode("utf-8", "replace")
@@ -519,18 +519,18 @@ def command_settings(argv):
             "SessionStart": [
                 {
                     "matcher": "startup|resume|clear|compact|fork",
-                    "hooks": hook("dragback_session_start.py"),
+                    "hooks": hook("writai_session_start.py"),
                 }
             ],
             "PreToolUse": [
-                {"matcher": "*", "hooks": hook("dragback_pre_tool_use.py")}
+                {"matcher": "*", "hooks": hook("writai_pre_tool_use.py")}
             ],
-            "SessionEnd": [{"hooks": hook("dragback_session_end.py")}],
+            "SessionEnd": [{"hooks": hook("writai_session_end.py")}],
         }
     settings["env"] = {
-        "DRAGBACK_HOOK_ENDPOINT": "%s/supervisor/sessions" % agent_url.rstrip("/"),
-        "DRAGBACK_HOOK_TIMEOUT_SECONDS": "3",
-        "DRAGBACK_HOOK_CACHE_PATH": cache_path,
+        "WRITAI_HOOK_ENDPOINT": "%s/supervisor/sessions" % agent_url.rstrip("/"),
+        "WRITAI_HOOK_TIMEOUT_SECONDS": "3",
+        "WRITAI_HOOK_CACHE_PATH": cache_path,
     }
     # The service authenticates every session route and fails closed with 503
     # HOOK_AUTHENTICATION_NOT_CONFIGURED when no key is set. Without this the
@@ -545,9 +545,9 @@ def command_settings(argv):
     # lib.sh resolves the key from the shell or .env before falling back to the
     # local demo default, so the value written here may be a real per-developer
     # token. Hence 0600 below -- assume it IS a secret.
-    hook_api_key = (os.environ.get("DRAGBACK_HOOK_API_KEY") or "").strip()
+    hook_api_key = (os.environ.get("WRITAI_HOOK_API_KEY") or "").strip()
     if hook_api_key:
-        settings["env"]["DRAGBACK_HOOK_API_KEY"] = hook_api_key
+        settings["env"]["WRITAI_HOOK_API_KEY"] = hook_api_key
     try:
         with open(dest, "w", encoding="utf-8") as handle:
             json.dump(settings, handle, indent=2)

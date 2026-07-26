@@ -1,6 +1,6 @@
 # Demo launcher
 
-Stage machinery for the five-session Dragback demo. Bash plus the Python
+Stage machinery for the five-session writ.ai demo. Bash plus the Python
 standard library; `tmux`, `jq` and `screencapture` are used when present and
 never required.
 
@@ -14,8 +14,8 @@ scripts/demo/up.sh             # arms 5 sessions, then stops. Fires nothing.
 scripts/demo/check.sh          # green/red readiness. Exits non-zero only on red.
 #   ... talk over the armed sessions ...
 scripts/demo/fire.sh           # the only script that changes the graph
-dragback dev status            # 3 interrupted, 2 continuing
-dragback dev why <session-id>  # the path from the decision to that person's task
+writai dev status            # 3 interrupted, 2 continuing
+writai dev why <session-id>  # the path from the decision to that person's task
 scripts/demo/ack.sh            # the human beat: releases the blocked sessions
 #   ... the three agents rewrite their own work to admin-only ...
 ```
@@ -30,8 +30,8 @@ scripts/demo/fallback.sh       # newest recording, full screen, one keystroke
 
 | Script | Job |
 |---|---|
-| `reset.sh` | Stops sessions, recorder and services, removes the demo directories, clears `.dragback/` state. Idempotent. `--recordings` also deletes the backups. |
-| `up.sh` | Starts the three services, seeds the workspace, creates one directory per session with its `.dragback/task` and hook config, launches a Claude Code session in each, and **stops**. `--sessions N`, `--record`, `--no-agents`. |
+| `reset.sh` | Stops sessions, recorder and services, removes the demo directories, clears `.writai/` state. Idempotent. `--recordings` also deletes the backups. |
+| `up.sh` | Starts the three services, seeds the workspace, creates one directory per session with its `.writai/task` and hook config, launches a Claude Code session in each, and **stops**. `--sessions N`, `--record`, `--no-agents`. |
 | `check.sh` | The readiness checklist. One short line per item. Hard-fails red on an unbound session, an assignment whose snapshot does not match the graph, and an assignment whose deny is already spent — the three states that make a rehearsal silently do nothing. |
 | `fire.sh` | Proposes and approves `DEC-018`. `--yes` skips the confirmation. |
 | `ack.sh` | Acknowledges the sessions the service reports as blocked, so they can correct their own work. Never called by `up.sh` or `fire.sh` — it is a person's decision. |
@@ -41,9 +41,9 @@ scripts/demo/fallback.sh       # newest recording, full screen, one keystroke
 
 ## Session isolation
 
-If the **Superset** CLI is on `PATH` and `DRAGBACK_DEMO_SUPERSET_PROJECT` names a
+If the **Superset** CLI is on `PATH` and `WRITAI_DEMO_SUPERSET_PROJECT` names a
 project, each session gets its own Superset workspace — an isolated git worktree
-on its own branch (`dragback-demo/session-N-TASK-2xx`), which is what makes five
+on its own branch (`writai-demo/session-N-TASK-2xx`), which is what makes five
 parallel agents manageable on one machine. `reset.sh` removes them with
 `superset workspaces delete`, never `rm -rf`: Superset owns those paths.
 
@@ -57,11 +57,11 @@ agent itself and bypass this launcher's hook config and canned prompt.
 
 ## Where things live
 
-- Session directories: a Superset worktree, or `../dragback-demo/session-N`,
+- Session directories: a Superset worktree, or `../writai-demo/session-N`,
   **outside the repository**
-  so a demo agent does not inherit Dragback's own `CLAUDE.md`. Override with
-  `DRAGBACK_DEMO_ROOT`. `reset.sh` only deletes a tree carrying the
-  `.dragback-demo-root` marker `up.sh` wrote.
+  so a demo agent does not inherit writ.ai's own `CLAUDE.md`. Override with
+  `WRITAI_DEMO_ROOT`. `reset.sh` only deletes a tree carrying the
+  `.writai-demo-root` marker `up.sh` wrote.
 - Service logs and session transcripts: `scripts/demo/logs/`.
 - Run state and the session manifest: `scripts/demo/state/`.
 - Backups: `scripts/demo/recordings/` (git-ignored).
@@ -110,7 +110,7 @@ Prompts are matched to tasks by the task's position in the seeded graph, so
   `claude -p` print mode in the background and log to
   `scripts/demo/logs/session-N.log`; a print-mode log only fills in when the
   session finishes, so during a run the live evidence is `progress.log` inside
-  each session directory plus `dragback dev status`.
+  each session directory plus `writai dev status`.
 - **Every rehearsal re-triggers Claude Code's folder-trust prompt** in each agent
   pane, because `reset.sh` deletes the session directories and `up.sh` recreates
   them. A person has to answer it — `up.sh` prints a ready-made
@@ -129,10 +129,10 @@ Prompts are matched to tasks by the task's position in the seeded graph, so
   makes Claude Code report a hook error on *every* tool call, which bricks the
   session rather than degrading it.
 - **A print-mode session that gives up releases its binding** through the
-  `SessionEnd` hook, so after firing, `dragback dev status` shows only the
-  survivors and `dragback dev why <id>` can no longer find the interrupted
+  `SessionEnd` hook, so after firing, `writai dev status` shows only the
+  survivors and `writai dev why <id>` can no longer find the interrupted
   session. The assignment states and each session's
-  `.dragback/hook-verdict-cache.json` still carry the whole explanation. With
+  `.writai/hook-verdict-cache.json` still carry the whole explanation. With
   tmux, interactive sessions stay open and `dev why` keeps working.
 - With the shipped five-session fixture the three interrupted assignments have
   no corrected plan, so the verdict endpoint denies them **every** time (rule 5)

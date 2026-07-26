@@ -25,7 +25,7 @@ The query string selects the opening view only; it does not bypass backend autho
 
 ## 0:00–0:25 — problem
 
-“Coding agents can write correct code from obsolete decisions. Tests tell an agent whether the code works. Dragback tells it whether the work is still wanted.”
+“Coding agents can write correct code from obsolete decisions. Tests tell an agent whether the code works. writ.ai tells it whether the work is still wanted.”
 
 ## 0:25–1:00 — initially valid run
 
@@ -104,9 +104,9 @@ Show only:
 
 ## Close
 
-“Most agent controls ask whether the agent may act. Dragback verifies whether the objective driving that action still follows from current approved company intent.”
+“Most agent controls ask whether the agent may act. writ.ai verifies whether the objective driving that action still follows from current approved company intent.”
 
-> Tests prove the code works. Dragback proves the work is still wanted.
+> Tests prove the code works. writ.ai proves the work is still wanted.
 
 ## Examples Q&A
 

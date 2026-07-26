@@ -40,22 +40,22 @@ EXECUTOR_URL="http://$STACK_HOST:$EXECUTOR_PORT"
 FRONTEND_URL="http://$STACK_HOST:$FRONTEND_PORT"
 
 STACK_BACKEND_ENV=(
-  "DRAGBACK_AUTHORITY_URL=$AUTHORITY_URL"
-  "DRAGBACK_AGENT_URL=$AGENT_URL"
-  "DRAGBACK_EXECUTOR_URL=$EXECUTOR_URL"
-  "DRAGBACK_DEMO_RESET_ENABLED=true"
+  "WRITAI_AUTHORITY_URL=$AUTHORITY_URL"
+  "WRITAI_AGENT_URL=$AGENT_URL"
+  "WRITAI_EXECUTOR_URL=$EXECUTOR_URL"
+  "WRITAI_DEMO_RESET_ENABLED=true"
 )
 
 env "${STACK_BACKEND_ENV[@]}" PYTHONPATH=backend \
-  "$STACK_PYTHON" -m uvicorn dragback.services.authority_api:app \
+  "$STACK_PYTHON" -m uvicorn writai.services.authority_api:app \
   --host "$STACK_HOST" --port "$AUTHORITY_PORT" &
 AUTHORITY_PID=$!
 env "${STACK_BACKEND_ENV[@]}" PYTHONPATH=backend \
-  "$STACK_PYTHON" -m uvicorn dragback.services.agent_api:app \
+  "$STACK_PYTHON" -m uvicorn writai.services.agent_api:app \
   --host "$STACK_HOST" --port "$AGENT_PORT" &
 AGENT_PID=$!
 env "${STACK_BACKEND_ENV[@]}" PYTHONPATH=backend \
-  "$STACK_PYTHON" -m uvicorn dragback.services.executor_api:app \
+  "$STACK_PYTHON" -m uvicorn writai.services.executor_api:app \
   --host "$STACK_HOST" --port "$EXECUTOR_PORT" &
 EXECUTOR_PID=$!
 env \
@@ -100,7 +100,7 @@ wait_for_url "Agent service" "$AGENT_URL/health" "$AGENT_PID"
 wait_for_url "Executor" "$EXECUTOR_URL/health" "$EXECUTOR_PID"
 wait_for_url "Frontend" "$FRONTEND_URL/" "$FRONTEND_PID"
 
-echo "Dragback is ready: $FRONTEND_URL/"
+echo "writ.ai is ready: $FRONTEND_URL/"
 
 while true; do
   for process in \

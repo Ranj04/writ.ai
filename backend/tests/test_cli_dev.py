@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 import pytest
-from dragback.cli import run
+from writai.cli import run
 
 WORKSPACE_ID = "refund-operations"
 SESSION_ID = "SESSION-7f2a"
@@ -117,7 +117,7 @@ def test_attach_writes_the_local_file_without_any_http_call(
         transport=httpx.MockTransport(_never_called),
     )
 
-    attach_file = tmp_path / ".dragback" / "attach"
+    attach_file = tmp_path / ".writai" / "attach"
     assert exit_code == 0
     assert attach_file.read_text(encoding="utf-8") == f"{ASSIGNMENT_ID}\n"
     output = capsys.readouterr().out
@@ -138,7 +138,7 @@ def test_attach_rejects_a_control_character_identifier(
     )
 
     assert exit_code == 2
-    assert not (tmp_path / ".dragback").exists()
+    assert not (tmp_path / ".writai").exists()
     assert "INVALID_ASSIGNMENT_ID" in capsys.readouterr().err
 
 

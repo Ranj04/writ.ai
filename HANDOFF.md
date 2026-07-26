@@ -19,7 +19,7 @@ TASK-201  continuing   snap=graph-v17  enforced=False   <- never touched
 TASK-203  redirected   snap=graph-v18  enforced=True    <- denied once
 ```
 
-Sara (export.generation) finished her CSV quoting work with zero Dragback
+Sara (export.generation) finished her CSV quoting work with zero writ.ai
 involvement. Priya (export.authorization) was blocked on her first tool call,
 quoted the chain `DEC-018 → DEC-004 → SPEC-009 → TICKET-100 → TASK-203 →
 PLAN-027 → this session`, **declined to route around the hook**, and proposed the
@@ -34,8 +34,8 @@ claim: the agent adapted, it did not restart.
 |---|---|---|
 | Survivor proof, two live sessions | **Done, verified causally** | commit `e9db2fe` |
 | Demo seeder, one command, 5× clean | **Done** | `scripts/demo/seed.py` |
-| A5 dev CLI (`attach`/`status`/`why`/`ack`/`watch`) | **Working end to end** against a live server | `backend/dragback/cli_dev.py` |
-| A6 desktop notification on deny | Done, 6 tests | `hooks/dragback_hook_lib.py` |
+| A5 dev CLI (`attach`/`status`/`why`/`ack`/`watch`) | **Working end to end** against a live server | `backend/writai/cli_dev.py` |
+| A6 desktop notification on deny | Done, 6 tests | `hooks/writai_hook_lib.py` |
 | Hook hardening: cache, timeout, deny-on-error, privacy test | Done, 53 tests | `hooks/` |
 | `managed-settings.example.json` with `allowManagedHooksOnly: true` | Done | `hooks/` |
 | Stage runbook | Done | `docs/STAGE_RUNBOOK.md` |
@@ -46,14 +46,14 @@ claim: the agent adapted, it did not restart.
 
 ## What did not ship, and why
 
-1. **`dragback dev status`, `dev why` AND `dev ack` do not work against the
+1. **`writai dev status`, `dev why` AND `dev ack` do not work against the
    merged service.** (`dev ack` was missed in the overnight pass; the
    cross-check caught it.) Both call `GET /supervisor/sessions`. Lane B's router exposes only
    `POST /start`, `/{id}/check`, `/{id}/end`, `/{id}/acknowledge` — there is no
    session-list route. I did not add one: that is Lane B's file. Their logic and
    rendering are fully covered against a mock transport, so they work the moment
    the route exists. **Smallest fix: ~5 lines returning `registry.list()`.**
-2. **Two hook implementations coexist.** Mine (`hooks/dragback_*.py`, proven
+2. **Two hook implementations coexist.** Mine (`hooks/writai_*.py`, proven
    tonight, 53 tests) and Lane B's `hooks/claude_code_hook.py` (untested by me).
    Pick one before the demo. I did not delete theirs.
 3. **The seeder bypasses channel authentication.** See ASSUMPTIONS A-5. It does
@@ -68,16 +68,16 @@ claim: the agent adapted, it did not restart.
 PYTHONPATH=backend .venv/bin/python -m pytest
 
 # seed + serve  (wait for "agent service listening")
-DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1 \
+WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 \
   PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py --serve
 
 # re-seed between rehearsals — REQUIRED, see below
-DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1 \
+WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 \
   PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py
 
 # two-terminal demo
-cd /tmp/dragback-stage/sara  && claude "$(cat PROMPT.txt)"   # survives
-cd /tmp/dragback-stage/priya && claude "$(cat PROMPT.txt)"   # denied once
+cd /tmp/writai-stage/sara  && claude "$(cat PROMPT.txt)"   # survives
+cd /tmp/writai-stage/priya && claude "$(cat PROMPT.txt)"   # denied once
 ```
 
 Full detail, including the pre-flight check and troubleshooting, is in
@@ -92,7 +92,7 @@ Full detail, including the pre-flight check and troubleshooting, is in
 ### The frozen seam — unchanged
 
 ```python
-# backend/dragback/supervisor_contract.py
+# backend/writai/supervisor_contract.py
 port.preview(request: InterruptRequest) -> InterruptResult    # never mutates
 port.interrupt(request: InterruptRequest) -> InterruptResult  # idempotent per decision_id
 ```
@@ -120,10 +120,10 @@ My hook now speaks Lane B's routes:
 | PreToolUse | `POST {base}/{session_id}/check` | `{session_id, tool_name, timestamp}` |
 | SessionEnd | `POST {base}/{session_id}/end` | `{session_id}` |
 
-`base` = `DRAGBACK_HOOK_ENDPOINT`, default
+`base` = `WRITAI_HOOK_ENDPOINT`, default
 `http://localhost:8002/supervisor/sessions`. Auth header is
-**`X-Dragback-Hook-API-Key`** — the service fails closed (503
-`HOOK_AUTHENTICATION_NOT_CONFIGURED`) if `DRAGBACK_HOOK_API_KEY` is unset on
+**`X-writ.ai-Hook-API-Key`** — the service fails closed (503
+`HOOK_AUTHENTICATION_NOT_CONFIGURED`) if `WRITAI_HOOK_API_KEY` is unset on
 either side.
 
 `timestamp` must be **timezone-aware**; the service rejects naive ones.
@@ -131,9 +131,9 @@ either side.
 **Privacy:** the PreToolUse body is a closed set of exactly three keys.
 `tool_input`, file contents, `transcript_path`, `permission_mode` and `cwd` never
 leave the machine **on that call**. SessionStart is the one exception: it sends
-`cwd` and `branch` once so the service can read `.dragback/task` itself,
+`cwd` and `branch` once so the service can read `.writai/task` itself,
 and marker-file *contents* are no longer transmitted at all — the service reads
-`.dragback/task` itself. Asserted against bytes on a real socket by
+`.writai/task` itself. Asserted against bytes on a real socket by
 `test_no_secret_appears_in_the_bytes_actually_transmitted`.
 
 ---
@@ -144,7 +144,7 @@ and marker-file *contents* are no longer transmitted at all — the service read
    `dev ack`'s own route was also wrong (`/ack` vs the service's `/acknowledge`)
    and is now fixed, but it still needs the session list to resolve which
    decision it is releasing.
-2. **Two hook implementations.** Mine (`hooks/dragback_*.py`) and Lane B's
+2. **Two hook implementations.** Mine (`hooks/writai_*.py`) and Lane B's
    `hooks/claude_code_hook.py`. Pick one.
 3. **A service restart denies every open session, survivors included.** The
    session registry is in-memory (`agent_api.py`), so after a restart every
@@ -154,11 +154,11 @@ and marker-file *contents* are no longer transmitted at all — the service read
 4. **A missing assignment denies until acknowledged, and acknowledging it
    raises.** `session_enforcement._deny_for_missing_assignment` has no release
    path when the assignment is gone. Lane B's file; not fixed here.
-5. **The seeder reads `.dragback/task` server-side**, so the service must share a
+5. **The seeder reads `.writai/task` server-side**, so the service must share a
    filesystem with the sessions. True on one demo machine; not if remote.
-6. **`dragback` is not on PATH** in a stage session. Packaging decision.
+6. **`writai` is not on PATH** in a stage session. Packaging decision.
 7. **Unbound sessions are allowed everything and look identical to success.**
-   The sharpest demo risk. Confirm `.dragback/task` exists and the port matches
+   The sharpest demo risk. Confirm `.writai/task` exists and the port matches
    before judging a run.
 8. **The JSON store is single-writer.** Two agent services over one store can
    lose an interrupt. Pre-existing.

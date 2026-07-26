@@ -8,7 +8,7 @@ why that answer is the conservative one. Branch `lane-c-demo`, worktree
 
 ## 1. Where the work lives
 
-**Question.** Lane C was built earlier in the shared `DragBack` working tree,
+**Question.** Lane C was built earlier in the shared `writ.ai` working tree,
 before the overnight rule to stay on my own branch. Move it, copy it, or leave it?
 
 **Assumed.** Copied `scripts/demo/` into this worktree on `lane-c-demo` and
@@ -28,7 +28,7 @@ machinery wins?
 **Assumed.** Neither copied nor modified. They are not on this branch. My scripts
 are complete and independently verified; `seed.py` is a parallel implementation
 of the same stage (same `csv-exports` workspace, same ports 8001/8002, different
-store at `/tmp/dragback-stage`, and it applies `DEC-018` as part of seeding
+store at `/tmp/writai-stage`, and it applies `DEC-018` as part of seeding
 rather than keeping arming and firing separate).
 
 **Why conservative.** "Touch only the files your lane owns" outranks the
@@ -36,14 +36,14 @@ directory claim. A human picks one in the morning. **Running both at once will
 collide on ports and bind sessions to a different store than the operator
 seeded** — flagged again in HANDOFF.md.
 
-## 3. `dragback approve --text "<message>"` does not exist
+## 3. `writai approve --text "<message>"` does not exist
 
 **Question.** `docs/BUILD_LANE_C.md` says to assume that signature and "if it
 differs, read the real one and adapt".
 
-**Assumed.** Adapted. The real surface is `dragback approve pending` /
+**Assumed.** Adapted. The real surface is `writai approve pending` /
 `approve change WS DEC --role R`, and it is a Lane B placeholder that exits 2
-with `NOT_IMPLEMENTED`. `fire.sh` therefore uses `dragback workspace
+with `NOT_IMPLEMENTED`. `fire.sh` therefore uses `writai workspace
 propose-change` + `workspace approve-change`, which work today. `check.sh`
 reports the placeholder as a warning, not a failure, so it goes green when
 Lane B lands.
@@ -52,13 +52,13 @@ Lane B lands.
 
 **Question.** Where do the five session directories go?
 
-**Assumed.** `<repo>/../dragback-demo/session-N`, overridable with
-`DRAGBACK_DEMO_ROOT`.
+**Assumed.** `<repo>/../writai-demo/session-N`, overridable with
+`WRITAI_DEMO_ROOT`.
 
-**Why conservative.** A session started inside the DragBack checkout inherits the
+**Why conservative.** A session started inside the writ.ai checkout inherits the
 repo's `CLAUDE.md` and starts reading the implementation contract instead of
 doing its canned work. `reset.sh` will only delete a tree carrying the
-`.dragback-demo-root` marker `up.sh` wrote, so a mistyped override cannot take
+`.writai-demo-root` marker `up.sh` wrote, so a mistyped override cannot take
 somebody's work with it.
 
 ## 5. Per-session hook configuration
@@ -96,15 +96,15 @@ install tmux — that is a change to the machine, not to my lane.
 ## 8. Service ports are now overridable
 
 **Question.** Other agents run on this machine all night. `reset.sh` stops
-Dragback services on 8001–8003, which could be another lane's.
+writ.ai services on 8001–8003, which could be another lane's.
 
-**Assumed.** Added `DRAGBACK_DEMO_AUTHORITY_PORT` / `_AGENT_PORT` /
+**Assumed.** Added `WRITAI_DEMO_AUTHORITY_PORT` / `_AGENT_PORT` /
 `_EXECUTOR_PORT`. **Defaults are unchanged** (8001/8002/8003), because the
 contract fixes them and the hook's default endpoint points at 8002.
 
 **Why conservative.** Six lines that let a second checkout rehearse without
 stopping the first one's services. `reset.sh` already refused to kill a process
-whose command line is not a Dragback service; this bounds the blast radius
+whose command line is not a writ.ai service; this bounds the blast radius
 further. I checked the ports were free before running anything tonight.
 
 ## 9. This worktree is based on `main`, which lacks Lane A's hooks
@@ -124,7 +124,7 @@ Evidence is quoted in HANDOFF.md. I did not merge or rebase `lane-a` in.
 **Question.** This worktree has no `.venv`, and system `python3` is 3.9 (below the
 3.11 floor).
 
-**Assumed.** Ran with `DRAGBACK_DEMO_PYTHON=/Users/ranjivj/DragBack/.venv/bin/python`.
+**Assumed.** Ran with `WRITAI_DEMO_PYTHON=/Users/ranjivj/writ.ai/.venv/bin/python`.
 `PYTHONPATH=backend` resolves to **this** worktree's backend — verified. An
 integrator working in the main checkout needs neither variable.
 
@@ -136,8 +136,8 @@ reset makes the second rehearsal silently allow.
 **Assumed.** Escalated from warning to hard failure in two places: `up.sh` now
 **exits 1** rather than arming on a fired workspace, and `check.sh` marks it
 **red**. `reset.sh` now resolves the workspace store from
-`DRAGBACK_WORKSPACE_STORE` / `.env` / the default, deletes it, names anything
-left in `.dragback/` that it does not recognise, and prints a verified line
+`WRITAI_WORKSPACE_STORE` / `.env` / the default, deletes it, names anything
+left in `.writai/` that it does not recognise, and prints a verified line
 confirming the store is gone.
 
 **Why conservative.** A demo that silently allows is indistinguishable from the

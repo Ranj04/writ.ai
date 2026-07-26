@@ -11,46 +11,46 @@ from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
 
-import dragback.services.agent_api as agent_api
-import dragback.services.authority_api as authority_api
+import writai.services.agent_api as agent_api
+import writai.services.authority_api as authority_api
 import httpx
 import pytest
-from dragback.auth.hexclave import HexclavePermissionError
-from dragback.domain import (
+from writai.auth.hexclave import HexclavePermissionError
+from writai.domain import (
     ApprovalStatus,
     Artifact,
     ArtifactKind,
     DecisionMutation,
 )
-from dragback.hashing import stable_hash
-from dragback.intake.approval import (
+from writai.hashing import stable_hash
+from writai.intake.approval import (
     ApprovalChannel,
     PendingApproval,
     actual_partition_from_workspace,
     pending_from_workspace,
 )
-from dragback.intake.slack import (
+from writai.intake.slack import (
     SlackWebhookError,
     VerifiedSlackMessage,
     VerifiedSlackReaction,
 )
-from dragback.llm.extractor import FixtureDecisionExtractor
-from dragback.notify.email import (
+from writai.llm.extractor import FixtureDecisionExtractor
+from writai.notify.email import (
     ApprovalDeliveryProvider,
     ApprovalLinkSigner,
     ChannelApprovalAssertionSigner,
 )
-from dragback.notify.slack import (
+from writai.notify.slack import (
     JsonSlackApprovalThreads,
     SlackDeliveryMode,
     SlackDeliveryReceipt,
     SlackThreadMessage,
 )
-from dragback.services.support import (
+from writai.services.support import (
     INTERNAL_SERVICE_AUTH_HEADER,
     internal_service_token,
 )
-from dragback.workspaces.models import (
+from writai.workspaces.models import (
     SlackUserIdentityBinding,
     WorkspaceApprovalPreview,
     WorkspaceApprovalRequest,
@@ -63,7 +63,7 @@ from pydantic import BaseModel
 WORKSPACE_ID = "slack-e2e"
 OTHER_WORKSPACE_ID = "slack-other"
 SLACK_TEAM_ID = "T-E2E"
-CONNECTION_USER_ID = "dragback-slack-e2e"
+CONNECTION_USER_ID = "writai-slack-e2e"
 SOURCE_CHANNEL_ID = "C-E2E"
 SOURCE_MESSAGE_TS = "1784952300.000001"
 APPROVAL_MESSAGE_TS = "1784952301.000002"
@@ -78,7 +78,7 @@ APPROVAL_RECIPIENT_BINDINGS = (
     f'"workspace_id":"{WORKSPACE_ID}",'
     '"approver_user_id":"hex-email-only",'
     '"email":"email-only@example.com",'
-    '"ntfy_topic":"dragback-7F3k9Q2mR8xP4vN6cL1s"}]}'
+    '"ntfy_topic":"writai-7F3k9Q2mR8xP4vN6cL1s"}]}'
 )
 
 
@@ -436,7 +436,7 @@ def _binding(workspace_id: str = WORKSPACE_ID) -> WorkspaceSlackBinding:
         composio_connection_user_id=(
             CONNECTION_USER_ID
             if workspace_id == WORKSPACE_ID
-            else "dragback-slack-other"
+            else "writai-slack-other"
         ),
         hexclave_team_id=f"hex-team-{workspace_id}",
         user_identities=(
@@ -676,7 +676,7 @@ def _notification_assertion(
     recipient_ref = (
         "email-only@example.com"
         if channel is ApprovalChannel.EMAIL
-        else "https://ntfy.sh/dragback-7F3k9Q2mR8xP4vN6cL1s"
+        else "https://ntfy.sh/writai-7F3k9Q2mR8xP4vN6cL1s"
     )
     signer = ApprovalLinkSigner(
         secret=APPROVAL_ASSERTION_SECRET,
@@ -922,7 +922,7 @@ def test_stale_thread_fingerprint_and_instance_never_mutate_replacement(
     ("workspace_id", "team_id", "connection_user_id"),
     [
         (WORKSPACE_ID, "T-WRONG", CONNECTION_USER_ID),
-        (WORKSPACE_ID, SLACK_TEAM_ID, "dragback-wrong-connection"),
+        (WORKSPACE_ID, SLACK_TEAM_ID, "writai-wrong-connection"),
         (OTHER_WORKSPACE_ID, SLACK_TEAM_ID, CONNECTION_USER_ID),
     ],
 )

@@ -32,7 +32,7 @@ Refund Coding Agent
 finance-admin
 `;
 
-const JIRA_SCREENSHOT_OCR = `Software Dragback Demo Workspace
+const JIRA_SCREENSHOT_OCR = `Software writ.ai Demo Workspace
 
 PROJECT
 
@@ -53,7 +53,7 @@ Priority
 High
 Tasks Status
 Authenticate with the CRM In progress
-Read customer records Dragback test change
+Read customer records writ.ai test change
 
 Create customer records
 

@@ -205,7 +205,7 @@ describe("approveChange", () => {
     };
     const fetchMock = vi.fn(async () => jsonResponse(approved));
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token-from-the-operator");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token-from-the-operator");
 
     const result = await approveChange(change);
     expect(result.source).toBe("live");
@@ -259,7 +259,7 @@ describe("approveChange", () => {
         }),
       ),
     );
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
 
     const result = await approveChange(change);
     expect(result.source).toBe("live");
@@ -269,20 +269,20 @@ describe("approveChange", () => {
 
   it("rehearses, and never posts, when no identity is present", async () => {
     const change = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", undefined);
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", undefined);
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await approveChange(change);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(result.source).toBe("fixture");
-    expect(result.note).toContain("dragback approve");
+    expect(result.note).toContain("writai approve");
     expect(warn).toHaveBeenCalledOnce();
   });
 
   it("rehearses a refusal rather than claiming the change was applied", async () => {
     const change = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -303,7 +303,7 @@ describe("approveChange", () => {
     // does not settle it either, so this stays INDETERMINATE. The one thing it
     // must never do is report a possibly-real mutation as a rehearsal.
     const change = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ ...WORKSPACE, supervisor: {} })),
@@ -319,7 +319,7 @@ describe("approveChange", () => {
     // The wifi-hiccup case: the approval landed, the answer did not come back.
     // One follow-up GET turns "we lost the answer" into a fact.
     const change = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     let call = 0;
     vi.stubGlobal(
       "fetch",
@@ -341,7 +341,7 @@ describe("approveChange", () => {
 
   it("stays indeterminate when the re-read also fails", async () => {
     const change = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -358,7 +358,7 @@ describe("approveChange", () => {
 
   it("treats a 4xx refusal as a rehearsal but a 5xx as unresolved", async () => {
     const refused = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => jsonResponse({ error: { code: "NOPE" } }, 403)),
@@ -366,7 +366,7 @@ describe("approveChange", () => {
     expect((await approveChange(refused)).outcome).toBe("rehearsal");
 
     const wobbled = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     let call = 0;
     vi.stubGlobal(
       "fetch",
@@ -382,7 +382,7 @@ describe("approveChange", () => {
   });
 
   it("never posts a change that came from the fixture", async () => {
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     const fetchMock = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -399,7 +399,7 @@ describe("approveChange", () => {
     // behind and POST a real approval from a screen labelled "fixture data".
     // Bindings are keyed by object identity now, so it cannot.
     const live = await liveChange();
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
 
     const impostor = { ...FIXTURE_PENDING_CHANGE, id: live.id };
     const fetchMock = vi.fn(async () => jsonResponse(appliedWorkspace()));
@@ -419,7 +419,7 @@ describe("approveChange", () => {
     expect(first).not.toBe(second);
     expect(first.id).toBe(second.id);
 
-    vi.stubGlobal("__DRAGBACK_APPROVAL_TOKEN__", "token");
+    vi.stubGlobal("__WRITAI_APPROVAL_TOKEN__", "token");
     const fetchMock = vi.fn(async () => jsonResponse(appliedWorkspace()));
     vi.stubGlobal("fetch", fetchMock);
 

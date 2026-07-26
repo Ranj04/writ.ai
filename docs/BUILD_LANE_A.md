@@ -14,7 +14,7 @@ Nothing else can safely run in parallel until this is committed to `main` and yo
 
 **One commit containing all four:**
 
-1. **`backend/dragback/supervisor_contract.py`** — the only interface between the lanes.
+1. **`backend/writai/supervisor_contract.py`** — the only interface between the lanes.
 
 ```python
 """FROZEN INTERFACE. Lane A implements it. Lane B calls it.
@@ -63,7 +63,7 @@ class NullSupervisorInterruptPort:
 
 3. **`cli.py`** — register **both** new command groups now, pointing at two new stub modules `cli_dev.py` (yours) and `cli_approve.py` (theirs). Two lines each. After this commit **neither lane touches `cli.py` again**, which removes the biggest merge-conflict surface in the repo (it is 51K).
 
-4. **`config.py`** — add *every* new settings key both lanes will need, in one go: `composio_api_key`, `composio_webhook_secret`, `hexclave_project_id`, `hexclave_secret_key`, `hexclave_team_id`, `dragback_hook_endpoint`, `dragback_hook_timeout_seconds`, `dragback_hook_cache_path`, `ntfy_topic`. Defaults empty. Neither lane touches `config.py` again.
+4. **`config.py`** — add *every* new settings key both lanes will need, in one go: `composio_api_key`, `composio_webhook_secret`, `hexclave_project_id`, `hexclave_secret_key`, `hexclave_team_id`, `writai_hook_endpoint`, `writai_hook_timeout_seconds`, `writai_hook_cache_path`, `ntfy_topic`. Defaults empty. Neither lane touches `config.py` again.
 
 Push. Tell your teammate to pull. **Now you can both run flat out.**
 
@@ -88,11 +88,11 @@ The Protocol already exists and its docstring already states the invariant: *"Ag
 
 ### A2 — session binding
 
-Deterministic, never model-inferred. Resolution order: explicit `dragback attach ASSIGNMENT-TASK-102` → task id parsed from the branch name (`feat/TASK-102-csv-export`) → `.dragback/task` file → **unbound**. Unbound sessions register fine and are allowed everything, but show as unbound in `dragback status` so the gap is visible rather than silent.
+Deterministic, never model-inferred. Resolution order: explicit `writai attach ASSIGNMENT-TASK-102` → task id parsed from the branch name (`feat/TASK-102-csv-export`) → `.writai/task` file → **unbound**. Unbound sessions register fine and are allowed everything, but show as unbound in `writai status` so the gap is visible rather than silent.
 
 ### A3 — the verdict endpoint
 
-On the **agent service**, not the executor. `services/executor_api.py` is the Callwright executor: it is titled "Dragback Mock Executor", its `ExecuteRequest` requires a `token` and a full `AgentPlan`, and it holds no graph. The hook cannot supply a plan and must not.
+On the **agent service**, not the executor. `services/executor_api.py` is the Callwright executor: it is titled "writ.ai Mock Executor", its `ExecuteRequest` requires a `token` and a full `AgentPlan`, and it holds no graph. The hook cannot supply a plan and must not.
 
 Logic:
 - `assignment.decision_snapshot == current` → allow.
@@ -124,9 +124,9 @@ git worktree add ../db-a3 -b lane-a-endpoint
 git worktree add ../db-a4 -b lane-a-hook
 
 ( cd ../db-a3 && claude --model fable -p --permission-mode acceptEdits \
-    "$(cat ~/dragback-prompts/A3.md)" ) &
+    "$(cat ~/writai-prompts/A3.md)" ) &
 ( cd ../db-a4 && claude --model fable -p --permission-mode acceptEdits \
-    "$(cat ~/dragback-prompts/A4.md)" ) &
+    "$(cat ~/writai-prompts/A4.md)" ) &
 wait
 ```
 

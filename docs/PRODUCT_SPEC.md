@@ -2,7 +2,7 @@
 
 ## Product
 
-**Dragback** is a continuous intent-control layer for autonomous coding agents.
+**writ.ai** is a continuous intent-control layer for autonomous coding agents.
 
 ## User problem
 

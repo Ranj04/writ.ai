@@ -107,7 +107,7 @@ export function ScenarioCatalog({
             <div className="sl-table-wrap">
               <table className="sl-table sl-scenario-table">
             <caption className="sl-visually-hidden">
-              Available Dragback evaluation scenarios
+              Available writ.ai evaluation scenarios
             </caption>
             <thead>
               <tr>

@@ -455,7 +455,7 @@ function NodeInspector({
             onClick={primaryAction.onClick}
             disabled={primaryAction.disabled}
           >
-            {primaryAction.busy ? "Dragback is working…" : primaryAction.label}
+            {primaryAction.busy ? "writ.ai is working…" : primaryAction.label}
           </button>
         ) : null}
         <button
@@ -539,7 +539,7 @@ export function KnowledgeGraphView({
               onClick={primaryAction.onClick}
               disabled={primaryAction.disabled}
             >
-              {primaryAction.busy ? "Dragback is working…" : primaryAction.label}
+              {primaryAction.busy ? "writ.ai is working…" : primaryAction.label}
             </button>
           ) : null}
         </div>

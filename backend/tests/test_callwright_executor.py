@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 import pytest
-from dragback.domain import (
+from writai.domain import (
     AgentPlan,
     GrantPayload,
     GrantVerificationResult,
@@ -19,8 +19,8 @@ from dragback.domain import (
     VerificationCode,
     utc_now,
 )
-from dragback.hashing import stable_hash
-from dragback.integrations.callwright import (
+from writai.hashing import stable_hash
+from writai.integrations.callwright import (
     CallReceipt,
     CallRequest,
     CallStatus,
@@ -33,7 +33,7 @@ from dragback.integrations.callwright import (
     LiveCallwrightClient,
     build_call_request,
 )
-from dragback.services import executor_api
+from writai.services import executor_api
 from fastapi.testclient import TestClient
 
 

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from dragback.authority.engine import IntentAuthority
-from dragback.domain import ApprovalStatus, EdgeKind, ValidityStatus, Verdict
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.grants import GrantSigner
-from dragback.graph.memory import MemoryGraphStore
-from dragback.llm import (
+from writai.authority.engine import IntentAuthority
+from writai.domain import ApprovalStatus, EdgeKind, ValidityStatus, Verdict
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.grants import GrantSigner
+from writai.graph.memory import MemoryGraphStore
+from writai.llm import (
     DecisionExtractionCandidate,
     EvidenceSpan,
     FixtureDecisionExtractor,

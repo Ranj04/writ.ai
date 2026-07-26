@@ -49,7 +49,7 @@ The default canonical demo uses an in-memory graph so it works immediately. The 
 implemented separately so Neo4j can replace it without changing authority semantics.
 
 Scenario Lab has a deliberately different persistence boundary: every run receives its own
-`MemoryGraphStore` and `IntentAuthority`, even when `DRAGBACK_GRAPH_BACKEND=neo4j` selects Neo4j for
+`MemoryGraphStore` and `IntentAuthority`, even when `WRITAI_GRAPH_BACKEND=neo4j` selects Neo4j for
 the canonical runtime. Lab runs therefore cannot reset, pollute, or contend over the configured
 Neo4j graph.
 
@@ -223,7 +223,7 @@ The executor's `STALE_SNAPSHOT` result is a required state-machine proof, not pr
 metadata. `CHANGE_APPLIED` cannot skip directly to Plan correction, and a generic grant failure
 cannot satisfy the stale-authorization claim.
 
-The default store is `.dragback/live-workspaces.json`; `DRAGBACK_WORKSPACE_STORE` may point to a
+The default store is `.writai/live-workspaces.json`; `WRITAI_WORKSPACE_STORE` may point to a
 different file. It contains internal signed grants needed for restart verification and is written
 with owner-only file permissions; public API views strip every signed token. Atomic replacement
 protects against partial writes, but this prototype assumes one agent-service writer and is not a
@@ -233,7 +233,7 @@ transactional multi-process database.
 
 ### Neo4j
 
-Set `DRAGBACK_GRAPH_BACKEND=neo4j`. The `Neo4jGraphStore` persists typed artifacts, dynamic relationship types, graph metadata, scopes, validity, and evidence references.
+Set `WRITAI_GRAPH_BACKEND=neo4j`. The `Neo4jGraphStore` persists typed artifacts, dynamic relationship types, graph metadata, scopes, validity, and evidence references.
 Its downstream traversal reads only matching outgoing relationships with Cypher. Seed/reset runs
 in one write transaction, and the opt-in `neo4j` test suite compares the resulting graph and exact
 invalidation report with the in-memory backend. The suite must target a disposable database because

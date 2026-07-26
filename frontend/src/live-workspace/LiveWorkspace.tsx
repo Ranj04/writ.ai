@@ -447,7 +447,7 @@ export function LiveWorkspace({
 
   const downloadTemplate = useCallback(() => {
     downloadJson(
-      "dragback-voyagr-callwright-workspace.json",
+      "writai-voyagr-callwright-workspace.json",
       CALLWRIGHT_SAMPLE_WORKSPACE,
     );
     setLocalUpdate({
@@ -460,7 +460,7 @@ export function LiveWorkspace({
 
   const downloadDocumentTemplate = useCallback(() => {
     downloadText(
-      "dragback-project-template.md",
+      "writai-project-template.md",
       DOCUMENT_TEMPLATE,
       "text/markdown",
     );

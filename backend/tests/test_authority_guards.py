@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import pytest
-from dragback.authority.engine import IntentAuthority
-from dragback.domain import Verdict
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.grants import GrantSigner
-from dragback.graph.memory import MemoryGraphStore
+from writai.authority.engine import IntentAuthority
+from writai.domain import Verdict
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.grants import GrantSigner
+from writai.graph.memory import MemoryGraphStore
 
 
 def make_authority() -> IntentAuthority:

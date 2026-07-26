@@ -1,9 +1,9 @@
-from dragback.authority.engine import IntentAuthority
-from dragback.domain import Verdict
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.grants import GrantSigner
-from dragback.graph.memory import MemoryGraphStore
-from dragback.loop.workflow import AgentLoopController
+from writai.authority.engine import IntentAuthority
+from writai.domain import Verdict
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.grants import GrantSigner
+from writai.graph.memory import MemoryGraphStore
+from writai.loop.workflow import AgentLoopController
 
 
 def test_complete_reauthorization_flow() -> None:

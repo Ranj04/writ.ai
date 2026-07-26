@@ -64,7 +64,7 @@ export type ApprovalResult = {
 };
 
 const NO_APPROVAL_CHANNEL =
-  "no approval identity is present in this browser — approve with `dragback approve`";
+  "no approval identity is present in this browser — approve with `writai approve`";
 
 /**
  * What a live approval needs, kept beside the change rather than inside it so
@@ -101,15 +101,15 @@ const bindings = new WeakMap<PendingChange, ApprovalBinding>();
  * is absent, approval is a rehearsal and the screen says so.
  */
 function approvalToken(): string | null {
-  const runtime = globalThis as { __DRAGBACK_APPROVAL_TOKEN__?: unknown };
-  const token = runtime.__DRAGBACK_APPROVAL_TOKEN__;
+  const runtime = globalThis as { __WRITAI_APPROVAL_TOKEN__?: unknown };
+  const token = runtime.__WRITAI_APPROVAL_TOKEN__;
   return typeof token === "string" && token.trim() ? token.trim() : null;
 }
 
 function fellBack(reason: string): void {
   // Never let fixture data pass for live data silently.
   console.warn(
-    `[dragback/approvals] ${reason} — rendering FIXTURE data. This is not a live approval.`,
+    `[writai/approvals] ${reason} — rendering FIXTURE data. This is not a live approval.`,
   );
 }
 
@@ -166,7 +166,7 @@ export async function fetchPendingChanges(
   );
   if (changes.length < awaiting.length) {
     console.warn(
-      `[dragback/approvals] ${awaiting.length - changes.length} of ` +
+      `[writai/approvals] ${awaiting.length - changes.length} of ` +
         `${awaiting.length} pending changes could not be read — the queue ` +
         `shown is INCOMPLETE.`,
     );
@@ -197,14 +197,14 @@ async function fetchOneChange(
     });
     if (!response.ok) {
       console.warn(
-        `[dragback/approvals] preview for ${workspace.id} returned ${response.status}`,
+        `[writai/approvals] preview for ${workspace.id} returned ${response.status}`,
       );
       return null;
     }
     const preview = unwrapPreview(await response.json());
     if (!preview) {
       console.warn(
-        `[dragback/approvals] preview for ${workspace.id} was unrecognised`,
+        `[writai/approvals] preview for ${workspace.id} was unrecognised`,
       );
       return null;
     }
@@ -212,7 +212,7 @@ async function fetchOneChange(
       // A preview for a different change joined onto this workspace's
       // assignments would show one team's blast radius under another's decision.
       console.warn(
-        `[dragback/approvals] preview for ${workspace.id}/${decisionId} ` +
+        `[writai/approvals] preview for ${workspace.id}/${decisionId} ` +
           `described a different change — discarded.`,
       );
       return null;
@@ -235,7 +235,7 @@ async function fetchOneChange(
     return change;
   } catch (error) {
     console.warn(
-      `[dragback/approvals] preview for ${workspace.id} failed (${describe(error)})`,
+      `[writai/approvals] preview for ${workspace.id} failed (${describe(error)})`,
     );
     return null;
   }
@@ -286,7 +286,7 @@ export async function approveChange(
   const token = approvalToken();
   if (!binding || !token) {
     console.warn(
-      `[dragback/approvals] rehearsing approval of ${change.id} — ` +
+      `[writai/approvals] rehearsing approval of ${change.id} — ` +
         `${binding ? NO_APPROVAL_CHANNEL : "this change was not read from a live service"}.`,
     );
     return rehearsal(
@@ -319,14 +319,14 @@ export async function approveChange(
         // that moved, a malformed envelope. Nothing landed, and saying so is
         // accurate.
         console.warn(
-          `[dragback/approvals] approve of ${change.id} was refused (${reason})`,
+          `[writai/approvals] approve of ${change.id} was refused (${reason})`,
         );
         return rehearsal(`the server refused the approval: ${reason}`);
       }
       // A 5xx (or a timeout) can mean the change applied and the response did
       // not survive. Go and look rather than guessing.
       console.warn(
-        `[dragback/approvals] approve of ${change.id} returned ${response.status} ` +
+        `[writai/approvals] approve of ${change.id} returned ${response.status} ` +
           `(${reason}) — reconciling against the workspace`,
       );
       return await reconcile(
@@ -372,7 +372,7 @@ export async function approveChange(
     // applied. This is exactly the wifi-hiccup case: never report it as "no
     // approval was recorded" without checking.
     console.warn(
-      `[dragback/approvals] approve of ${change.id} failed (${describe(error)}) ` +
+      `[writai/approvals] approve of ${change.id} failed (${describe(error)}) ` +
         `— reconciling against the workspace`,
     );
     return await reconcile(

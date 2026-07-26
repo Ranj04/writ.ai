@@ -35,7 +35,7 @@ development/demo environments.
 
 Aura-compatible alias for the same deterministic seed/reset operation. The selected graph backend
 is reset in one store operation. Neo4j startup seeding and this endpoint are disabled by default;
-both require an explicit `DRAGBACK_DEMO_RESET_ENABLED=true` and must target a dedicated demo
+both require an explicit `WRITAI_DEMO_RESET_ENABLED=true` and must target a dedicated demo
 database because reset deletes all nodes.
 
 ### `GET /demo/state`
@@ -333,8 +333,8 @@ session-only process memory, not durable benchmark history; an agent-service res
 
 Live Workspaces are the user-owned practical path. Unlike Scenario Lab, their definitions,
 authorization state, verification results, and history survive agent-service restarts in the JSON
-file selected by `DRAGBACK_WORKSPACE_STORE` (default
-`.dragback/live-workspaces.json`). The public views never expose signed grant tokens.
+file selected by `WRITAI_WORKSPACE_STORE` (default
+`.writai/live-workspaces.json`). The public views never expose signed grant tokens.
 
 #### `POST /live-workspaces/import`
 
@@ -346,7 +346,7 @@ Imports structured JSON containing:
 - one `Specification`, one `Ticket`, one or more `Task` artifacts, and one `AgentPlan`;
 - optional typed `edges` and an optional numeric `graph_version` (default `17`).
 
-When edges are omitted, Dragback deterministically creates
+When edges are omitted, writ.ai deterministically creates
 `Decision → Specification → Ticket → Task → AgentPlan` provenance. Explicit edge sets are
 augmented with missing `Task -[:CURRENTLY_DRIVES]-> AgentPlan` links so the active plan remains
 reachable. Every baseline requirement must be an object and its scope must continue through the

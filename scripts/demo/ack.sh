@@ -5,7 +5,7 @@
 # An assignment invalidated outright — no corrected plan to hand over — is denied
 # on *every* tool call until a person acknowledges the decision. That is rule 5
 # of the verdict endpoint, and it is deliberate: without a correction to deliver,
-# releasing the session automatically would be Dragback deciding on its own.
+# releasing the session automatically would be writ.ai deciding on its own.
 #
 # So this script is a person's decision, made once, out loud. `up.sh` and
 # `fire.sh` never call it. It reads which sessions are actually blocked from the
@@ -101,10 +101,10 @@ fi
 failures=0
 for entry in "${blocked[@]}"; do
   IFS=$'\037' read -r session_id task_id decision_id <<< "$entry"
-  if run_dragback dev ack "$session_id" >/dev/null 2>&1; then
+  if run_writai dev ack "$session_id" >/dev/null 2>&1; then
     ok "$task_id acknowledged $decision_id — its next tool call is allowed"
   else
-    bad "$task_id could not be acknowledged. Try: dragback dev ack $session_id"
+    bad "$task_id could not be acknowledged. Try: writai dev ack $session_id"
     failures=$((failures + 1))
   fi
 done

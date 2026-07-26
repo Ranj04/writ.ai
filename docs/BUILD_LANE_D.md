@@ -10,7 +10,7 @@ You are building one screen in the existing React app. Three other agents are ed
 
 **You may make exactly two surgical edits outside it, and nothing else:**
 
-1. `frontend/src/App.tsx` — add `"approvals"` to the `DragbackRoute` union, one `pathname.startsWith("/approvals")` branch in `routeForPath`, and one branch in the component. The file is 17 lines. Re-read it immediately before editing in case someone else touched it, and keep the diff to those three lines.
+1. `frontend/src/App.tsx` — add `"approvals"` to the `WritaiRoute` union, one `pathname.startsWith("/approvals")` branch in `routeForPath`, and one branch in the component. The file is 17 lines. Re-read it immediately before editing in case someone else touched it, and keep the diff to those three lines.
 2. `frontend/src/App.test.ts` — add the matching `routeForPath` case.
 
 **Do not open or edit any of these.** Other agents own them or a collision would be expensive:
@@ -50,7 +50,7 @@ Three things from the mock that are load-bearing, not decoration:
 
 ## The backend endpoint does not exist yet
 
-Lane B is building `dragback approve` as a CLI command, not a web API. So build against a fixture and make wiring later a one-file change.
+Lane B is building `writai approve` as a CLI command, not a web API. So build against a fixture and make wiring later a one-file change.
 
 Create `approvals/fixtures.ts` with data in exactly this shape, and `approvals/api.ts` that fetches the real endpoint and **falls back to the fixture on any error or 404**. Log the fallback to the console so it is never silently mistaken for live data.
 

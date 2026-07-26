@@ -22,8 +22,8 @@ import json
 from typing import Any
 
 import pytest
-from dragback.cli import CliError
-from dragback.cli_approve import _proposal_from_explicit_delta
+from writai.cli import CliError
+from writai.cli_approve import _proposal_from_explicit_delta
 
 SCOPE = "export.authorization"
 
@@ -131,7 +131,7 @@ def test_a_multi_field_requirement_demands_json_objects() -> None:
 def test_the_bypass_never_reaches_an_extractor(monkeypatch: pytest.MonkeyPatch) -> None:
     """The point of the fallback: it works with no LLM configured or reachable."""
 
-    import dragback.llm.provider as provider
+    import writai.llm.provider as provider
 
     def explode(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("the explicit delta must not build an extractor")

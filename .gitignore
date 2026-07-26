@@ -9,7 +9,7 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
-.dragback/
+.writai/
 
 # Hook wiring is per-developer and demo-local. It must not reach a teammate's
 # checkout by being committed, and never belongs in user-level settings.

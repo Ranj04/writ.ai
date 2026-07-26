@@ -4,8 +4,8 @@ import json
 from argparse import Namespace
 from datetime import UTC, datetime
 
-from dragback import cli_approve
-from dragback.intake.approval import pending_from_workspace
+from writai import cli_approve
+from writai.intake.approval import pending_from_workspace
 
 
 def _workspace() -> dict[str, object]:
@@ -118,7 +118,7 @@ def test_cli_change_uses_authenticated_proposal_bound_server_path(
         },
     }
     client = Client([workspace, _preview(), approved_workspace])
-    monkeypatch.setenv("DRAGBACK_HOOK_API_KEY", "authenticated-user-api-key")
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "authenticated-user-api-key")
     monkeypatch.setattr("builtins.input", lambda: "y")
     exit_code = cli_approve.run(
         client=client,
@@ -158,7 +158,7 @@ def test_cli_change_fails_closed_without_authenticated_credential(
     monkeypatch,
     capsys,
 ) -> None:
-    monkeypatch.delenv("DRAGBACK_HOOK_API_KEY", raising=False)
+    monkeypatch.delenv("WRITAI_HOOK_API_KEY", raising=False)
     client = Client([_workspace()])
 
     exit_code = cli_approve.run(
@@ -187,7 +187,7 @@ def test_cli_change_uses_server_preview_counts_and_honors_default_no(
         "total_assignment_count": 9,
     }
     client = Client([_workspace(), server_preview])
-    monkeypatch.setenv("DRAGBACK_HOOK_API_KEY", "authenticated-user-api-key")
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "authenticated-user-api-key")
     monkeypatch.setattr("builtins.input", lambda: "")
 
     exit_code = cli_approve.run(

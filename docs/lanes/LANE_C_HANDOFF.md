@@ -32,8 +32,8 @@ scripts/demo/up.sh                   # arms 5 sessions and STOPS. Fires nothing.
 scripts/demo/check.sh                # must print READY before you go on stage
 #   ... talk over the armed sessions ...
 scripts/demo/fire.sh                 # the only script that mutates the graph
-dragback dev status                  # 3 interrupted, 2 continuing
-dragback dev why <session-id>        # the path from the decision to that task
+writai dev status                  # 3 interrupted, 2 continuing
+writai dev why <session-id>        # the path from the decision to that task
 scripts/demo/ack.sh                  # the human beat — releases blocked sessions
 #   ... the three agents rewrite their own work to admin-only ...
 
@@ -49,8 +49,8 @@ This worktree has no `.venv`, and it is based on `main`, which does not carry
 Lane A's `hooks/` or `services/supervisor_check.py`. So:
 
 ```bash
-export DRAGBACK_DEMO_PYTHON=/Users/ranjivj/DragBack/.venv/bin/python
-export DRAGBACK_DEMO_ROOT=/Users/ranjivj/db-demo-stage     # optional
+export WRITAI_DEMO_PYTHON=/Users/ranjivj/writ.ai/.venv/bin/python
+export WRITAI_DEMO_ROOT=/Users/ranjivj/db-demo-stage     # optional
 ```
 
 Without Lane A merged, `check.sh` correctly reports red for sessions and hooks —
@@ -106,10 +106,10 @@ is behaviour worth keeping.
 **Deny-once is per assignment, so reset must fully re-seed.** Done, and hardened
 past what I had:
 
-- `reset.sh` resolves the workspace store from `DRAGBACK_WORKSPACE_STORE`, then
+- `reset.sh` resolves the workspace store from `WRITAI_WORKSPACE_STORE`, then
   the repo's `.env`, then the default — a store it does not know about is exactly
   how a partial reset happens.
-- It names anything left in `.dragback/` that it does not recognise instead of
+- It names anything left in `.writai/` that it does not recognise instead of
   deleting it blind or pretending the reset was total.
 - It prints a **verified** line confirming the store is gone, and **exits
   non-zero** when it cannot guarantee that: external store left in place, a
@@ -156,8 +156,8 @@ superset workspaces create --project <id> --name <name> --branch <branch> \
 superset workspaces delete <id...>
 ```
 
-Configuration: `DRAGBACK_DEMO_SUPERSET_PROJECT` (required — `--project` has no
-default), `DRAGBACK_DEMO_SUPERSET_BASE_BRANCH` (default `main`).
+Configuration: `WRITAI_DEMO_SUPERSET_PROJECT` (required — `--project` has no
+default), `WRITAI_DEMO_SUPERSET_BASE_BRANCH` (default `main`).
 
 **What I verified**: detection and project gating, provisioning, JSON parsing,
 the manifest carrying the real worktree path, session content landing inside the
@@ -180,7 +180,7 @@ agent itself, bypassing this launcher's hook configuration and canned prompt.
 ## 5. Integration surface
 
 **This lane exposes no Python API and imports no repo module.** It is a client of
-services and of the `dragback` CLI. Precise contact points:
+services and of the `writai` CLI. Precise contact points:
 
 ### Consumed — HTTP (agent service, default `http://127.0.0.1:8002`)
 
@@ -192,8 +192,8 @@ services and of the `dragback` CLI. Precise contact points:
 
 ### Consumed — CLI
 
-`dragback workspace import|approve-baseline|authorize|propose-change|approve-change`,
-`dragback dev ack`. **`dragback approve --text "<message>"` from the spec does not
+`writai workspace import|approve-baseline|authorize|propose-change|approve-change`,
+`writai dev ack`. **`writai approve --text "<message>"` from the spec does not
 exist**; the real surface is `approve pending` / `approve change WS DEC --role R`
 and it is a Lane B placeholder that exits 2 with `NOT_IMPLEMENTED`. `fire.sh`
 uses the `workspace` commands, which work today. `check.sh` reports the
@@ -205,7 +205,7 @@ placeholder as a warning, so it goes green when Lane B lands.
   Read from the API, never constructed here — the manifest carries whatever the
   service returned.
 - **`task_id`** is the binding key. `up.sh` writes it verbatim into
-  `<session-dir>/.dragback/task`; the `SessionStart` hook reports it as
+  `<session-dir>/.writai/task`; the `SessionStart` hook reports it as
   `task_file_task_id` and **the server resolves the binding** (`REPO_FILE`
   source). This lane never resolves a binding itself.
 - **`workspace_id` is `csv-exports`**, fixed by the shipped fixture.
@@ -217,8 +217,8 @@ placeholder as a warning, so it goes green when Lane B lands.
 
 ### Files written outside this repo
 
-`$DEMO_ROOT/session-N/` (default `<repo>/../dragback-demo`, override
-`DRAGBACK_DEMO_ROOT`), each containing `.dragback/task`, `.claude/settings.json`
+`$DEMO_ROOT/session-N/` (default `<repo>/../writai-demo`, override
+`WRITAI_DEMO_ROOT`), each containing `.writai/task`, `.claude/settings.json`
 (hook config), `NOTES.md`, `prompt.txt`, `data/accounts.csv`, `progress.log`.
 
 **Hook configuration rule:** that `.claude/settings.json` is generated at run time
@@ -249,12 +249,12 @@ in `up.sh`, `check.sh` and `ack.sh`. The manifest is 9 columns:
 2. **Another lane wrote `scripts/demo/seed.py`** into the directory this lane
    owns, in the shared checkout. It is not on this branch and I did not touch it.
    It is a parallel implementation of the same stage: same `csv-exports`
-   workspace, same ports, different store (`/tmp/dragback-stage`), and it applies
+   workspace, same ports, different store (`/tmp/writai-stage`), and it applies
    `DEC-018` as part of seeding rather than keeping arming and firing separate.
    **Pick one.** Running both collides on ports and binds sessions to a different
    store than the operator seeded.
 3. **My files also still exist in the shared checkout** at
-   `/Users/ranjivj/DragBack/scripts/demo/`. I left them rather than deleting
+   `/Users/ranjivj/writ.ai/scripts/demo/`. I left them rather than deleting
    files out from under an agent working there. This branch is the authoritative
    copy — integrate from here, then delete the duplicates.
 4. **First launch in a fresh directory** may show Claude Code's one-time
@@ -262,9 +262,9 @@ in `up.sh`, `check.sh` and `ack.sh`. The manifest is 9 columns:
 5. **A `SessionStart` handoff hook in user settings lands in every demo session
    too.** One agent opened by reporting a document about unrelated work. Clear it
    before rehearsing.
-6. **`reset.sh` stops any Dragback service on its ports**, including one another
+6. **`reset.sh` stops any writ.ai service on its ports**, including one another
    lane started. It refuses to kill a process whose command line is not a
-   Dragback service. Ports are overridable (`DRAGBACK_DEMO_AUTHORITY_PORT` etc.)
+   writ.ai service. Ports are overridable (`WRITAI_DEMO_AUTHORITY_PORT` etc.)
    if two checkouts must rehearse at once; defaults are unchanged.
 
 ---
@@ -282,8 +282,8 @@ could actually be run. Reverse with `brew uninstall tmux` if unwanted.
   `screencapture -v` produces nothing and `up.sh` reports it.
 - In print mode (no tmux) a session's log only fills in when it finishes, so
   during a run the live evidence is `progress.log` in each session directory and
-  `dragback dev status`. An interrupted print-mode session that gives up also
-  releases its binding via `SessionEnd`, so run `dragback dev why` **before** it
+  `writai dev status`. An interrupted print-mode session that gives up also
+  releases its binding via `SessionEnd`, so run `writai dev why` **before** it
   exits.
 - `demo_api.py` uses a per-socket timeout, not a total deadline; a slow-drip
   response from a local service could hang a check. Localhost, judged low.
@@ -371,12 +371,12 @@ diff for a human to apply if wanted:
 
 ```bash
 cd /Users/ranjivj/db-demo
-PYTHONPATH=backend /Users/ranjivj/DragBack/.venv/bin/python -m pytest    # 282 passed, 2 skipped
+PYTHONPATH=backend /Users/ranjivj/writ.ai/.venv/bin/python -m pytest    # 282 passed, 2 skipped
 for f in scripts/demo/*.sh; do bash -n "$f"; done                        # syntax
 python3 -m py_compile scripts/demo/demo_api.py                           # 3.9-compatible
 
 # The re-seed proof, end to end, twice:
-export DRAGBACK_DEMO_PYTHON=/Users/ranjivj/DragBack/.venv/bin/python
+export WRITAI_DEMO_PYTHON=/Users/ranjivj/writ.ai/.venv/bin/python
 scripts/demo/reset.sh && scripts/demo/up.sh --no-agents && scripts/demo/fire.sh --yes
 python3 scripts/demo/demo_api.py assignments http://127.0.0.1:8002 csv-exports | tr '\037' ' '
 scripts/demo/reset.sh && scripts/demo/up.sh --no-agents && scripts/demo/fire.sh --yes

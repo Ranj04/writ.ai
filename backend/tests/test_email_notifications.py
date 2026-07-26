@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
-from dragback.intake.approval import (
+from writai.intake.approval import (
     ApprovalChannel,
     ApprovalCoordinator,
     ApprovalDisposition,
@@ -16,7 +16,7 @@ from dragback.intake.approval import (
     ApprovalResult,
     PendingApproval,
 )
-from dragback.notify.email import (
+from writai.notify.email import (
     ApprovalDeliveryProvider,
     ApprovalEmail,
     ApprovalImpact,

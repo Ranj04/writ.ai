@@ -75,7 +75,7 @@ export function ApprovalAction({
           {unresolved ? (
             <span className="ap-receipt-note">
               sent, but the outcome could not be confirmed · this may already
-              have been applied — check `dragback dev status` before approving
+              have been applied — check `writai dev status` before approving
               again
               {receiptNote ? ` · ${receiptNote}` : ""}
             </span>

@@ -18,23 +18,23 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 import yaml
-from dragback.domain import utc_now
-from dragback.hashing import stable_hash
-from dragback.intake.approval import ApprovalChannel, ApprovalEvidence
-from dragback.services import authority_api, support
-from dragback.supervisor_contract import InterruptRequest
-from dragback.workspaces.authority_contexts import DynamicAuthorityContextRegistry
-from dragback.workspaces.interrupt_port import WorkspaceSupervisorInterruptPort
-from dragback.workspaces.models import (
+from writai.domain import utc_now
+from writai.hashing import stable_hash
+from writai.intake.approval import ApprovalChannel, ApprovalEvidence
+from writai.services import authority_api, support
+from writai.supervisor_contract import InterruptRequest
+from writai.workspaces.authority_contexts import DynamicAuthorityContextRegistry
+from writai.workspaces.interrupt_port import WorkspaceSupervisorInterruptPort
+from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
     WorkspaceApprovalRequest,
     WorkspaceProposalRequest,
 )
-from dragback.workspaces.orchestrator import LiveWorkspaceOrchestrator
-from dragback.workspaces.repository import JsonFileLiveWorkspaceRepository
-from dragback.workspaces.runtimes.claude_code import ClaudeCodeSupervisorRuntime
-from dragback.workspaces.session_binding import ClaudeCodeSessionRegistry
-from dragback.workspaces.session_enforcement import (
+from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
+from writai.workspaces.repository import JsonFileLiveWorkspaceRepository
+from writai.workspaces.runtimes.claude_code import ClaudeCodeSupervisorRuntime
+from writai.workspaces.session_binding import ClaudeCodeSessionRegistry
+from writai.workspaces.session_enforcement import (
     ClaudeCodeSessionEnforcement,
     ClaudeHookVerdict,
     ClaudePreToolUseRequest,
@@ -120,7 +120,7 @@ def _apply_change(
     orchestrator.propose_decision(
         WORKSPACE_ID,
         WorkspaceProposalRequest.model_validate(
-            _load("dragback-five-sessions-change.yaml")
+            _load("writai-five-sessions-change.yaml")
         ),
     )
     orchestrator.approve_decision(
@@ -204,7 +204,7 @@ def _stack(
         supervisor_runtime=runtime,
     )
     orchestrator.import_workspace(
-        LiveWorkspaceImportRequest.model_validate(_load("dragback-five-sessions.yaml"))
+        LiveWorkspaceImportRequest.model_validate(_load("writai-five-sessions.yaml"))
     )
     baseline_id = repository.get(WORKSPACE_ID).definition.baseline_decision.id
     orchestrator.approve_baseline(
@@ -246,11 +246,11 @@ def _register(
     task_id: str,
     person: str,
 ) -> str:
-    """One session per person, bound by its own `.dragback/task` file."""
+    """One session per person, bound by its own `.writai/task` file."""
 
     cwd = root / person
-    (cwd / ".dragback").mkdir(parents=True, exist_ok=True)
-    (cwd / ".dragback" / "task").write_text(f"{task_id}\n", encoding="utf-8")
+    (cwd / ".writai").mkdir(parents=True, exist_ok=True)
+    (cwd / ".writai" / "task").write_text(f"{task_id}\n", encoding="utf-8")
     session_id = f"session-{person}"
     binding = enforcement.start(
         ClaudeSessionStartRequest(session_id=session_id, cwd=str(cwd), branch="")
@@ -350,7 +350,7 @@ def test_the_decision_never_names_the_ticket_or_any_task() -> None:
     """The graph finds the work through lineage, not through a mention."""
 
     decision = cast(
-        dict[str, object], _load("dragback-five-sessions-change.yaml")["decision"]
+        dict[str, object], _load("writai-five-sessions-change.yaml")["decision"]
     )
     text = f"{decision['title']} {decision['text']}".casefold()
     for artifact in {"TICKET-100", "PLAN-027", *PRESERVED, *INTERRUPTED}:
@@ -432,11 +432,11 @@ def test_the_session_list_route_is_authenticated_and_lists_unbound_sessions(
 ) -> None:
     """`dev status` reads this. It must authenticate, and must not hide gaps."""
 
-    from dragback.services.supervisor_api import (
+    from writai.services.supervisor_api import (
         HookApiKeyVerifier,
         build_supervisor_session_router,
     )
-    from dragback.services.support import install_api_support
+    from writai.services.support import install_api_support
     from fastapi import FastAPI
     from fastapi.testclient import TestClient as _TestClient
 
@@ -464,7 +464,7 @@ def test_the_session_list_route_is_authenticated_and_lists_unbound_sessions(
     assert client.get("/supervisor/sessions").status_code == 401
 
     listed = client.get(
-        "/supervisor/sessions", headers={"X-Dragback-Hook-API-Key": "test-key"}
+        "/supervisor/sessions", headers={"X-writ.ai-Hook-API-Key": "test-key"}
     )
     assert listed.status_code == 200
     sessions = listed.json()["sessions"]

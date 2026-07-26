@@ -18,7 +18,7 @@ function EvidenceGrant({
         </div>
         <div>
           <dt>Agent</dt>
-          <dd>Dragback agent service</dd>
+          <dd>writ.ai agent service</dd>
         </div>
         {grant.runId ? (
           <div>

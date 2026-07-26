@@ -101,7 +101,7 @@ export function ApprovalScreen({
 
       <h1>{headlineFor(change)}</h1>
       <p className="ap-sub">
-        Dragback found an approved decision in Slack that changes work{" "}
+        writ.ai found an approved decision in Slack that changes work{" "}
         {inWords(total)} {total === 1 ? "person is" : "people are"} doing right
         now.
       </p>

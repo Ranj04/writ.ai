@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from dragback.intake.approval import (
+from writai.intake.approval import (
     ApprovalDisposition,
     ApprovalResult,
     PendingApproval,
 )
-from dragback.intake.slack import VerifiedSlackReaction
-from dragback.notify.slack import (
+from writai.intake.slack import VerifiedSlackReaction
+from writai.notify.slack import (
     ComposioSlackThreadSender,
     InMemorySlackApprovalThreads,
     JsonSlackApprovalThreads,
@@ -23,7 +23,7 @@ from dragback.notify.slack import (
     SlackThreadMessage,
     SlackThreadReference,
 )
-from dragback.supervisor_contract import InterruptRequest, InterruptResult
+from writai.supervisor_contract import InterruptRequest, InterruptResult
 from pydantic import ValidationError
 
 
@@ -94,7 +94,7 @@ def _interrupt_request() -> InterruptRequest:
 def _notification() -> SlackDecisionNotification:
     pending = _pending()
     return SlackDecisionNotification(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         thread=SlackThreadReference(
             channel_id="C-APPROVALS",
             parent_message_id="message-1700000000",
@@ -181,7 +181,7 @@ def test_live_composio_sender_pins_connection_tool_version_and_thread() -> None:
     )
     sender = ComposioSlackThreadSender(
         tools=tools,
-        composio_user_id="dragback-user-emanuel",
+        composio_user_id="writai-user-emanuel",
         connected_account_id="ca_slack_emanuel",
     )
     message = SlackThreadMessage(
@@ -206,7 +206,7 @@ def test_live_composio_sender_pins_connection_tool_version_and_thread() -> None:
                 "thread_ts": "1784952300.000001",
                 "reply_broadcast": False,
             },
-            "user_id": "dragback-user-emanuel",
+            "user_id": "writai-user-emanuel",
             "connected_account_id": "ca_slack_emanuel",
             "version": "20260702_00",
         }
@@ -236,7 +236,7 @@ def test_live_composio_sender_fails_closed_on_malformed_receipt(
 ) -> None:
     sender = ComposioSlackThreadSender(
         tools=RecordingComposioTools(result),
-        composio_user_id="dragback-user-emanuel",
+        composio_user_id="writai-user-emanuel",
         connected_account_id="ca_slack_emanuel",
     )
 
@@ -308,7 +308,7 @@ def test_notification_rejects_scope_drift_before_preview() -> None:
         match="requirement delta scopes must exactly match affected scopes",
     ):
         SlackDecisionNotification(
-            team_id="T-DRAGBACK",
+            team_id="T-WRITAI",
             thread=SlackThreadReference(
                 channel_id="C-APPROVALS",
                 parent_message_id="message-1700000000",
@@ -410,21 +410,21 @@ def _pending() -> PendingApproval:
 def _reaction(*, user: str = "U-REACTING") -> VerifiedSlackReaction:
     return VerifiedSlackReaction(
         event_id="evt-reaction-1",
-        connection_user_id="dragback-connection-owner",
+        connection_user_id="writai-connection-owner",
         reacting_user_id=user,
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
         reaction="white_check_mark",
         delivered_at=datetime(2026, 7, 25, tzinfo=UTC),
-        evidence_ref="slack://T-DRAGBACK/C-APPROVALS/1#reaction-2",
+        evidence_ref="slack://T-WRITAI/C-APPROVALS/1#reaction-2",
     )
 
 
 def test_reaction_uses_reacting_user_and_shared_approval_path() -> None:
     registry = InMemorySlackApprovalThreads()
     registry.register(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
         pending=_pending(),
@@ -453,7 +453,7 @@ def test_reaction_uses_reacting_user_and_shared_approval_path() -> None:
     assert calls[0]["approver_user_id"] == "hex-user-compliance"
     assert calls[0]["pending"] == _pending()
     assert registry.resolve(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
     ) is None
@@ -468,7 +468,7 @@ def test_notification_registers_the_exact_posted_pending_instance() -> None:
     ).notify(_notification())
 
     assert registry.resolve(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts=result.receipt.message_id,
     ) == _pending()
@@ -480,7 +480,7 @@ def test_json_thread_binding_survives_restart_and_consumption_is_idempotent(
     path = tmp_path / "slack-approval-threads.json"
     first = JsonSlackApprovalThreads(path)
     first.register(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
         pending=_pending(),
@@ -488,31 +488,31 @@ def test_json_thread_binding_survives_restart_and_consumption_is_idempotent(
 
     restarted = JsonSlackApprovalThreads(path)
     assert restarted.resolve(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
     ) == _pending()
     assert restarted.consume(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
         event_id="msg-reaction-1",
         pending=_pending(),
     )
     assert JsonSlackApprovalThreads(path).resolve(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
     ) is None
     assert JsonSlackApprovalThreads(path).consume(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
         event_id="msg-reaction-1",
         pending=_pending(),
     )
     assert not JsonSlackApprovalThreads(path).consume(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
         event_id="msg-reaction-2",
@@ -545,7 +545,7 @@ def test_unrelated_or_removed_reactions_cannot_unapprove() -> None:
 def test_unmapped_slack_user_is_ignored_before_permission_check() -> None:
     registry = InMemorySlackApprovalThreads()
     registry.register(
-        team_id="T-DRAGBACK",
+        team_id="T-WRITAI",
         channel_id="C-APPROVALS",
         message_ts="1784952300.000001",
         pending=_pending(),

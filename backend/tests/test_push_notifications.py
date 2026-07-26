@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
-from dragback.intake.approval import (
+from writai.intake.approval import (
     ApprovalChannel,
     ApprovalCoordinator,
     ApprovalDisposition,
@@ -13,7 +13,7 @@ from dragback.intake.approval import (
     ApprovalResult,
     PendingApproval,
 )
-from dragback.notify.email import (
+from writai.notify.email import (
     ApprovalImpact,
     ApprovalLinkClaims,
     ApprovalLinkRedeemer,
@@ -22,7 +22,7 @@ from dragback.notify.email import (
     NotificationDeliveryMode,
     ReplayedApprovalLink,
 )
-from dragback.notify.push import (
+from writai.notify.push import (
     NtfyPushSender,
     PushApprovalMessage,
     PushApprovalNotifier,
@@ -33,7 +33,7 @@ from pydantic import SecretStr
 
 NOW = datetime(2026, 7, 25, 8, 0, tzinfo=UTC)
 SECRET = "push-link-test-secret-that-is-over-32-bytes"
-PRIVATE_TOPIC = "dragback-7F3k9Q2mR8xP4vN6cL1s"
+PRIVATE_TOPIC = "writai-7F3k9Q2mR8xP4vN6cL1s"
 
 
 class Checker:
@@ -247,7 +247,7 @@ def test_ntfy_sender_posts_explicit_approval_action_and_review_link() -> None:
         ),
     )
     message = PushApprovalMessage(
-        title="Dragback approval",
+        title="writ.ai approval",
         text="Review one exact proposal.",
         decision_id="DEC-018",
         confirmation_url=SecretStr(
@@ -312,7 +312,7 @@ def test_pushover_sender_opens_non_mutating_confirmation_surface() -> None:
         ),
     )
     message = PushApprovalMessage(
-        title="Dragback approval",
+        title="writ.ai approval",
         text="Review one exact proposal.",
         decision_id="DEC-018",
         confirmation_url=SecretStr(

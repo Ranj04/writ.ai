@@ -37,7 +37,7 @@ export function WorkspaceRequirements({
       className="lw-requirements"
       aria-labelledby="workspace-requirements-title"
     >
-      <h2 id="workspace-requirements-title">What Dragback needs</h2>
+      <h2 id="workspace-requirements-title">What writ.ai needs</h2>
       <dl>
         {REQUIREMENTS.map((requirement) => {
           const ready = readiness[requirement.key];

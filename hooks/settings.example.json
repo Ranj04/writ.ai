@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/dragback_session_start.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/writai_session_start.py\"",
             "timeout": 5
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/dragback_pre_tool_use.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/writai_pre_tool_use.py\"",
             "timeout": 5
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/dragback_session_end.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/hooks/writai_session_end.py\"",
             "timeout": 5
           }
         ]

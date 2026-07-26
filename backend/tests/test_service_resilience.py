@@ -6,9 +6,9 @@ from typing import cast
 
 import httpx
 import pytest
-from dragback.domain import AuthorizationResult, Verdict
-from dragback.fixtures import load_decision_v18, load_graph_fixture
-from dragback.services import agent_api, authority_api, executor_api, support
+from writai.domain import AuthorizationResult, Verdict
+from writai.fixtures import load_decision_v18, load_graph_fixture
+from writai.services import agent_api, authority_api, executor_api, support
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

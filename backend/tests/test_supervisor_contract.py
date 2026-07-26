@@ -1,13 +1,13 @@
 """Seam invariants. Both build lanes depend on these; break one and the other lane breaks."""
 from __future__ import annotations
 
-from dragback.supervisor_contract import (
+from writai.supervisor_contract import (
     InterruptRequest,
     InterruptResult,
     NullSupervisorInterruptPort,
     SupervisorInterruptPort,
 )
-from dragback.workspaces.supervisor import (
+from writai.workspaces.supervisor import (
     FixtureSupervisorRuntime,
     SupervisorAssignment,
     SupervisorExecutionMode,

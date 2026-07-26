@@ -40,7 +40,7 @@ export function WhyView({
       */}
       <p className="ap-sub">
         Approved in #{change.source.channel} at {change.source.timestamp}, from{" "}
-        {change.source.author}. Nobody edited your ticket — Dragback reaches the
+        {change.source.author}. Nobody edited your ticket — writ.ai reaches the
         affected task through {change.decision.id}, and each affected agent is
         told at its next tool call.
       </p>

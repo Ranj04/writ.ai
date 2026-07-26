@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
-from dragback.cli import (
+from writai.cli import (
     AgentAssignment,
     AgentController,
     CliError,
@@ -154,7 +154,7 @@ def _model(raw: Mapping[str, Any]) -> AgentAssignment:
     return AgentAssignment.from_mapping(raw)
 
 
-def test_provider_commands_are_argv_lists_with_dragback_owned_controls(
+def test_provider_commands_are_argv_lists_with_writai_owned_controls(
     tmp_path: Path,
 ) -> None:
     codex_assignment = _model(_assignment())
@@ -227,7 +227,7 @@ def test_initial_prompt_contains_actual_authorized_work() -> None:
 
 
 def test_unsafe_provider_overrides_are_rejected(tmp_path: Path) -> None:
-    with pytest.raises(CliError, match="override Dragback controls"):
+    with pytest.raises(CliError, match="override writ.ai controls"):
         build_agent_command(
             _model(_assignment()),
             provider="codex",
@@ -251,11 +251,11 @@ def test_unsafe_provider_overrides_are_rejected(tmp_path: Path) -> None:
         "--allow-dangerously-skip-permissions",
     ),
 )
-def test_provider_arguments_cannot_override_dragback_controls(
+def test_provider_arguments_cannot_override_writai_controls(
     unsafe_option: str,
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(CliError, match="override Dragback controls"):
+    with pytest.raises(CliError, match="override writ.ai controls"):
         build_agent_command(
             _model(_assignment()),
             provider="codex",
@@ -1023,7 +1023,7 @@ def test_subprocess_launch_error_is_a_safe_cli_error(
     def missing_executable(*_args, **_kwargs):
         raise FileNotFoundError
 
-    monkeypatch.setattr("dragback.cli.subprocess.Popen", missing_executable)
+    monkeypatch.setattr("writai.cli.subprocess.Popen", missing_executable)
 
     with pytest.raises(CliError) as captured:
         SubprocessRunner().start(("codex", "prompt"), cwd=tmp_path)
@@ -1047,7 +1047,7 @@ def test_subprocess_runner_preserves_callers_interactive_terminal(
         captured.update(kwargs)
         return DummyPopen()
 
-    monkeypatch.setattr("dragback.cli.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("writai.cli.subprocess.Popen", fake_popen)
 
     SubprocessRunner().start(("codex", "prompt"), cwd=tmp_path)
 

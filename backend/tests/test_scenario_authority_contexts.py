@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 
 import pytest
-from dragback.domain import Verdict, VerificationCode
-from dragback.scenarios import get_scenario
-from dragback.scenarios.authority_contexts import ScenarioAuthorityContextRegistry
-from dragback.services import authority_api
+from writai.domain import Verdict, VerificationCode
+from writai.scenarios import get_scenario
+from writai.scenarios.authority_contexts import ScenarioAuthorityContextRegistry
+from writai.services import authority_api
 from fastapi.testclient import TestClient
 
 SCENARIO_ID = "csv-exports-admin-only"

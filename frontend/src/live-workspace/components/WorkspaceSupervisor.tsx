@@ -63,7 +63,7 @@ function presentationFor(
         tone: "positive",
         detail: live
           ? "Its task scope did not change. This session was never interrupted and kept working."
-          : "Its task scope did not change, so Dragback preserves the run.",
+          : "Its task scope did not change, so writ.ai preserves the run.",
       };
     case "interrupted":
       return {
@@ -106,7 +106,7 @@ function presentationFor(
         label: STATE_LABELS.queued,
         signal: "No process started",
         tone: "neutral",
-        detail: "Dragback created the work, but no worker runs before authorization.",
+        detail: "writ.ai created the work, but no worker runs before authorization.",
       };
   }
 }
@@ -116,7 +116,7 @@ function cliCommand(
   assignment: WorkspaceSubagentAssignment,
 ): string | null {
   if (assignment.runtimeProvider === "generic") return null;
-  return `dragback agent run ${workspaceId} --task ${assignment.taskId} --provider ${assignment.runtimeProvider}`;
+  return `writai agent run ${workspaceId} --task ${assignment.taskId} --provider ${assignment.runtimeProvider}`;
 }
 
 function AssignmentCard({
@@ -326,7 +326,7 @@ export function WorkspaceSupervisor({
             to a person. Every authority check still runs — role, scope,
             confidence, the three-way requirement match and the proposal
             binding. It refuses to run unless{" "}
-            <code>DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1</code> is set.
+            <code>WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1</code> is set.
           </li>
           <li>
             <b>Events do not survive a restart or reach a second machine.</b>{" "}

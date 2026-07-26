@@ -1,5 +1,5 @@
 {
-  "_fixture_notice": "Simulated Jira export for the Dragback demo; not retrieved from a live Jira site.",
+  "_fixture_notice": "Simulated Jira export for the writ.ai demo; not retrieved from a live Jira site.",
   "id": "100104",
   "key": "PAY-104",
   "self": "https://northstar-payments.example.atlassian.net/rest/api/3/issue/100104",

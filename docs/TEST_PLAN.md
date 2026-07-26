@@ -171,12 +171,12 @@ python -m pytest -q backend/tests/test_live_workspaces.py
 
 Run the same fixture and expected invalidation report against memory and Neo4j stores. Compare artifact validity, affected scopes, paths, graph version, and verdict.
 
-These tests are marked `neo4j`, require an explicit `DRAGBACK_RUN_NEO4J_TESTS=1`, and read
+These tests are marked `neo4j`, require an explicit `WRITAI_RUN_NEO4J_TESTS=1`, and read
 connection details from `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE`.
 They reset the target database, so use a disposable instance:
 
 ```bash
-DRAGBACK_RUN_NEO4J_TESTS=1 python -m pytest -m neo4j
+WRITAI_RUN_NEO4J_TESTS=1 python -m pytest -m neo4j
 ```
 
 ## Presentation test

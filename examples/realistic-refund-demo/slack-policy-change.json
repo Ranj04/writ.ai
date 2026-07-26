@@ -1,5 +1,5 @@
 {
-  "_fixture_notice": "Simulated Slack export for the Dragback demo; not retrieved from a live workspace.",
+  "_fixture_notice": "Simulated Slack export for the writ.ai demo; not retrieved from a live workspace.",
   "workspace": "Northstar Payments",
   "channel": {
     "id": "C08RISK",
@@ -37,7 +37,7 @@
       }
     ]
   },
-  "dragback_mutation": {
+  "writai_mutation": {
     "decision": {
       "id": "DEC-REFUND-002",
       "kind": "Decision",

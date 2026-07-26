@@ -9,7 +9,7 @@ running session and decide per tool call" enhancement.
 
 ## 1. What this is about
 
-Today, Dragback enforcement is **session-level**. The moment a decision interrupts a
+Today, writ.ai enforcement is **session-level**. The moment a decision interrupts a
 session, the `PreToolUse` hook denies **every** subsequent tool call in that session
 until a human acknowledges — regardless of whether the specific call touches the thing
 that actually changed.
@@ -55,7 +55,7 @@ invariant.
 
 ## 3. The gap in the current code
 
-`ClaudeCodeSessionEnforcement.check()` (`backend/dragback/workspaces/session_enforcement.py:300`)
+`ClaudeCodeSessionEnforcement.check()` (`backend/writai/workspaces/session_enforcement.py:300`)
 receives `tool_name` but **never branches on what the call does**. The logic is purely:
 
 > *Is this session's assignment stale/interrupted on an intersecting scope? If yes → deny

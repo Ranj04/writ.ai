@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from dragback.domain import (
+from writai.domain import (
     AgentPlan,
     ApprovalStatus,
     Artifact,
@@ -15,20 +15,20 @@ from dragback.domain import (
     MutationResult,
     PlanAction,
 )
-from dragback.hashing import stable_hash
-from dragback.intake.approval import (
+from writai.hashing import stable_hash
+from writai.intake.approval import (
     ApprovalChannel,
     ApprovalDisposition,
     ApprovalEvidence,
 )
-from dragback.workspaces.authority_contexts import (
+from writai.workspaces.authority_contexts import (
     DynamicAuthorityContextCreateRequest,
     DynamicAuthorityContextNotFound,
     DynamicAuthorityContextRegistry,
     DynamicAuthorityContextState,
     DynamicMutationApprovalRequest,
 )
-from dragback.workspaces.models import (
+from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
     LiveWorkspaceRecord,
     LiveWorkspaceStatus,
@@ -38,12 +38,12 @@ from dragback.workspaces.models import (
     WorkspaceProposalRequest,
     WorkspaceSlackBinding,
 )
-from dragback.workspaces.orchestrator import LiveWorkspaceOrchestrator
-from dragback.workspaces.repository import (
+from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
+from writai.workspaces.repository import (
     JsonFileLiveWorkspaceRepository,
     LiveWorkspaceRepository,
 )
-from dragback.workspaces.supervisor import (
+from writai.workspaces.supervisor import (
     FixtureSupervisorRuntime,
     SupervisorAssignment,
     SupervisorAssignmentState,

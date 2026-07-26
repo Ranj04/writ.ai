@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Dragback demo launcher — arm everything, then wait.
+# writ.ai demo launcher — arm everything, then wait.
 #
 # Starts the three services, seeds the five-session workspace, creates one
-# directory per session with its `.dragback/task` binding and its Claude Code
+# directory per session with its `.writai/task` binding and its Claude Code
 # hook configuration, launches a Claude Code session in each with a canned
 # prompt, and then STOPS.
 #
@@ -52,7 +52,7 @@ if ! [[ "$SESSIONS" =~ ^[0-9]+$ ]] || (( SESSIONS < 1 )); then
   exit 2
 fi
 
-banner "DRAGBACK DEMO — ARMING $SESSIONS SESSION(S)"
+banner "WRITAI DEMO — ARMING $SESSIONS SESSION(S)"
 
 mkdir -p "$STATE_DIR" "$LOG_DIR" "$RECORDING_DIR"
 
@@ -109,7 +109,7 @@ else
   preflight_failed=1
 fi
 HOOKS_PRESENT=1
-for hook_script in dragback_session_start.py dragback_pre_tool_use.py dragback_session_end.py; do
+for hook_script in writai_session_start.py writai_pre_tool_use.py writai_session_end.py; do
   [[ -f "$REPO_DIR/hooks/$hook_script" ]] || HOOKS_PRESENT=0
 done
 if (( HOOKS_PRESENT )); then
@@ -120,7 +120,7 @@ else
   # every tool call and the session cannot do anything at all. Verified on a
   # checkout without Lane A merged — five sessions started and were bricked.
   warn "hooks/ is incomplete on this checkout."
-  warn "Sessions will run with NO Dragback enforcement, and no hook config."
+  warn "Sessions will run with NO writ.ai enforcement, and no hook config."
 fi
 if have claude; then ok "claude $(claude --version 2>/dev/null | head -n 1)"; else
   warn "claude is not on PATH. Directories will be armed but no session starts."
@@ -132,7 +132,7 @@ fi
 if superset_available; then
   ok "superset — sessions get isolated worktrees from project $SUPERSET_PROJECT"
 elif have superset; then
-  warn "superset is installed but DRAGBACK_DEMO_SUPERSET_PROJECT is not set."
+  warn "superset is installed but WRITAI_DEMO_SUPERSET_PROJECT is not set."
   note "Set it to use isolated worktrees; using plain directories for now."
 else
   note "superset is absent. Sessions get plain directories under the demo root."
@@ -161,12 +161,12 @@ start_service() {
   (
     cd "$REPO_DIR" || exit 1
     exec nohup env \
-      "DRAGBACK_AUTHORITY_URL=$AUTHORITY_URL" \
-      "DRAGBACK_AGENT_URL=$AGENT_URL" \
-      "DRAGBACK_EXECUTOR_URL=$EXECUTOR_URL" \
-      "DRAGBACK_HOOK_API_KEY=$DRAGBACK_HOOK_API_KEY" \
+      "WRITAI_AUTHORITY_URL=$AUTHORITY_URL" \
+      "WRITAI_AGENT_URL=$AGENT_URL" \
+      "WRITAI_EXECUTOR_URL=$EXECUTOR_URL" \
+      "WRITAI_HOOK_API_KEY=$WRITAI_HOOK_API_KEY" \
       PYTHONPATH=backend \
-      "$PYTHON_BIN" -m uvicorn "dragback.services.${name}_api:app" \
+      "$PYTHON_BIN" -m uvicorn "writai.services.${name}_api:app" \
       --host "$DEMO_HOST" --port "$port"
   ) > "$LOG_DIR/$name.log" 2>&1 < /dev/null &
   record_pid "$SERVICE_PID_FILE" "$!"
@@ -210,13 +210,13 @@ arm_step() {
     return 0
   fi
   bad "$label failed. Run it by hand to see why:"
-  say "  dragback --agent-url $AGENT_URL ${*:3}"
+  say "  writai --agent-url $AGENT_URL ${*:3}"
   return 1
 }
 
 if ! workspace_present; then
   arm_step "imported $WORKSPACE_FIXTURE" \
-    run_dragback workspace import "$WORKSPACE_FIXTURE" || exit 1
+    run_writai workspace import "$WORKSPACE_FIXTURE" || exit 1
 else
   ok "workspace already present"
 fi
@@ -224,14 +224,14 @@ fi
 status="$(workspace_status || true)"
 case "$status" in
   imported)
-    # NOT `dragback workspace approve-baseline`: that command is disabled on
+    # NOT `writai workspace approve-baseline`: that command is disabled on
     # purpose, because Lane B routed every approval through an
     # ApprovalAttemptEnvelope carrying a Hexclave-resolvable token so the
     # approver's permission is genuinely verified. Its replacement is the
     # authenticated Workspace UI, which needs a browser and a token no local
     # demo has — so the launcher uses the same in-process seam the seeder uses.
     # It bypasses the channel authentication and no authority check, and it
-    # refuses unless DRAGBACK_DEMO_UNAUTHENTICATED_APPROVAL=1 is set.
+    # refuses unless WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 is set.
     #
     # Safe to write the store from a second process here specifically: the
     # repository re-reads the file on every call and replaces it atomically,
@@ -246,7 +246,7 @@ esac
 case "$status" in
   baseline-approved)
     arm_step "initial plan authorized against graph-v17" \
-      run_dragback workspace authorize "$WORKSPACE_ID" || exit 1
+      run_writai workspace authorize "$WORKSPACE_ID" || exit 1
     status="$(workspace_status || true)"
     ;;
 esac
@@ -361,13 +361,13 @@ write_settings() {
   # survive as one shell word.
   #
   # Absolute hook paths on purpose — $CLAUDE_PROJECT_DIR points at the session
-  # directory, not at the DragBack checkout the hooks live in. This file is
+  # directory, not at the writ.ai checkout the hooks live in. This file is
   # written only inside a generated session directory, which is outside every
   # checkout: nothing here touches a repo .claude/settings.json or the user's.
   local target="$1"
   "$HELPER_PYTHON" "$DEMO_API" settings \
     "$target" "$REPO_DIR" "$AGENT_URL" "$HOOK_PYTHON" \
-    ".dragback/hook-verdict-cache.json" "$HOOKS_PRESENT"
+    ".writai/hook-verdict-cache.json" "$HOOKS_PRESENT"
 }
 
 while IFS=$'\037' read -r index task_id assignment_id agent_name scopes directory prompt_index title requirement; do
@@ -376,10 +376,10 @@ while IFS=$'\037' read -r index task_id assignment_id agent_name scopes director
   case "$directory" in
     "$DEMO_ROOT"/*) rm -rf "$directory" ;;
   esac
-  mkdir -p "$directory/.dragback" "$directory/.claude" "$directory/data"
+  mkdir -p "$directory/.writai" "$directory/.claude" "$directory/data"
 
   # The binding itself. The client reports this file; the server resolves it.
-  printf '%s\n' "$task_id" > "$directory/.dragback/task"
+  printf '%s\n' "$task_id" > "$directory/.writai/task"
   write_settings "$directory/.claude/settings.json"
 
   # The objective and the requirement are quoted from the seeded graph, in the
@@ -398,7 +398,7 @@ Workspace: $WORKSPACE_ID  (ticket TICKET-100, plan PLAN-027)
 Every file in this directory implements that objective under that requirement.
 If the approved requirement changes, the files below are what has to change.
 
-Every tool call made here is checked by the Dragback PreToolUse hook first.
+Every tool call made here is checked by the writ.ai PreToolUse hook first.
 NOTES
 
   cat > "$directory/data/accounts.csv" <<'CSV'
@@ -438,7 +438,7 @@ if (( RECORD )); then
   step "Screen recording"
   if [[ "$OSTYPE" == darwin* ]] && have screencapture; then
     stamp="$(date +%Y%m%d-%H%M%S)"
-    recording="$RECORDING_DIR/dragback-demo-$stamp.mov"
+    recording="$RECORDING_DIR/writai-demo-$stamp.mov"
     nohup screencapture -v "$recording" > "$LOG_DIR/recorder.log" 2>&1 < /dev/null &
     printf '%s\n' "$!" > "$RECORDER_PID_FILE"
     sleep 1
@@ -461,7 +461,7 @@ fi
 
 step "Claude Code sessions"
 
-CLAUDE_EXTRA_ARGS="${DRAGBACK_DEMO_CLAUDE_ARGS:-}"
+CLAUDE_EXTRA_ARGS="${WRITAI_DEMO_CLAUDE_ARGS:-}"
 
 write_launcher() {
   local index="$1" directory="$2" mode="$3" launcher="$STATE_DIR/launch-$index.sh"

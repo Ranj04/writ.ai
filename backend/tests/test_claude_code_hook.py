@@ -1,7 +1,7 @@
 """The behaviours Lane B's ``claude_code_hook.py`` asserted, repointed at the hook that ships.
 
 Two hook implementations coexisted after the lane merge: Lane B's single
-``hooks/claude_code_hook.py`` and Lane A's ``hooks/dragback_*.py``. Lane A's
+``hooks/claude_code_hook.py`` and Lane A's ``hooks/writai_*.py``. Lane A's
 ships — it is the one proven end to end against real Claude Code sessions, and
 the one that survived the audit that found four fail-open holes. Lane B's is
 deleted.
@@ -47,10 +47,10 @@ def _load_hook_module(name: str) -> ModuleType:
     return module
 
 
-lib = _load_hook_module("dragback_hook_lib")
-pre_tool_use = _load_hook_module("dragback_pre_tool_use")
-session_start = _load_hook_module("dragback_session_start")
-session_end = _load_hook_module("dragback_session_end")
+lib = _load_hook_module("writai_hook_lib")
+pre_tool_use = _load_hook_module("writai_pre_tool_use")
+session_start = _load_hook_module("writai_session_start")
+session_end = _load_hook_module("writai_session_end")
 
 API_KEY = "developer-hook-api-key"
 
@@ -127,7 +127,7 @@ def test_pre_tool_hook_transmits_only_privacy_allowlist(tmp_path: Path) -> None:
         assert private_value not in serialized_cache
 
     # The API key travels in a header, never in a body and never on disk.
-    assert lib.HOOK_API_KEY_HEADER == "X-Dragback-Hook-API-Key"
+    assert lib.HOOK_API_KEY_HEADER == "X-writ.ai-Hook-API-Key"
     assert stat.S_IMODE(cache_file.stat().st_mode) == lib.CACHE_FILE_MODE
 
 
@@ -298,7 +298,7 @@ def test_session_hooks_send_only_lifecycle_binding_fields(tmp_path: Path) -> Non
     assert start_call[0] == "POST"
     assert start_call[1].endswith("/supervisor/sessions/start")
     # SessionStart is the one documented exception: cwd and branch, so the
-    # service can read `.dragback/task` itself. Never marker-file contents,
+    # service can read `.writai/task` itself. Never marker-file contents,
     # never the transcript path, never the model.
     assert set(start_call[2] or {}) == {"session_id", "cwd", "branch"}
     assert (start_call[2] or {})["cwd"] == str(tmp_path)
@@ -316,8 +316,8 @@ def test_malformed_pre_tool_input_still_exits_zero_with_explicit_deny(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv("DRAGBACK_HOOK_CACHE_PATH", str(tmp_path / "malformed-cache.json"))
-    monkeypatch.setenv("DRAGBACK_HOOK_NOTIFY", "0")
+    monkeypatch.setenv("WRITAI_HOOK_CACHE_PATH", str(tmp_path / "malformed-cache.json"))
+    monkeypatch.setenv("WRITAI_HOOK_NOTIFY", "0")
     output = io.StringIO()
 
     exit_code = pre_tool_use.main(stdin=io.StringIO("{not-json"), stdout=output)
@@ -332,12 +332,12 @@ def test_missing_hook_api_key_fails_closed_without_entering_json_payload(
 ) -> None:
     """No key configured means the service rejects the hook, and rejection denies."""
 
-    monkeypatch.delenv("DRAGBACK_HOOK_API_KEY", raising=False)
-    monkeypatch.setenv("DRAGBACK_HOOK_CACHE_PATH", str(tmp_path / "no-key-cache.json"))
-    monkeypatch.setenv("DRAGBACK_HOOK_NOTIFY", "0")
+    monkeypatch.delenv("WRITAI_HOOK_API_KEY", raising=False)
+    monkeypatch.setenv("WRITAI_HOOK_CACHE_PATH", str(tmp_path / "no-key-cache.json"))
+    monkeypatch.setenv("WRITAI_HOOK_NOTIFY", "0")
     # A port nothing is listening on: the transport fails exactly as it would
     # against the service's 503 HOOK_AUTHENTICATION_NOT_CONFIGURED.
-    monkeypatch.setenv("DRAGBACK_HOOK_ENDPOINT", "http://127.0.0.1:1/supervisor/sessions")
+    monkeypatch.setenv("WRITAI_HOOK_ENDPOINT", "http://127.0.0.1:1/supervisor/sessions")
 
     assert lib.HookConfig.from_env(cwd=str(tmp_path)).api_key == ""
 
@@ -349,7 +349,7 @@ def test_missing_hook_api_key_fails_closed_without_entering_json_payload(
 
     assert exit_code == 0
     assert _decision(json.loads(stream.getvalue())) == "deny"
-    assert "DRAGBACK_HOOK_API_KEY" not in stream.getvalue()
+    assert "WRITAI_HOOK_API_KEY" not in stream.getvalue()
 
 
 def test_managed_settings_make_the_hook_non_removable_and_short_timeout() -> None:
@@ -372,9 +372,9 @@ def test_managed_settings_make_the_hook_non_removable_and_short_timeout() -> Non
     wired = " ".join(command["command"] for command in commands)
     assert "claude_code_hook.py" not in wired
     for script in (
-        "dragback_session_start.py",
-        "dragback_pre_tool_use.py",
-        "dragback_session_end.py",
+        "writai_session_start.py",
+        "writai_pre_tool_use.py",
+        "writai_session_end.py",
     ):
         assert script in wired
         assert (HOOKS_DIR / script).is_file()
@@ -385,10 +385,10 @@ def test_only_one_hook_implementation_is_installed() -> None:
 
     assert not (HOOKS_DIR / "claude_code_hook.py").exists()
     assert sorted(path.name for path in HOOKS_DIR.glob("*.py")) == [
-        "dragback_hook_lib.py",
-        "dragback_pre_tool_use.py",
-        "dragback_session_end.py",
-        "dragback_session_start.py",
+        "writai_hook_lib.py",
+        "writai_pre_tool_use.py",
+        "writai_session_end.py",
+        "writai_session_start.py",
     ]
 
 

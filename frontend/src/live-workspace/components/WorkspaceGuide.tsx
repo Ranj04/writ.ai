@@ -16,7 +16,7 @@ export function WorkspaceGuide({
         <span>
           Step {guide.step} of {guide.totalSteps} ·{" "}
           {busy
-            ? "Dragback is working"
+            ? "writ.ai is working"
             : guide.tone === "complete"
               ? "Finished"
               : "Do this now"}
@@ -32,7 +32,7 @@ export function WorkspaceGuide({
         </div>
         <div className="lw-guide__next">
           <strong>{busy ? "Please wait" : "What happens next"}</strong>
-          <p>{busy ? "Keep this page open while Dragback finishes the current check." : guide.next}</p>
+          <p>{busy ? "Keep this page open while writ.ai finishes the current check." : guide.next}</p>
         </div>
       </div>
     </section>

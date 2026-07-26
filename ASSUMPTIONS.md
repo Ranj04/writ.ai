@@ -33,9 +33,9 @@ these instructions blocks every commit for the whole night.
 
 ## A-2 — Two hook implementations now coexist; I hardened mine and touched neither of Lane B's
 
-**Question:** `hooks/` contains both my scripts (`dragback_hook_lib.py`,
-`dragback_session_start.py`, `dragback_pre_tool_use.py`,
-`dragback_session_end.py`) and Lane B's single `claude_code_hook.py`, which
+**Question:** `hooks/` contains both my scripts (`writai_hook_lib.py`,
+`writai_session_start.py`, `writai_pre_tool_use.py`,
+`writai_session_end.py`) and Lane B's single `claude_code_hook.py`, which
 arrived in the merge. Which is canonical?
 
 **Assumed:** mine. `docs/BUILD_LANE_A.md` item A4 assigns `hooks/` to Lane A, and
@@ -61,7 +61,7 @@ break the rule about touching another lane's files.
 
 **RESOLVED.** The hook now speaks Lane B's contract exactly: `POST /start`,
 `POST /{id}/check`, `POST /{id}/end`, authenticated with
-`X-Dragback-Hook-API-Key`. Verified twice from a cold machine against the real
+`X-writ.ai-Hook-API-Key`. Verified twice from a cold machine against the real
 merged service.
 
 ---
@@ -101,26 +101,26 @@ be faked.
 ## A-6 — A demo hook API key is generated locally
 
 Lane B's session routes fail closed with `HOOK_AUTHENTICATION_NOT_CONFIGURED`
-unless `DRAGBACK_HOOK_API_KEY` is set on both sides. The seeder sets a local
-constant (`dragback-demo-hook-key`) and writes it into each stage directory's
+unless `WRITAI_HOOK_API_KEY` is set on both sides. The seeder sets a local
+constant (`writai-demo-hook-key`) and writes it into each stage directory's
 `.claude/settings.local.json` command. It is not a secret and never leaves the
-machine. Override by exporting `DRAGBACK_HOOK_API_KEY` before seeding.
+machine. Override by exporting `WRITAI_HOOK_API_KEY` before seeding.
 
 ---
 
-## A-7 — PARTLY RESOLVED. `dragback dev why` is not on PATH inside a stage session
+## A-7 — PARTLY RESOLVED. `writai dev why` is not on PATH inside a stage session
 
 Observed during the survivor proof: the interrupted session tried
-`dragback dev why` and got "command not found". The CLI is only importable via
-`PYTHONPATH=backend python -m dragback.cli`.
+`writai dev why` and got "command not found". The CLI is only importable via
+`PYTHONPATH=backend python -m writai.cli`.
 
 **The command itself now works** (A-8), and is verified end to end. What remains
 is purely packaging: `pip install -e .` in the demo environment would put
-`dragback` on PATH. Still a human decision, but no longer a blocker.
+`writai` on PATH. Still a human decision, but no longer a blocker.
 
 ---
 
-## A-8 — RESOLVED. ~~`dragback dev status` and `dev why` have no endpoint to call~~
+## A-8 — RESOLVED. ~~`writai dev status` and `dev why` have no endpoint to call~~
 
 **Question:** both commands issue `GET /supervisor/sessions`. Lane B's router
 exposes only `POST /start`, `POST /{id}/check`, `POST /{id}/end` and

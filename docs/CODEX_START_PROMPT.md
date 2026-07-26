@@ -1,6 +1,6 @@
 # Prompt to paste into Codex
 
-You are working in the Dragback repository. Read `AGENTS.md`, `dragback.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/GRAPH_SCHEMA.md`, and `TASKS.md` before changing code.
+You are working in the writ.ai repository. Read `AGENTS.md`, `writai.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/GRAPH_SCHEMA.md`, and `TASKS.md` before changing code.
 
 First run:
 

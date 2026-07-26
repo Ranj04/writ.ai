@@ -1,5 +1,5 @@
-from dragback.domain import AgentPlan, Artifact, ArtifactKind, PlanAction
-from dragback.workspaces.supervisor import (
+from writai.domain import AgentPlan, Artifact, ArtifactKind, PlanAction
+from writai.workspaces.supervisor import (
     FixtureSupervisorRuntime,
     SupervisorAssignmentState,
 )

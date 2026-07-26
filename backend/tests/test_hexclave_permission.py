@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import httpx
 import pytest
-from dragback.auth import hexclave as hexclave_module
-from dragback.auth.hexclave import (
+from writai.auth import hexclave as hexclave_module
+from writai.auth.hexclave import (
     HEXCLAVE_TEAM_PERMISSIONS_PATH,
     HEXCLAVE_USER_API_KEY_CHECK_PATH,
     HexclaveConfigurationError,

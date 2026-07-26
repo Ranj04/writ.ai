@@ -4,9 +4,9 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-import dragback.services.authority_api as authority_api
+import writai.services.authority_api as authority_api
 import pytest
-from dragback.intake.approval import (
+from writai.intake.approval import (
     ApprovalChannel,
     ApprovalCoordinator,
     ApprovalDisposition,
@@ -14,7 +14,7 @@ from dragback.intake.approval import (
     ApprovalResult,
     PendingApproval,
 )
-from dragback.notify.email import (
+from writai.notify.email import (
     ApprovalDeliveryProvider,
     ApprovalEmail,
     ApprovalLinkClaims,
@@ -24,15 +24,15 @@ from dragback.notify.email import (
     InMemoryApprovalLinkUseStore,
     NotificationDeliveryMode,
 )
-from dragback.notify.push import (
+from writai.notify.push import (
     PushApprovalMessage,
     PushDeliveryReceipt,
 )
-from dragback.services.support import (
+from writai.services.support import (
     INTERNAL_SERVICE_AUTH_HEADER,
     internal_service_token,
 )
-from dragback.workspaces.models import WorkspaceApprovalPreview
+from writai.workspaces.models import WorkspaceApprovalPreview
 from fastapi.testclient import TestClient
 
 NOW = datetime(2026, 7, 25, 8, 0, tzinfo=UTC)
@@ -357,7 +357,7 @@ def test_internal_dispatch_routes_require_hmac_and_never_return_link_token(
                 '"workspace_id":"csv-exports",'
                 '"approver_user_id":"hex-compliance",'
                 '"email":"lead@example.com",'
-                '"ntfy_topic":"dragback-7F3k9Q2mR8xP4vN6cL1s"}]}'
+                '"ntfy_topic":"writai-7F3k9Q2mR8xP4vN6cL1s"}]}'
             ),
         ),
     )

@@ -26,7 +26,7 @@ Seeded decisions and edges are the default. Anthropic extraction is optional. Re
 
 ## ADR-007 — competitor names remain in Q&A
 
-The default pitch uses category-level differentiation. Reason: named comparisons are useful only after judges understand Dragback's mechanism.
+The default pitch uses category-level differentiation. Reason: named comparisons are useful only after judges understand writ.ai's mechanism.
 
 ## ADR-008 — extracted evidence is an untrusted candidate
 
@@ -43,6 +43,6 @@ forward invalidation state, control precedence, or issue a verdict.
 
 The in-memory backend seeds the fixture automatically in local development/demo environments so
 the deterministic demo remains zero-config. Neo4j never enables destructive startup seeding or
-reset by default; `DRAGBACK_DEMO_RESET_ENABLED=true` must be supplied explicitly and the target
+reset by default; `WRITAI_DEMO_RESET_ENABLED=true` must be supplied explicitly and the target
 must be a dedicated demo database. Reason: connecting a development process to a remote graph must
 not make database deletion an implicit startup side effect.

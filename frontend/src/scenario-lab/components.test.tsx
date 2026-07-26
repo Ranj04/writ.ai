@@ -399,8 +399,8 @@ describe("Examples executive story components", () => {
       />,
     );
     expect(html).toContain("Step 3 of 5");
-    expect(html).toContain("Dragback found the affected work");
-    expect(html).toContain("How Dragback found the work");
+    expect(html).toContain("writ.ai found the affected work");
+    expect(html).toContain("How writ.ai found the work");
     expect(html).toContain("Affected work discovered");
     expect(html).toContain("Check old authorization");
     expect(html).toContain("Open technical evidence");

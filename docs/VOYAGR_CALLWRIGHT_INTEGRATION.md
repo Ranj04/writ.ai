@@ -1,8 +1,8 @@
-# VOYAGR Callwright integration for Dragback
+# VOYAGR Callwright integration for writ.ai
 
 ## Recommendation
 
-Use Callwright as Dragback's real-world consequential executor.
+Use Callwright as writ.ai's real-world consequential executor.
 
 The strongest demo is an agent attempting to place a phone call to schedule or
 change an appointment. The original call plan is authorized against
@@ -52,7 +52,7 @@ override `ALLOW`, `REPLAN`, `BLOCK`, or `HUMAN_REVIEW`.
 ## Implementation files
 
 ```text
-backend/dragback/integrations/
+backend/writai/integrations/
   __init__.py
   callwright.py
 backend/tests/
@@ -96,12 +96,12 @@ Provide:
 - `FixtureCallwrightClient`: deterministic receipt for tests and offline demos.
 - `LiveCallwrightClient`: exact sponsor API integration, enabled explicitly.
 - `FileCallwrightAttemptStore`: single-process durable, at-most-once submission
-  protection keyed by Dragback authorization ID.
+  protection keyed by writ.ai authorization ID.
 
 ## Representing the call in an agent plan
 
 Put the exact action-driving fields in `PlanAction.attributes` so they are
-covered by Dragback's stable plan hash:
+covered by writ.ai's stable plan hash:
 
 ```json
 {
@@ -133,7 +133,7 @@ verification.
 
 The changed decision should affect one of the action scopes, for example
 `reservation.time`, while a sibling task uses a different scope. This preserves
-Dragback's selective-invalidation proof.
+writ.ai's selective-invalidation proof.
 
 ## Executor integration
 
@@ -171,12 +171,12 @@ commitments requires a new plan hash and authorization.
 ## Configuration
 
 ```dotenv
-DRAGBACK_EXECUTION_PROVIDER=fixture
+WRITAI_EXECUTION_PROVIDER=fixture
 CALLWRIGHT_API_KEY=
 CALLWRIGHT_BASE_URL=https://api.voygr.tech
 CALLWRIGHT_DEMO_PHONE_NUMBER=
 CALLWRIGHT_TIMEOUT_SECONDS=15
-CALLWRIGHT_ATTEMPT_STORE=.dragback/callwright-attempts.json
+CALLWRIGHT_ATTEMPT_STORE=.writai/callwright-attempts.json
 CALLWRIGHT_POLL_INTERVAL_SECONDS=2
 CALLWRIGHT_MAX_POLL_SECONDS=30
 CALLWRIGHT_LIVE_CALLS_ENABLED=false
@@ -205,7 +205,7 @@ X-API-Key: <team key>
 ```
 
 The status response can contain `status`, `outcome_type`, `summary`, and
-`transcript_full`. Dragback keeps the status and summary as execution evidence
+`transcript_full`. writ.ai keeps the status and summary as execution evidence
 but deliberately discards the full transcript.
 
 Authoritative sponsor materials:
@@ -214,7 +214,7 @@ Authoritative sponsor materials:
 - [VOYAGR API Access](https://docs.google.com/spreadsheets/d/1Ls1XZ4fljxqbWDb6ogD-xtO7HULtuaLOdpaJ9O88Ve8/edit?gid=1507417457#gid=1507417457)
 
 `LiveCallwrightClient` sends only `target_phone`, `brief`, and `language`.
-Dragback authorization metadata and secrets never enter the request body. The
+writ.ai authorization metadata and secrets never enter the request body. The
 base URL is pinned to the exact HTTPS origin, and redirects are rejected.
 
 ## Sync, polling, and webhook behavior
@@ -246,7 +246,7 @@ authority decision or mutate the provenance graph.
 
 The service should refuse live calls unless both the provider is `callwright`
 and this flag is `true`. Callwright does not currently document a server-side
-idempotency key, so Dragback does not invent an unsupported header. An ambiguous
+idempotency key, so writ.ai does not invent an unsupported header. An ambiguous
 submission is recorded as `UNKNOWN` and requires human reconciliation instead
 of a retry that might ring the target twice.
 
@@ -309,7 +309,7 @@ The Live Workspace starter now loads this deterministic VOYAGR fixture:
 The key line for judges:
 
 > The phone API was ready, the tests passed, and the ticket never changed—but
-> Dragback stopped the call because its authorization no longer matched approved
+> writ.ai stopped the call because its authorization no longer matched approved
 > company intent.
 
 ## Additional use cases
@@ -361,4 +361,4 @@ Live mode remains intentionally gated. Claim one team key through the access
 sheet, store it only in the ignored local `.env`, configure a controlled E.164
 demo number, and leave `CALLWRIGHT_LIVE_CALLS_ENABLED=false` until the team is
 ready for an explicit real-call test. No API key or live phone call is required
-for the deterministic Dragback proof.
+for the deterministic writ.ai proof.

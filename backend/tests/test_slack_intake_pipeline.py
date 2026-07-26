@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from dragback.domain import ApprovalStatus, Artifact, ArtifactKind, DecisionMutation
-from dragback.intake.gate import DeterministicIntakeGate
-from dragback.intake.slack import SlackDecisionIntake, VerifiedSlackMessage
-from dragback.llm.extractor import FixtureDecisionExtractor
+from writai.domain import ApprovalStatus, Artifact, ArtifactKind, DecisionMutation
+from writai.intake.gate import DeterministicIntakeGate
+from writai.intake.slack import SlackDecisionIntake, VerifiedSlackMessage
+from writai.llm.extractor import FixtureDecisionExtractor
 
 TEXT = "Approved: exports must be admin-only, effective immediately."
 
@@ -15,7 +15,7 @@ class Verifier:
         del body, headers
         return VerifiedSlackMessage(
             event_id="evt-1",
-            connection_user_id="dragback-user-1",
+            connection_user_id="writai-user-1",
             author_user_id="U-COMPLIANCE",
             team_id="T1",
             channel_id="C1",

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Dragback demo reset. Ten seconds, idempotent, safe to run twice.
+# writ.ai demo reset. Ten seconds, idempotent, safe to run twice.
 #
 # Stops the agent sessions, stops the recorder, stops the three services, removes
-# the demo directories, and clears the Dragback state files so the next `up.sh`
+# the demo directories, and clears the writ.ai state files so the next `up.sh`
 # reseeds `graph-v17` from the shipped fixture.
 #
 # Rehearsal count is what makes a demo good, and reset time is what caps
@@ -31,7 +31,7 @@ while (( $# > 0 )); do
   esac
 done
 
-banner "DRAGBACK DEMO — RESET"
+banner "WRITAI DEMO — RESET"
 
 # Set whenever this run cannot guarantee the next rehearsal starts clean. A
 # reset that exits 0 while assignment state survives is the exact failure this
@@ -81,15 +81,15 @@ step "Services"
 stop_pids "$SERVICE_PID_FILE" "service(s) this launcher started"
 
 # A stray uvicorn from an earlier crash still owns the port. Kill it only when
-# its command line proves it is a Dragback service — never a random process
+# its command line proves it is a writ.ai service — never a random process
 # that happens to be listening on 8001.
 for port in "$AUTHORITY_PORT" "$AGENT_PORT" "$EXECUTOR_PORT"; do
   for pid in $(port_pids "$port"); do
-    if is_dragback_service "$pid"; then
+    if is_writai_service "$pid"; then
       kill "$pid" 2>/dev/null || true
-      say "Stopped a stray Dragback service on port $port (pid $pid)."
+      say "Stopped a stray writ.ai service on port $port (pid $pid)."
     else
-      warn "Port $port is held by pid $pid, which is not a Dragback service. Left alone."
+      warn "Port $port is held by pid $pid, which is not a writ.ai service. Left alone."
     fi
   done
 done
@@ -178,7 +178,7 @@ else
 fi
 
 # --------------------------------------------------------------------------- #
-# 5. Dragback state — named files, never a blind recursive delete
+# 5. writ.ai state — named files, never a blind recursive delete
 #
 # This section is what makes a second rehearsal work. Deny-once is per
 # ASSIGNMENT, not per session: once an assignment has been interrupted and its
@@ -188,19 +188,19 @@ fi
 # and this script says out loud whether it is.
 # --------------------------------------------------------------------------- #
 
-step "Dragback state"
+step "writ.ai state"
 
 # The store is configurable, and a store this script does not know about is
 # exactly how a partial reset happens. Resolve it the way the services will:
 # environment first, then the repo's .env, then the documented default.
-store_relative=".dragback/live-workspaces.json"
+store_relative=".writai/live-workspaces.json"
 store_source="default"
-if [[ -n "${DRAGBACK_WORKSPACE_STORE:-}" ]]; then
-  store_relative="$DRAGBACK_WORKSPACE_STORE"
-  store_source="DRAGBACK_WORKSPACE_STORE"
+if [[ -n "${WRITAI_WORKSPACE_STORE:-}" ]]; then
+  store_relative="$WRITAI_WORKSPACE_STORE"
+  store_source="WRITAI_WORKSPACE_STORE"
 elif [[ -f "$REPO_DIR/.env" ]]; then
   # One key, read with a literal pattern — never eval the .env file.
-  configured="$(grep -E '^[[:space:]]*DRAGBACK_WORKSPACE_STORE=' "$REPO_DIR/.env" 2>/dev/null \
+  configured="$(grep -E '^[[:space:]]*WRITAI_WORKSPACE_STORE=' "$REPO_DIR/.env" 2>/dev/null \
     | tail -n 1 | cut -d= -f2- | tr -d '"'"'"' \r' || true)"
   if [[ -n "$configured" ]]; then
     store_relative="$configured"
@@ -211,11 +211,11 @@ fi
 removed=0
 for relative in \
   "$store_relative" \
-  ".dragback/live-workspaces.json" \
-  ".dragback/hook-verdict-cache.json" \
-  ".dragback/callwright-attempts.json" \
-  ".dragback/attach" \
-  ".dragback/task"; do
+  ".writai/live-workspaces.json" \
+  ".writai/hook-verdict-cache.json" \
+  ".writai/callwright-attempts.json" \
+  ".writai/attach" \
+  ".writai/task"; do
   case "$relative" in
     /*) target="$relative" ;;
     *)  target="$REPO_DIR/$relative" ;;
@@ -240,19 +240,19 @@ for relative in \
   fi
 done
 
-say "Cleared $removed Dragback state file(s) (store from $store_source)."
+say "Cleared $removed writ.ai state file(s) (store from $store_source)."
 
-# Anything still in .dragback/ is state this script does not recognise. Say so
+# Anything still in .writai/ is state this script does not recognise. Say so
 # rather than deleting it blind — and rather than pretending the reset was total.
-if [[ -d "$REPO_DIR/.dragback" ]]; then
-  leftovers="$(ls -A "$REPO_DIR/.dragback" 2>/dev/null || true)"
+if [[ -d "$REPO_DIR/.writai" ]]; then
+  leftovers="$(ls -A "$REPO_DIR/.writai" 2>/dev/null || true)"
   if [[ -n "$leftovers" ]]; then
-    warn "Unrecognised state left in .dragback/ — check it before rehearsing:"
+    warn "Unrecognised state left in .writai/ — check it before rehearsing:"
     while IFS= read -r entry; do
-      [[ -n "$entry" ]] && say "  .dragback/$entry"
+      [[ -n "$entry" ]] && say "  .writai/$entry"
     done <<< "$leftovers"
   fi
-  rmdir "$REPO_DIR/.dragback" 2>/dev/null || true
+  rmdir "$REPO_DIR/.writai" 2>/dev/null || true
 fi
 
 # The guarantee, verified rather than asserted.

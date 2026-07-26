@@ -11,8 +11,8 @@ from urllib.parse import urlparse
 
 import httpx
 import pytest
-from dragback.auth.hexclave import HexclavePermissionError
-from dragback.domain import (
+from writai.auth.hexclave import HexclavePermissionError
+from writai.domain import (
     AgentPlan,
     ApprovalStatus,
     Artifact,
@@ -22,20 +22,20 @@ from dragback.domain import (
     PlanAction,
     VerificationCode,
 )
-from dragback.fixtures import load_decision_v18
-from dragback.intake.approval import (
+from writai.fixtures import load_decision_v18
+from writai.intake.approval import (
     ApprovalChannel,
     ApprovalEvidence,
     pending_from_workspace,
 )
-from dragback.integrations.callwright import FixtureCallwrightClient
-from dragback.services import agent_api, authority_api, executor_api, support
-from dragback.workspaces.authority_contexts import (
+from writai.integrations.callwright import FixtureCallwrightClient
+from writai.services import agent_api, authority_api, executor_api, support
+from writai.workspaces.authority_contexts import (
     DynamicAuthorityContextCreateRequest,
     DynamicAuthorityContextRegistry,
     DynamicMutationApprovalRequest,
 )
-from dragback.workspaces.models import (
+from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
     LiveWorkspaceRecord,
     LiveWorkspaceStatus,
@@ -44,8 +44,8 @@ from dragback.workspaces.models import (
     WorkspaceExecutionResult,
     WorkspaceSlackBinding,
 )
-from dragback.workspaces.orchestrator import LiveWorkspaceOrchestrator
-from dragback.workspaces.repository import (
+from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
+from writai.workspaces.repository import (
     JsonFileLiveWorkspaceRepository,
     LiveWorkspaceConflict,
 )
@@ -1814,7 +1814,7 @@ def test_supervisor_selectively_interrupts_redirects_and_completes_subagents(
     assert changed_assignments["TASK-102"]["run_id"] == running["TASK-102"]["run_id"]
     assert changed_assignments["TASK-102"]["interrupt_enforced"] is False
     assert changed_assignments["TASK-102"]["redirect_instruction"] == (
-        "Stop Call venue for the approved time. Return control to the Dragback "
+        "Stop Call venue for the approved time. Return control to the writ.ai "
         "supervisor and request a corrected plan for reservation.time at graph-v18."
     )
     assert changed_assignments["TASK-102"]["provenance_path"] == [

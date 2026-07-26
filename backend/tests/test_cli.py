@@ -6,9 +6,9 @@ from pathlib import Path
 import httpx
 import pytest
 import yaml
-from dragback.cli import run
-from dragback.domain import AgentPlan
-from dragback.workspaces.models import (
+from writai.cli import run
+from writai.domain import AgentPlan
+from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
     WorkspaceProposalRequest,
 )
@@ -170,7 +170,7 @@ def test_legacy_role_only_approval_commands_are_disabled_without_http(
     error = capsys.readouterr().err
     assert (
         "authenticated Workspace approval UI" in error
-        or "dragback approve change" in error
+        or "writai approve change" in error
     )
     assert "COMMAND_DEPRECATED" in error
 
@@ -450,16 +450,16 @@ def test_invalid_input_returns_two_without_making_a_request(
 def test_distributed_examples_validate_and_preserve_selective_provenance() -> None:
     workspace = LiveWorkspaceImportRequest.model_validate(
         yaml.safe_load(
-            (REPO_ROOT / "examples/dragback-workspace.yaml").read_text(encoding="utf-8")
+            (REPO_ROOT / "examples/writai-workspace.yaml").read_text(encoding="utf-8")
         )
     )
     proposal = WorkspaceProposalRequest.model_validate(
         yaml.safe_load(
-            (REPO_ROOT / "examples/dragback-change.yaml").read_text(encoding="utf-8")
+            (REPO_ROOT / "examples/writai-change.yaml").read_text(encoding="utf-8")
         )
     )
     corrected_plan = AgentPlan.model_validate_json(
-        (REPO_ROOT / "examples/dragback-corrected-plan.json").read_text(
+        (REPO_ROOT / "examples/writai-corrected-plan.json").read_text(
             encoding="utf-8"
         )
     )
@@ -478,7 +478,7 @@ def test_distributed_examples_validate_and_preserve_selective_provenance() -> No
 def test_composite_action_installs_and_runs_the_cli_verification_gate() -> None:
     action = yaml.safe_load(
         (
-            REPO_ROOT / ".github/actions/dragback-verify/action.yml"
+            REPO_ROOT / ".github/actions/writai-verify/action.yml"
         ).read_text(encoding="utf-8")
     )
 
@@ -486,7 +486,7 @@ def test_composite_action_installs_and_runs_the_cli_verification_gate() -> None:
     steps = action["runs"]["steps"]
     assert any("pip install" in step.get("run", "") for step in steps)
     verify_command = steps[-1]["run"]
-    assert "dragback" in verify_command
+    assert "writai" in verify_command
     assert "workspace verify" in verify_command
     assert "--grant" in verify_command
     assert "token" not in json.dumps(action).casefold()

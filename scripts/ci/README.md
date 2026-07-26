@@ -20,13 +20,13 @@
 > The check must have run at least once on the repository before GitHub will
 > offer it by name. Open one pull request first, then add it.
 >
-> Also set the `DRAGBACK_AGENT_URL` repository variable
+> Also set the `WRITAI_AGENT_URL` repository variable
 > (**Settings → Secrets and variables → Actions → Variables → New repository
 > variable**). It is deliberately not defaulted — see *Configuration* below.
 
 
 The Claude Code `PreToolUse` hook **fails open**. On timeout, crash, or HTTP
-failure the tool call proceeds — `hooks/dragback_hook_lib.py` says so in its own
+failure the tool call proceeds — `hooks/writai_hook_lib.py` says so in its own
 module docstring, and `workspaces/session_enforcement.py` names a PR check as the
 compensating control in two separate comments. This directory is that check.
 
@@ -39,17 +39,17 @@ compensating control in two separate comments. This directory is that check.
 
 ## Files
 
-- `dragback_ci_check.py` — the check. Standard library only, 3.9-compatible, so
+- `writai_ci_check.py` — the check. Standard library only, 3.9-compatible, so
   it runs unchanged on a developer machine and on a bare runner.
 - `verify.sh` — run the identical logic locally, before pushing.
-- `test_dragback_ci_check.py` — its tests. No network, no installed package.
-- `../../.github/workflows/dragback-pr-authorization.yml` — the workflow.
+- `test_writai_ci_check.py` — its tests. No network, no installed package.
+- `../../.github/workflows/writai-pr-authorization.yml` — the workflow.
 
 ## What it does
 
 1. **Resolves the branch to a task** using the same fixed order as session
-   binding (`workspaces/session_binding.py`): explicit `.dragback/attach`, then
-   an exact task ID in the branch name, then `.dragback/task`, then unbound.
+   binding (`workspaces/session_binding.py`): explicit `.writai/attach`, then
+   an exact task ID in the branch name, then `.writai/task`, then unbound.
    Ambiguity resolves to unbound, never to a guess. The candidate set is
    filtered exactly as `list_live_claude_assignments` filters it — live
    supervisor, live assignment, enforceable provider, not completed.
@@ -95,11 +95,11 @@ Exit codes: `0` authorized · `1` not authorized · `2` unreachable · `3` usage
 
 | Variable | Meaning |
 |---|---|
-| `DRAGBACK_AGENT_URL` | Base URL of the agent service. Required on a runner. |
-| `DRAGBACK_CI_TIMEOUT_SECONDS` | HTTP timeout, default 10. |
-| `DRAGBACK_CI_API_KEY` | Optional; sent as a request header. |
+| `WRITAI_AGENT_URL` | Base URL of the agent service. Required on a runner. |
+| `WRITAI_CI_TIMEOUT_SECONDS` | HTTP timeout, default 10. |
+| `WRITAI_CI_API_KEY` | Optional; sent as a request header. |
 
-`DRAGBACK_AGENT_URL` is deliberately **not** defaulted on a runner. A check
+`WRITAI_AGENT_URL` is deliberately **not** defaulted on a runner. A check
 silently pointed at a service that cannot exist there would pass by accident,
 and "passed because it was misconfigured" is the failure mode this exists to
 prevent.

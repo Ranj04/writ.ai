@@ -1,19 +1,19 @@
-# Hexclave integration for Dragback
+# Hexclave integration for writ.ai
 
 ## Recommendation
 
-Use Hexclave as the protected execution environment for Dragback's most sensitive
+Use Hexclave as the protected execution environment for writ.ai's most sensitive
 executor operation. The best demo story is:
 
-> Dragback deterministically decides whether an action is authorized; Hexclave
+> writ.ai deterministically decides whether an action is authorized; Hexclave
 > protects the secrets and sensitive payload used to perform the authorized action.
 
-This is a good thematic fit for the sponsor prize without weakening Dragback's
+This is a good thematic fit for the sponsor prize without weakening writ.ai's
 product invariant:
 
 > The LLM may propose structure. Deterministic code decides and enforces.
 
-Hexclave must not issue Dragback verdicts. `intent-authority` remains the only
+Hexclave must not issue writ.ai verdicts. `intent-authority` remains the only
 service that issues `ALLOW`, `REPLAN`, `BLOCK`, or `HUMAN_REVIEW`.
 
 ## Recommended use case
@@ -64,7 +64,7 @@ the planner or used inside the authority engine.
 ## Proposed files
 
 ```text
-backend/dragback/integrations/
+backend/writai/integrations/
   __init__.py
   base.py
   hexclave.py
@@ -117,7 +117,7 @@ the grant first, then creates `ProtectedExecutionRequest` from the verified
 ## Executor integration point
 
 The current integration point is
-`backend/dragback/services/executor_api.py::execute`.
+`backend/writai/services/executor_api.py::execute`.
 
 Keep this ordering:
 
@@ -140,7 +140,7 @@ receipt = protected_executor.execute(
         decision_snapshot=verification.payload.decision_snapshot,
         plan_hash=verification.payload.plan_hash,
         operation="create_pull_request",
-        payload={"repository": "dragback", "branch": "agent/corrected-plan"},
+        payload={"repository": "writai", "branch": "agent/corrected-plan"},
     )
 )
 ```
@@ -152,7 +152,7 @@ Never call Hexclave before `verification.valid` is true.
 Use explicit configuration with live mode off by default:
 
 ```dotenv
-DRAGBACK_PROTECTED_EXECUTOR=fixture
+WRITAI_PROTECTED_EXECUTOR=fixture
 HEXCLAVE_API_KEY=
 HEXCLAVE_PROJECT_ID=
 HEXCLAVE_BASE_URL=
@@ -177,7 +177,7 @@ Recommended runtime behavior:
 
 Return and display:
 
-- Dragback authorization ID
+- writ.ai authorization ID
 - decision snapshot
 - plan hash
 - Hexclave operation/receipt ID
@@ -204,18 +204,18 @@ request should occur in the deterministic test suite.
 
 1. Start with the plan authorized against `graph-v17`.
 2. Explain that the protected executor is ready but can run only with a valid
-   Dragback grant.
+   writ.ai grant.
 3. Approve the upstream decision that creates `graph-v18`.
 4. Attempt execution with the old grant.
 5. Show `STALE_SNAPSHOT` and show that the Hexclave invocation count stayed zero.
 6. Replan and obtain the corrected `graph-v18` authorization.
 7. Execute again.
-8. Show the Hexclave receipt beside the Dragback authorization and provenance
+8. Show the Hexclave receipt beside the writ.ai authorization and provenance
    evidence.
 
 The key line for judges:
 
-> Hexclave protects execution, while Dragback decides whether that execution is
+> Hexclave protects execution, while writ.ai decides whether that execution is
 > still authorized by the latest approved company intent.
 
 ## Alternative use cases
@@ -226,7 +226,7 @@ The key line for judges:
 - Run a sensitive policy evaluation over private company-decision data.
 
 The protected PR/deployment credential is the clearest fit for the existing
-Dragback demo.
+writ.ai demo.
 
 ## Definition of done
 

@@ -3,11 +3,11 @@ set -euo pipefail
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
-PYTHONPATH=backend "$PYTHON_BIN" -m uvicorn dragback.services.authority_api:app --port 8001 &
+PYTHONPATH=backend "$PYTHON_BIN" -m uvicorn writai.services.authority_api:app --port 8001 &
 AUTH_PID=$!
-PYTHONPATH=backend "$PYTHON_BIN" -m uvicorn dragback.services.agent_api:app --port 8002 &
+PYTHONPATH=backend "$PYTHON_BIN" -m uvicorn writai.services.agent_api:app --port 8002 &
 AGENT_PID=$!
-PYTHONPATH=backend "$PYTHON_BIN" -m uvicorn dragback.services.executor_api:app --port 8003 &
+PYTHONPATH=backend "$PYTHON_BIN" -m uvicorn writai.services.executor_api:app --port 8003 &
 EXECUTOR_PID=$!
 
 cleanup() {

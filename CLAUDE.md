@@ -1,16 +1,16 @@
-# CLAUDE.md — Dragback implementation contract
+# CLAUDE.md — writ.ai implementation contract
 
 **Read by Claude Code only.** `AGENTS.md` is the Codex-facing twin and must stay substantively identical — if you change one, change the other in the same commit.
 
 ---
 
-## What Dragback is
+## What writ.ai is
 
-Dragback is a permission layer for autonomous agents. It proves, deterministically, that a run loses its authorization when an approved upstream decision changes — with scope-aware selective invalidation, snapshot-bound grants, and an executor that refuses stale grants.
+writ.ai is a permission layer for autonomous agents. It proves, deterministically, that a run loses its authorization when an approved upstream decision changes — with scope-aware selective invalidation, snapshot-bound grants, and an executor that refuses stale grants.
 
 **We are now building the product on top of that engine:**
 
-> Dragback watches an organisation's communication for decisions that change what work is authorised, routes each candidate change to whoever has authority over it, and — on approval — reaches into every teammate's running Claude Code session and corrects it.
+> writ.ai watches an organisation's communication for decisions that change what work is authorised, routes each candidate change to whoever has authority over it, and — on approval — reaches into every teammate's running Claude Code session and corrects it.
 >
 > **One person acknowledged the change. Five agents inherited it.**
 
@@ -103,7 +103,7 @@ make authority make agent     make executor
 
 ## Code style
 
-Small typed functions with explicit inputs and outputs. Keep authority logic pure where practical. Add or update tests with every behaviour change. No hidden global mutation outside service runtime modules. UTC-aware datetimes. Keep fixture IDs stable — the demo and tests reference them. Do not rename the product away from **Dragback**.
+Small typed functions with explicit inputs and outputs. Keep authority logic pure where practical. Add or update tests with every behaviour change. No hidden global mutation outside service runtime modules. UTC-aware datetimes. Keep fixture IDs stable — the demo and tests reference them. Do not rename the product away from **writ.ai**.
 
 ## Do not spend time on
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from dragback.graph.neo4j_store import Neo4jGraphStore
+from writai.graph.neo4j_store import Neo4jGraphStore
 
 
 def test_version_record_is_required() -> None:
