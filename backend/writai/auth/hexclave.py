@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from math import isfinite
 from threading import RLock
 from time import monotonic
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import urlparse
 
 import httpx
@@ -13,6 +13,11 @@ import httpx
 HEXCLAVE_DEFAULT_API_URL = "https://api.hexclave.com/api/v1"
 HEXCLAVE_TEAM_PERMISSIONS_PATH = "/team-permissions"
 HEXCLAVE_USER_API_KEY_CHECK_PATH = "/user-api-keys/check"
+#: Resolves a short-lived ACCESS TOKEN, which is what the browser SDK issues.
+#: Distinct from a user API key: the key is long-lived and pasted by a human,
+#: the token comes from a real sign-in. Both must land on the same user id so
+#: the permission check and the audit record cannot tell the surfaces apart.
+HEXCLAVE_ACCESS_TOKEN_PATH = "/users/me"
 HEXCLAVE_DEFAULT_CACHE_TTL_SECONDS = 60.0
 HEXCLAVE_DEFAULT_TIMEOUT_SECONDS = 5.0
 
@@ -180,6 +185,121 @@ class HexclaveUserApiKeyIdentityResolver:
 class _CacheEntry:
     allowed: bool
     expires_at: float
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, avoids a cycle
+    from writai.intake.approval import ApprovalIdentityResolver
+
+
+class HexclaveAccessTokenIdentityResolver:
+    """Resolve a browser SDK access token to its Hexclave user id.
+
+    `@hexclave/react` signs a person in and hands the page an `Authorization`
+    header. That is an ACCESS TOKEN, not a user API key, so it does not resolve
+    through `/user-api-keys/check` — a token posted there is simply rejected,
+    which would read as "unauthorised" when the person is in fact signed in.
+
+    This resolver closes that half, so the web surface reaches the SAME
+    permission check as the CLI and the Slack reaction, with the same user id.
+
+    It resolves identity ONLY. It never decides whether that user may approve;
+    `ApprovalCoordinator` asks `HexclavePermissionChecker` for that, exactly as
+    it does for every other surface.
+    """
+
+    def __init__(
+        self,
+        *,
+        project_id: str | None,
+        secret_key: str | None,
+        api_url: str = HEXCLAVE_DEFAULT_API_URL,
+        http_client: httpx.Client | None = None,
+        timeout_seconds: float = HEXCLAVE_DEFAULT_TIMEOUT_SECONDS,
+    ) -> None:
+        self._project_id = _required_value("project ID", project_id)
+        self._secret_key = _required_value("secret server key", secret_key)
+        normalized_url = api_url.rstrip("/")
+        parsed = urlparse(normalized_url)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise HexclaveConfigurationError(
+                "The Hexclave API URL must be an absolute HTTPS URL."
+            )
+        if not isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise HexclaveConfigurationError(
+                "The Hexclave request timeout must be greater than zero."
+            )
+        self._api_url = normalized_url
+        self._http_client = http_client or httpx.Client()
+        self._timeout_seconds = timeout_seconds
+
+    def resolve_user_id(self, *, approval_token: str) -> str:
+        token = _required_value("access token", approval_token)
+        try:
+            response = self._http_client.get(
+                f"{self._api_url}{HEXCLAVE_ACCESS_TOKEN_PATH}",
+                headers={
+                    "Accept": "application/json",
+                    # The documented header trio for an access-token lookup.
+                    "x-stack-access-token": token,
+                    "x-stack-project-id": self._project_id,
+                    "x-stack-secret-server-key": self._secret_key,
+                    "x-stack-access-type": "server",
+                },
+                timeout=self._timeout_seconds,
+            )
+            response.raise_for_status()
+            payload: Any = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HexclavePermissionError(
+                "Hexclave approval authentication failed."
+            ) from exc
+        if not isinstance(payload, Mapping):
+            raise HexclavePermissionError(
+                "Hexclave returned an invalid approval identity."
+            )
+        # Hexclave returns the signed-in user directly. Accept only a concrete
+        # id: an anonymous or partially-populated response is not an approver.
+        user_id = payload.get("id") or payload.get("user_id")
+        if not isinstance(user_id, str) or not user_id.strip():
+            raise HexclavePermissionError(
+                "Hexclave returned an invalid approval identity."
+            )
+        if payload.get("is_anonymous") is True:
+            raise HexclavePermissionError(
+                "An anonymous Hexclave session cannot approve."
+            )
+        return user_id.strip()
+
+
+class ChainedHexclaveIdentityResolver:
+    """Try each resolver in turn; the first that resolves an id wins.
+
+    The web surface sends an access token and the CLI sends a user API key, and
+    the server is handed one opaque `approval_token` either way. Rather than
+    make each caller declare which kind it holds — a claim the caller could get
+    wrong, or lie about — this asks Hexclave and lets the answer decide.
+
+    Failing every resolver raises, so an unresolvable token is refused rather
+    than falling through to some default identity.
+    """
+
+    def __init__(self, *resolvers: ApprovalIdentityResolver) -> None:
+        if not resolvers:
+            raise HexclaveConfigurationError(
+                "At least one Hexclave identity resolver is required."
+            )
+        self._resolvers = resolvers
+
+    def resolve_user_id(self, *, approval_token: str) -> str:
+        last: Exception | None = None
+        for resolver in self._resolvers:
+            try:
+                return resolver.resolve_user_id(approval_token=approval_token)
+            except HexclavePermissionError as exc:
+                last = exc
+        raise HexclavePermissionError(
+            "Hexclave approval authentication failed."
+        ) from last
 
 
 class HexclavePermissionChecker:

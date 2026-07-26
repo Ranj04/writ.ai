@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@hexclave/react": "^1.0.66",
     "@tesseract.js-data/eng": "^1.0.0",
     "mammoth": "^1.12.0",
     "pdfjs-dist": "^5.7.284",

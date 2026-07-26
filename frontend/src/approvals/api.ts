@@ -1,3 +1,4 @@
+import { hexclaveApprovalToken } from "../hexclave/client";
 import { FIXTURE_PENDING_CHANGES } from "./fixtures";
 import {
   appliedPartition,
@@ -100,7 +101,17 @@ const bindings = new WeakMap<PendingChange, ApprovalBinding>();
  * server-rendered shell can place on `window` for one session instead. When it
  * is absent, approval is a rehearsal and the screen says so.
  */
-function approvalToken(): string | null {
+async function approvalToken(): Promise<string | null> {
+  // Preferred: a real Hexclave sign-in on this page. The server resolves the
+  // access token to a user and checks THAT user's permission, so the person
+  // clicking approve is the person the audit records.
+  const signedIn = await hexclaveApprovalToken();
+  if (signedIn) return signedIn;
+
+  // Fallback, kept deliberately: an operator-pasted value for one session. It
+  // predates the SDK and is still useful for a machine with no browser
+  // sign-in. It is NOT a VITE_* variable, because Vite inlines those into the
+  // bundle and would ship an approval credential to every visitor.
   const runtime = globalThis as { __WRITAI_APPROVAL_TOKEN__?: unknown };
   const token = runtime.__WRITAI_APPROVAL_TOKEN__;
   return typeof token === "string" && token.trim() ? token.trim() : null;
@@ -283,7 +294,7 @@ export async function approveChange(
   // Identity, not id: a fixture card carrying the same composite id was never
   // bound, so it cannot borrow a live approval's credentials.
   const binding = bindings.get(change);
-  const token = approvalToken();
+  const token = await approvalToken();
   if (!binding || !token) {
     console.warn(
       `[writai/approvals] rehearsing approval of ${change.id} — ` +

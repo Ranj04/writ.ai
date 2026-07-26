@@ -118,6 +118,32 @@ per-channel shortcut.
 
 **Verify:** `writai doctor hexclave`
 
+### Browser sign-in (`@hexclave/react`)
+
+Installed for the `/approvals` surface only, so `/` and `/scenario-lab` — the
+fallback demo routes — keep rendering with no provider, no sign-in and no
+network. `src/hexclave/client.ts` builds the client **lazily and never at import
+time**: `new HexclaveClientApp()` throws when no project is configured, and
+constructing it at module scope white-screened `/approvals` on any machine
+without Hexclave set up. Unconfigured now degrades to a labelled rehearsal.
+
+The browser sends an **access token**; the CLI sends a **user API key**. These
+are different artifacts and resolve through different endpoints, so the server
+accepts either via `ChainedHexclaveIdentityResolver` rather than asking the
+caller to declare which it holds — a claim a caller could get wrong or lie
+about. Both land on the same user id, the same permission check and the same
+audit record.
+
+| Artifact | Resolver | Endpoint |
+|---|---|---|
+| Browser access token | `HexclaveAccessTokenIdentityResolver` | `GET /users/me` with `x-stack-access-token` |
+| User API key | `HexclaveUserApiKeyIdentityResolver` | `POST /user-api-keys/check` |
+
+`hexclave dev --config-file ./hexclave.config.ts -- <command>` starts a local
+dashboard and injects `HEXCLAVE_PROJECT_ID` and `HEXCLAVE_SECRET_SERVER_KEY`
+into the child process, with no account required. That is the likely unblock for
+the zero-teams problem below — **not yet tried here.**
+
 **Currently blocked on provisioning, not on credentials.** A real call to
 `GET /teams` with your server key returns `200 {"items":[]}` — the key is valid
 and the project resolves, but it contains **no teams**, so no valid
