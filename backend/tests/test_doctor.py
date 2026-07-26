@@ -13,11 +13,12 @@ Two things are pinned here.
 
 from __future__ import annotations
 
+import pathlib
 from dataclasses import replace
 from typing import Any, cast
 
 import pytest
-from writai import doctor
+from writai import config, doctor
 from writai.config import Settings
 from writai.doctor import ProbeStatus, render, run_probes
 
@@ -370,3 +371,28 @@ def test_long_guidance_is_wrapped_rather_than_scrolled_off_screen() -> None:
         ]
     )
     assert max(len(line) for line in rendered.splitlines()) <= 80
+
+
+def test_the_env_file_is_found_from_the_working_directory(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`writai doctor` must read the .env of the tree the operator is standing in.
+
+    Bare `load_dotenv()` resolves relative to the *installed package*. Once the
+    venv lives in a different checkout than the operator's cwd, that search
+    silently finds nothing — and doctor then reports every integration absent
+    and exits 0. A clean-looking preflight that proves nothing is the worst
+    possible output for this command, so the cwd is searched first.
+    """
+
+    from dotenv import find_dotenv
+
+    (tmp_path / ".env").write_text("GEMINI_API_KEY=from-the-cwd\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert find_dotenv(usecwd=True) == str(tmp_path / ".env")
+
+    # And the module wires that resolution up, rather than the bare call.
+    source = pathlib.Path(config.__file__).read_text()
+    assert "usecwd=True" in source
+    assert "\nload_dotenv()" not in source

@@ -3,9 +3,32 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
-load_dotenv()
+
+def _load_env() -> str:
+    """Load the `.env` an operator would expect: the one where they are standing.
+
+    Bare `load_dotenv()` resolves the file by walking up from **this file**, not
+    from the working directory. Once the package is installed into a venv that
+    lives in a different checkout, that search never reaches the operator's tree
+    — it walked past `/…/writai-verify/` and returned nothing while a fully
+    populated `.env` sat in the cwd.
+
+    That failure is silent and it reads as reassuring: `writai doctor` reports
+    every integration `[ ---- ] not configured` and exits 0, which looks like a
+    clean preflight and proves nothing. It is exactly the "looks identical to
+    working" failure this project keeps having to design against, so the cwd is
+    tried first and the package-relative search is kept only as a fallback.
+    """
+
+    found = find_dotenv(usecwd=True) or find_dotenv()
+    if found:
+        load_dotenv(found)
+    return found
+
+
+DOTENV_PATH = _load_env()
 _ENVIRONMENT = os.getenv("WRITAI_ENV", "development")
 _GRAPH_BACKEND = os.getenv("WRITAI_GRAPH_BACKEND", "memory")
 DEFAULT_AUTHORITY_THRESHOLD = 0.75

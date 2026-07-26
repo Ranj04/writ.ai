@@ -25,10 +25,15 @@ All four must succeed. What each one catches:
   ```
   .venv/bin/pip uninstall -y dragback && .venv/bin/pip install -e .
   ```
-- **`.env`** — `load_dotenv()` reads it **from the working directory**. Run step 1
-  from a tree without one and every integration reports `[ ---- ] not
-  configured` and the command **exits 0**. That is a clean-looking report that
-  proves nothing. If step 1 says everything is absent, suspect the tree first.
+- **`.env`** — read from the **working directory**. Run step 1 from a tree
+  without one and every integration reports `[ ---- ] not configured` and the
+  command **exits 0** — a clean-looking preflight that proves nothing. If step 1
+  says everything is absent, suspect the tree before you suspect the keys.
+
+  (This was genuinely broken until tonight: `load_dotenv()` resolves relative to
+  the *installed package*, so with the venv in one checkout and the operator in
+  another it found no `.env` at all and reported six absent integrations while a
+  populated `.env` sat in the cwd. It now searches the working directory first.)
 - **the commit** — more than one checkout of this repo exists on this machine.
   Confirm you are on the one you mean to record.
 
