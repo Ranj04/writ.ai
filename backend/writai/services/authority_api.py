@@ -17,6 +17,16 @@ from writai.auth.hexclave import (
     HexclaveConfigurationError,
     HexclavePermissionChecker,
 )
+from writai.auth.hexclave_webhooks import (
+    HEXCLAVE_WEBHOOK_MAX_BODY_BYTES,
+    HexclaveCacheInvalidationRequest,
+    HexclaveWebhookConfigurationError,
+    HexclaveWebhookEvidenceStoreError,
+    HexclaveWebhookPayloadError,
+    HexclaveWebhookVerificationError,
+    JsonHexclaveWebhookEvidenceStore,
+    SvixHexclaveWebhookVerifier,
+)
 from writai.config import settings
 from writai.domain import (
     ArtifactKind,
@@ -141,6 +151,8 @@ workspace_contexts = DynamicAuthorityContextRegistry(
 event_broker = EventBroker()
 runtime_lock = RLock()
 slack_intake_lock = RLock()
+hexclave_webhook_lock = RLock()
+hexclave_webhook_store_lock = RLock()
 # Process-local clients make the checker's bounded TTL effective across requests.
 hexclave_client_lock = RLock()
 slack_store_lock = RLock()
@@ -152,6 +164,10 @@ slack_approval_thread_stores: dict[Path, JsonSlackApprovalThreads] = {}
 slack_delivery_replay_stores: dict[Path, JsonSlackDeliveryReplayStore] = {}
 approval_link_use_stores: dict[Path, SqliteApprovalLinkUseStore] = {}
 _slack_verifier: ComposioSlackWebhookVerifier | None = None
+_hexclave_webhook_verifier: SvixHexclaveWebhookVerifier | None = None
+hexclave_webhook_evidence_stores: dict[
+    Path, JsonHexclaveWebhookEvidenceStore
+] = {}
 app = FastAPI(title="writ.ai Intent Authority", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -298,6 +314,217 @@ def _hexclave_permission_checker(team_id: str) -> HexclavePermissionChecker:
             )
             hexclave_permission_checkers[cache_key] = checker
         return checker
+
+
+def _live_hexclave_webhook_verifier() -> SvixHexclaveWebhookVerifier:
+    global _hexclave_webhook_verifier
+    with hexclave_webhook_lock:
+        if _hexclave_webhook_verifier is None:
+            try:
+                _hexclave_webhook_verifier = SvixHexclaveWebhookVerifier(
+                    secret=settings.hexclave_webhook_secret
+                )
+            except HexclaveWebhookConfigurationError as exc:
+                raise ApiError(
+                    status_code=503,
+                    code="HEXCLAVE_WEBHOOK_NOT_CONFIGURED",
+                    message=str(exc),
+                    retryable=True,
+                ) from exc
+        return _hexclave_webhook_verifier
+
+
+def _hexclave_webhook_evidence_store() -> JsonHexclaveWebhookEvidenceStore:
+    path = Path(settings.hexclave_webhook_evidence_store).expanduser()
+    with hexclave_webhook_store_lock:
+        store = hexclave_webhook_evidence_stores.get(path)
+        if store is None:
+            store = JsonHexclaveWebhookEvidenceStore(path)
+            hexclave_webhook_evidence_stores[path] = store
+        return store
+
+
+def _clear_hexclave_permission_caches() -> int:
+    """Clear every process-local permission result without producing a verdict."""
+
+    with hexclave_client_lock:
+        checkers = tuple(hexclave_permission_checkers.values())
+        for checker in checkers:
+            checker.clear_cache()
+        return len(checkers)
+
+
+def _invalidate_agent_hexclave_permission_cache(
+    invalidation: HexclaveCacheInvalidationRequest,
+) -> int:
+    try:
+        response = httpx.post(
+            f"{settings.agent_url}/internal/hexclave/permission-cache/invalidate",
+            json=invalidation.model_dump(mode="json"),
+            headers={
+                CORRELATION_ID_HEADER: current_correlation_id(),
+                INTERNAL_SERVICE_AUTH_HEADER: internal_service_token(
+                    settings.grant_secret
+                ),
+                "Accept": "application/json",
+            },
+            timeout=httpx.Timeout(settings.service_timeout_seconds),
+        )
+    except (httpx.TimeoutException, httpx.RequestError) as exc:
+        raise ApiError(
+            status_code=503,
+            code="AGENT_PERMISSION_CACHE_UNAVAILABLE",
+            message="The agent permission-cache service is unavailable.",
+            retryable=True,
+        ) from exc
+    if response.is_error:
+        raise ApiError(
+            status_code=503,
+            code="AGENT_PERMISSION_CACHE_UNAVAILABLE",
+            message="The agent permission-cache service is unavailable.",
+            retryable=True,
+        )
+    try:
+        body = response.json()
+        caches_cleared = body["caches_cleared"]
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ApiError(
+            status_code=503,
+            code="AGENT_PERMISSION_CACHE_UNAVAILABLE",
+            message="The agent permission-cache service returned an invalid response.",
+            retryable=True,
+        ) from exc
+    if (
+        not isinstance(caches_cleared, int)
+        or isinstance(caches_cleared, bool)
+        or caches_cleared < 0
+    ):
+        raise ApiError(
+            status_code=503,
+            code="AGENT_PERMISSION_CACHE_UNAVAILABLE",
+            message="The agent permission-cache service returned an invalid response.",
+            retryable=True,
+        )
+    return caches_cleared
+
+
+async def _read_hexclave_webhook_body(request: Request) -> bytes:
+    """Read an unsigned delivery without ever buffering more than the hard cap."""
+
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            parsed_length = int(declared_length)
+        except ValueError as exc:
+            raise HexclaveWebhookPayloadError(
+                "The Hexclave webhook payload length is invalid."
+            ) from exc
+        if (
+            parsed_length < 0
+            or parsed_length > HEXCLAVE_WEBHOOK_MAX_BODY_BYTES
+        ):
+            raise HexclaveWebhookPayloadError(
+                "The Hexclave webhook payload is too large."
+            )
+
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > HEXCLAVE_WEBHOOK_MAX_BODY_BYTES:
+            raise HexclaveWebhookPayloadError(
+                "The Hexclave webhook payload is too large."
+            )
+        body.extend(chunk)
+    return bytes(body)
+
+
+@app.post("/webhooks/hexclave")
+async def receive_hexclave_webhook(request: Request) -> dict[str, object]:
+    """Verify an authority event, clear caches, and record no authorization verdict."""
+
+    try:
+        body = await _read_hexclave_webhook_body(request)
+        verified = _live_hexclave_webhook_verifier().verify(
+            body=body,
+            headers=request.headers,
+        )
+    except HexclaveWebhookVerificationError as exc:
+        raise ApiError(
+            status_code=401,
+            code="INVALID_HEXCLAVE_WEBHOOK",
+            message=str(exc),
+        ) from exc
+    except HexclaveWebhookPayloadError as exc:
+        raise ApiError(
+            status_code=400,
+            code="INVALID_HEXCLAVE_WEBHOOK_PAYLOAD",
+            message=str(exc),
+        ) from exc
+
+    event = verified.event
+    if event is None:
+        return correlated_payload(
+            {
+                "status": "ignored",
+                "event_type": verified.event_type,
+                "graph_mutated": False,
+            }
+        )
+
+    store = _hexclave_webhook_evidence_store()
+    try:
+        reservation = store.reserve(event)
+    except HexclaveWebhookEvidenceStoreError as exc:
+        raise ApiError(
+            status_code=503,
+            code="HEXCLAVE_WEBHOOK_EVIDENCE_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        ) from exc
+    if reservation == "completed":
+        return correlated_payload(
+            {
+                "status": "permission-cache-invalidated",
+                "delivery_id": event.delivery_id,
+                "event_type": event.event_type,
+                "evidence_ref": event.evidence_ref,
+                "duplicate": True,
+                "graph_mutated": False,
+            }
+        )
+
+    authority_caches_cleared = _clear_hexclave_permission_caches()
+    agent_caches_cleared = _invalidate_agent_hexclave_permission_cache(
+        HexclaveCacheInvalidationRequest(
+            delivery_id=event.delivery_id,
+            event_type=event.event_type,
+            evidence_ref=event.evidence_ref,
+        )
+    )
+    try:
+        store.complete(
+            event.delivery_id,
+            authority_caches_cleared=authority_caches_cleared,
+            agent_caches_cleared=agent_caches_cleared,
+        )
+    except HexclaveWebhookEvidenceStoreError as exc:
+        raise ApiError(
+            status_code=503,
+            code="HEXCLAVE_WEBHOOK_EVIDENCE_UNAVAILABLE",
+            message=str(exc),
+            retryable=True,
+        ) from exc
+    return correlated_payload(
+        {
+            "status": "permission-cache-invalidated",
+            "delivery_id": event.delivery_id,
+            "event_type": event.event_type,
+            "evidence_ref": event.evidence_ref,
+            "authority_caches_cleared": authority_caches_cleared,
+            "agent_caches_cleared": agent_caches_cleared,
+            "duplicate": False,
+            "graph_mutated": False,
+        }
+    )
 
 
 class _SlackReplayDuplicate(RuntimeError):

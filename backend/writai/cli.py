@@ -1300,8 +1300,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay_crustdata.add_argument(
         "--bearer",
-        default=os.getenv("CRUSTDATA_WEBHOOK_BEARER"),
-        help="Replay bearer (default: CRUSTDATA_WEBHOOK_BEARER).",
+        default=os.getenv("CRUSTDATA_REPLAY_BEARER"),
+        help="Operator replay bearer (default: CRUSTDATA_REPLAY_BEARER).",
     )
 
     agent = groups.add_parser(

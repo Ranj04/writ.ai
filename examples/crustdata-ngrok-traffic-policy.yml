@@ -1,0 +1,8 @@
+on_http_request:
+  - name: Deny every request except the CrustData capture callback
+    expressions:
+      - "req.method != 'POST' || req.url.path != '/intake/crustdata/person/capture'"
+    actions:
+      - type: deny
+        config:
+          status_code: 404
