@@ -1,15 +1,27 @@
 # Stage runbook — five-session deny
 
-Cold machine to the deny landing. Read top to bottom, one command per step.
+Cold machine to the deny landing. The canonical flow is:
+
+```text
+reset → up → check → fire → status/why → ack
+```
+
+Run every command from the repository root. Do not use the old direct
+`seed.py --serve` flow; the launcher owns service startup, fixture import,
+session bindings, and reset safety.
 
 ---
 
 ## 0. Prerequisites
 
-**There is exactly one tree. It is `/Users/ranjivj/writai-verify`.**
+**There is exactly one stage tree. It is `/Users/ranjivj/writai-verify`.**
 
-```
-cd /Users/ranjivj/writai-verify && .venv/bin/python --version && .venv/bin/writai --help >/dev/null && ls .env && git log --oneline -1
+```bash
+cd /Users/ranjivj/writai-verify &&
+  .venv/bin/python --version &&
+  .venv/bin/writai --help >/dev/null &&
+  test -f .env &&
+  git log --oneline -1
 ```
 
 The other two checkouts on this machine were renamed so they cannot be entered
@@ -33,288 +45,261 @@ All four checks must pass. What each one catches:
   Both are fixed: `.venv` is now a real directory built by `python3.12 -m venv`
   with `pip install -e ".[dev]"`. If `ls -ld .venv` ever shows a symlink, or
   `.venv/bin/dragback` exists, stop and rebuild:
-  ```
-  rm .venv && python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
-  ```
-- **`.env`** — read from the **working directory**. Run step 1 from a tree
-  without one and every integration reports `[ ---- ] not configured` and the
-  command **exits 0** — a clean-looking preflight that proves nothing. If step 1
-  says everything is absent, suspect the tree before you suspect the keys.
 
-  (This was genuinely broken until tonight: `load_dotenv()` resolves relative to
-  the *installed package*, so with the venv in one checkout and the operator in
-  another it found no `.env` at all and reported six absent integrations while a
-  populated `.env` sat in the cwd. It now searches the working directory first.)
+  ```bash
+  rm .venv
+  python3.12 -m venv .venv
+  .venv/bin/pip install -e ".[dev]"
+  ```
+- **`.env`** — read from the **working directory**. Run `writai doctor` from a
+  tree without one and every integration reports `[ ---- ] not configured` and
+  the command **exits 0** — a clean-looking preflight that proves nothing. If
+  the doctor says everything is absent, suspect the tree before the keys.
 - **the commit** — more than one checkout of this repo exists on this machine.
   Confirm you are on the one you mean to record.
 
-Every command below sets `PYTHONPATH=backend`. Omitting it fails on `import
-writai`. `.venv/bin/writai …` is equivalent once the install above is correct.
+The launcher needs `curl` and a Python 3.11+ interpreter that can import
+`fastapi` and `uvicorn`. It selects, in order:
+
+1. `WRITAI_DEMO_PYTHON`, if set;
+2. an executable repo `.venv/bin/python`, if present;
+3. `python3`.
+
+The canonical stage tree should use its repo-local `.venv`. To select a
+different interpreter explicitly:
+
+```bash
+export WRITAI_DEMO_PYTHON=/absolute/path/to/python3.12
+"$WRITAI_DEMO_PYTHON" -c 'import fastapi, uvicorn'
+```
+
+`claude` starts the agent sessions when available. `tmux`, `jq`,
+`screencapture`, and Superset are optional; the launcher reports each
+fallback.
+
+If Hexclave approval identity is not configured, opt into the clearly labelled
+local channel-authentication bypass before arming:
+
+```bash
+export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
+```
+
+This bypasses only the approval channel authentication. Role, permission,
+scope, confidence, proposal binding, graph traversal, and snapshot enforcement
+still run. Omit it when the Hexclave approval path is genuinely configured.
+
+Record the sponsor-integration state before rehearsing:
+
+```bash
+writai doctor
+writai --json doctor
+```
+
+The JSON flag is global and therefore precedes `doctor`. A non-live sponsor
+path changes what may be claimed on stage; it does not block the fixture-driven
+five-session proof.
 
 ---
 
-## 1. `writai doctor` — what is live, and what to do about what isn't
+## 1. Reset
 
-One command, before you touch anything else.
-
-```
-.venv/bin/writai doctor
+```bash
+scripts/demo/reset.sh
 ```
 
-Read it as: **the marks are the state, the `so:` lines are the plan.** Every
-integration that is not `[ LIVE ]` prints a `so:` line naming the concrete
-command or switch that gets you through the demo without it. You should not
-need a second document.
+Reset stops launcher-owned sessions, recording, and services; clears generated
+demo state; and removes only a demo root bearing the launcher's safety marker.
+It preserves backup recordings unless passed `--recordings`.
 
-| | Meaning | Do |
-|---|---|---|
-| `[ LIVE ]` | A real call proved the credential works | nothing |
-| `[ DEAD ]` | Set, and broken. **Worse than absent** — the code takes the live path | follow its `so:` line |
-| `[  ??  ]` | Could not be checked. **Not a pass** | treat as unknown |
-| `[ ---- ]` | Not configured. A choice, not a fault | follow its `so:` line |
-
-**Exit 1 means a dead credential, not a blocked demo.** At the last run: Gemini
-`LIVE`; Hexclave and Composio `DEAD`; Callwright, CrustData and Superset
-`----`. The five-session deny below depends on none of them — it runs on the
-seeded fixture and the unauthenticated approval seam, which is what
-`WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1` on every command below is for.
-
-The two `DEAD` ones change what you may *claim*, not whether the demo runs.
-Read "What is NOT live" at the bottom before you say anything on stage.
+Always reset before another rehearsal. Reusing fired assignments is the most
+likely way to make a working demo appear inert.
 
 ---
 
-## 2. Seed
+## 2. Arm
 
-Deletes and rebuilds `/tmp/writai-stage/` — store, hook copy, and the five session dirs.
-
-```
-WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 \
-  PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py
+```bash
+scripts/demo/up.sh
 ```
 
-It prints the five directories, marked `survives` (Sara TASK-201, Alex TASK-202) or `interrupted` (Priya TASK-203, Marcus TASK-204, Dan TASK-205).
+`up.sh` starts the authority, agent, and executor services; imports and
+authorizes the `graph-v17` workspace; writes the five task bindings and hook
+settings; and launches the sessions when Claude Code is available. It does
+**not** propose or approve `DEC-018`.
+
+Expected shape:
+
+- two `export.generation` sessions that survive;
+- three `export.authorization` sessions that will be interrupted;
+- agent service on `127.0.0.1:8002`;
+- all assignments pinned to `graph-v17`.
+
+For a dry preflight without starting Claude Code:
+
+```bash
+scripts/demo/up.sh --no-agents
+```
+
+If tmux panes show Claude Code's folder-trust prompt, accept it in every agent
+pane before firing. Reset recreates those directories, so the prompt can return
+on every rehearsal.
 
 ---
 
-## 3. Start the server
+## 3. Check
 
-Leave this terminal open. It re-seeds, then serves on `127.0.0.1:8002`.
-
-```
-WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 \
-  PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py --serve
+```bash
+scripts/demo/check.sh
 ```
 
-Wait for the line `agent service listening on http://127.0.0.1:8002`.
+Do not fire on red. The checklist catches the three silent demo-killers:
 
-If port 8002 is already bound by another demo process, kill it first:
+- a session with no task binding;
+- an assignment snapshot that does not match the armed graph;
+- an assignment whose interrupt has already been spent.
 
+Warnings are disclosed fallbacks, not passes. In particular, a missing backup
+recording or optional Superset workspace does not stop the deterministic proof.
+
+Use this checklist instead of ad hoc session curls: it validates the launcher
+contract without registering a stray rehearsal session.
+
+---
+
+## 4. Fire
+
+```bash
+scripts/demo/fire.sh
 ```
-lsof -tiTCP:8002 -sTCP:LISTEN | xargs kill
+
+This is the only launcher script that mutates the graph. It proposes `DEC-018`,
+shows the blast radius, and waits for the human confirmation before applying
+the change.
+
+Expected result:
+
+```text
+graph-v17 → graph-v18
+TASK-201, TASK-202                 continue
+TASK-203, TASK-204, TASK-205      interrupted
+```
+
+The next tool call in each affected session receives the denial. The exact tool
+may be `Read`, `Edit`, or another call; the hook runs before every tool use.
+
+---
+
+## 5. Show status and one explanation
+
+```bash
+writai --agent-url http://127.0.0.1:8002 dev status
+writai --agent-url http://127.0.0.1:8002 dev why <SESSION_ID>
+```
+
+`status` is the wide shot: three interrupted, two continuing. `why` is the
+proof for one person: affected scope, provenance path, invalidated work,
+preserved work, decision snapshot, and redirect reason.
+
+If the `writai` console script is not installed, use the same interpreter that
+passed preflight:
+
+```bash
+PYTHONPATH=backend "${WRITAI_DEMO_PYTHON:-python3}" -m writai.cli \
+  --agent-url http://127.0.0.1:8002 dev status
+PYTHONPATH=backend "${WRITAI_DEMO_PYTHON:-python3}" -m writai.cli \
+  --agent-url http://127.0.0.1:8002 dev why <SESSION_ID>
 ```
 
 ---
 
-## 4. Verify before you touch Claude Code
+## 6. Human acknowledgement
 
-The session routes authenticate the hook and fail closed without a key, so both
-calls carry the demo key the seeder set.
-
-```
-curl -s -X POST http://127.0.0.1:8002/supervisor/sessions/start -H 'Content-Type: application/json' -H 'X-writ.ai-Hook-API-Key: writai-demo-hook-key' -d '{"session_id":"sess-priya","cwd":"/tmp/writai-stage/priya","branch":""}'
+```bash
+scripts/demo/ack.sh
 ```
 
-```
-curl -s -X POST http://127.0.0.1:8002/supervisor/sessions/sess-priya/check -H 'Content-Type: application/json' -H 'X-writ.ai-Hook-API-Key: writai-demo-hook-key' -d '{"session_id":"sess-priya","tool_name":"Edit","timestamp":"2026-07-25T09:00:00+00:00"}'
-```
+The script reads the blocked sessions from the service, shows which decision
+blocks each one, and asks a person to confirm. Only then are those sessions
+released to correct their own work. Neither `up.sh` nor `fire.sh` acknowledges
+on the user's behalf.
 
-Expect, in the second response:
-
-```
-"decision": "deny"
-"denial_mode": "until-acknowledged"
-"binding_source": "task-file"
-"redirect_instruction": "Exports are admin-only. …"     (non-null)
-"provenance_path": ["DEC-018","DEC-004","SPEC-009","TICKET-100","TASK-203","PLAN-027"]
-```
-
-There is **no `decision_snapshot` field** in this response — an earlier version of
-this runbook said to look for `"decision_snapshot":"graph-v18"`, and an operator
-who went looking for it would have concluded a working demo was broken. The
-snapshot is on the assignment, not the verdict; `writai dev why <session>` shows
-the graph transition.
-
-**This curl consumes nothing, and you can run it as often as you like.** A bare
-curl never acknowledges: the deny is held open **until acknowledged**, and the
-acknowledgement is a `redirect_id` the service issued on a previous deny and the
-*hook* echoes back on its next call. Curl doesn't echo it, so curl keeps getting
-`deny` — which is the correct answer, not a stuck session. (Older text here said
-the deny was one-shot and that this curl "burned" TASK-203. It is not, and it
-does not.)
-
-To watch the whole beat by hand, echo the id back the way the hook does:
-
-```
-curl -s -X POST http://127.0.0.1:8002/supervisor/sessions/sess-priya/check -H 'Content-Type: application/json' -H 'X-writ.ai-Hook-API-Key: writai-demo-hook-key' -d '{"session_id":"sess-priya","tool_name":"Edit","timestamp":"2026-07-25T09:00:00+00:00","acknowledged_redirect_id":"<redirect_id from the deny>"}'
-```
-
-That returns `"decision":"allow"`. Denied until acknowledged, then released — no
-second round trip, no human in the loop for a redirect the agent already saw.
+Finish by showing the agents change `all_users` to an admin-only audience while
+the two generation tasks remain intact.
 
 ---
 
-## 5. Launch the five sessions
+## 7. Between rehearsals
 
-One terminal each. `PROMPT.txt` is the starter prompt. `.claude/settings.local.json` in each dir wires
-SessionStart, PreToolUse and SessionEnd to the repo's `hooks/writai_*.py`, with the
-endpoint and API key inlined so the directory targets the server you seeded for.
+Run the canonical sequence again from the top:
 
-```
-cd /tmp/writai-stage/sara && claude "$(cat PROMPT.txt)"
-```
-
-```
-cd /tmp/writai-stage/alex && claude "$(cat PROMPT.txt)"
+```bash
+scripts/demo/reset.sh
+scripts/demo/up.sh
+scripts/demo/check.sh
 ```
 
-```
-cd /tmp/writai-stage/priya && claude "$(cat PROMPT.txt)"
-```
+Close any old interactive Claude Code sessions. A prior session that already
+saw a redirect is not a fresh rehearsal.
 
-```
-cd /tmp/writai-stage/marcus && claude "$(cat PROMPT.txt)"
-```
+If the live run fails and a clean backup exists:
 
+```bash
+scripts/demo/fallback.sh
 ```
-cd /tmp/writai-stage/dan && claude "$(cat PROMPT.txt)"
-```
-
-Sara and Alex run to completion. Priya, Marcus and Dan hit the deny on their first tool call and adopt the admin-only redirect.
 
 ---
 
-## 6. RE-SEED BETWEEN EVERY RUN — this is what breaks the second rehearsal
+## Troubleshooting
 
-A session that has already **acknowledged** its redirect is allowed from then on,
-and the acknowledgement is stored per assignment. So a second rehearsal against a
-used store silently allows all five sessions and looks like the product is
-broken.
-
-(The mechanism, since it moved: the deny is held **until acknowledged**, not
-delivered once. Every tool call is denied until the hook echoes back the
-`redirect_id` the service issued — which it does automatically on the very next
-call, so a live session sees exactly one deny and continues. The store remembers
-that, which is why it has to be rebuilt between rehearsals.)
-
-Between runs, in the server terminal: `Ctrl-C`, then
-
-```
-WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 \
-  PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py --serve
-```
-
-Or, leaving the server up, re-seed the store from a second terminal (the server re-reads the file per request):
-
-```
-WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 \
-  PYTHONPATH=backend .venv/bin/python scripts/demo/seed.py
-```
-
-Also close and relaunch the five `claude` sessions — a session that already saw the deny will not see it again.
+- **Agent service is down:** `curl --fail
+  http://127.0.0.1:8002/health`. Run `reset.sh`, then `up.sh`; do not kill an
+  unknown process merely because it owns the port.
+- **No interrupt:** run `check.sh`. Confirm the session launched from its
+  generated directory and that the directory contains `.writai/task`.
+- **All five stop:** confirm each task binding and scope. The two
+  `export.generation` siblings must survive.
+- **All five continue:** the workspace was probably already fired or the hooks
+  were not installed in the generated session settings. Reset, re-arm, and
+  check.
+- **A blocked agent cannot write the fix:** that is the intended
+  deny-until-human-acknowledgement state. Run `ack.sh` after showing `why`.
+- **No live agent panes:** Claude Code or tmux may be absent. `up.sh` reports the
+  fallback and still supports `--no-agents` for a deterministic service
+  rehearsal.
 
 ---
 
-## 7. If it does not deny
+## What is not live — do not claim otherwise
 
-- **The deny lands on the FIRST tool call, whichever tool that is.** Usually `Read`, not `Edit`. If the session read the file before you were watching, the deny already fired — check the scrollback.
-- **A previously acknowledged assignment stays allowed.** The step 4 curl does
-  *not* cause this — it never acknowledges — but a completed rehearsal does.
-  Re-seed between runs.
-- **The server must be running** on 8002. Confirm: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8002/openapi.json` → `200`. The hook fails closed, so a dead server denies with `writ.ai hook failed closed:` instead of the WRITAI block — that is a different failure.
-- **The session dir must contain `.writai/task`.** Without it the session binds to
-  nothing, reads as unbound, and an unbound session is **allowed everything** — which
-  looks identical to a working demo. Confirm: `cat .writai/task` in the session dir.
-- **Wrong port.** The endpoint is baked into each `.claude/settings.local.json` when you
-  seed. If you started the server with `--port N`, you must have seeded with `--port N`
-  too, or every session silently registers nowhere.
-- **You must launch from inside the session dir.** `.claude/settings.local.json` is per-directory; running `claude` from elsewhere loads no hook.
-- **Wrong python.** `PYTHONPATH=backend .venv/bin/python`, never `python3`.
-- Survivors denying, or interrupted sessions allowing, means a stale store. Re-seed.
-
----
-
-## What is NOT live — do not claim otherwise on stage
-
-- **Slack extraction now works, and its wording is not reproducible.** Measured
-  over 14 live runs on the demo's own sentence: 14/14 produced a valid proposal,
-  and 6/6 driven through approval reached a **graph write** with the correct
-  blast radius — `graph-v17 → graph-v18`, TASK-203/204/205 invalidated,
-  TASK-201/202 preserved, every time.
-
-  **But all 14 runs invented a different requirement shape**, and none used the
-  workspace's own `audience` key. The baseline says
-  `{"audience": "all_users"}`; extraction writes `{"allowed_roles":
-  ["administrators"], "format": "CSV"}`, `{"restricted_to":
-  "administrators_only"}`, and twelve other variants. **The scope-level verdict
-  is stable and correct; the requirement text handed to a redirected agent is
-  not.** Do not promise a judge that the redirect wording is deterministic.
-
-  The staged demo does not depend on any of this: `scripts/demo/fire.sh` fires
-  the seeded change fixture through the explicit delta, with no extraction in
-  the path. Show extraction as its own beat, not as the demo's spine.
-- **No real Composio delivery or Hexclave-authenticated approval has exercised
-  the Slack route.** The measurement above bypassed channel authentication
-  exactly as the seeder does. Every authority check ran; nobody proved who the
-  approver was.
-- **No Composio webhook has ever been delivered here.** Message text is supplied
-  by hand. `COMPOSIO_WEBHOOK_SECRET` is empty, so no signed delivery can be
-  verified.
-- **Approvals are not authenticated locally.** `HEXCLAVE_TEAM_ID` is empty, so
-  `writai approve change` correctly fails with
-  `APPROVAL_AUTHENTICATION_FAILED` and `fire.sh` falls back to the in-process
-  seam, which needs `WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1`. Every authority
-  check still runs; only the channel authentication is bypassed.
-
-  **Browser sign-in exists now and is OFF by default. Leave it off.** `/approvals`
-  reads a Hexclave identity only when `VITE_WRITAI_HEXCLAVE_SIGN_IN=1`. Setting
-  it against the current project — which has a valid key but **zero teams** —
-  hangs the browser tab: not a slow load, an unresponsive tab that stops
-  answering clicks and navigation. `/approvals` is the screen you fall back TO
-  when the live path breaks, so it must never be the thing that breaks. With the
-  flag off it renders, approves on the unauthenticated seam, and labels itself
-  `Rehearsal · nothing was applied` — verified by loading it, not by reasoning
-  about it. Turn sign-in on only after `writai doctor hexclave` reads `LIVE`, and
-  re-load `/approvals` before relying on it in front of anyone.
-- **The CrustData payload is documentation-reconstructed, not captured.**
+- The staged change comes from the checked-in explicit delta. It does not
+  depend on LLM extraction.
+- No genuine Composio webhook delivery or Hexclave-authenticated approval has
+  exercised the local fallback flow when
+  `WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1` is set.
+- CrustData credentials have passed a real, read-only watcher-list request
+  using `Authorization: Bearer …` and `x-api-version: 2025-11-01`. That
+  validates the key only. There are zero watchers, no genuine callback has been
+  captured, and the exact LinkedIn target and CrustData-person-to-Hexclave-user
+  binding are unset.
+- `make demo-crustdata-replay` is a deterministic,
+  documentation-reconstructed fallback. It makes no CrustData API call,
+  receives no callback, and is not evidence of live sponsor usage.
+- Fixture-generated correction wording is a demo template. Deterministic code,
+  not the model, decides authority, traversal, invalidation, and grant
+  usability.
 
 ## Facts worth having on hand
 
-- Store: `/tmp/writai-stage/live-workspaces.json`
-- Hooks: `hooks/writai_session_start.py`, `writai_pre_tool_use.py`, `writai_session_end.py`
-- Hook auth header: `X-writ.ai-Hook-API-Key`, demo value `writai-demo-hook-key`
-  (export `WRITAI_HOOK_API_KEY` before seeding to override; a real key is then
-  inherited from your shell rather than written into the settings files)
-- Agent service `127.0.0.1:8002`, authority service `127.0.0.1:8001`
-- Decision `DEC-018` supersedes `DEC-004`, scope `export.authorization`
-- Provenance: `DEC-018 → DEC-004 → SPEC-009 → TICKET-100 → TASK-203 → PLAN-027`
-- The seeder never writes to `~/.claude/settings.json`, and hook config is never
-  committed to `.claude/settings.json`.
-- `writai` is **not on PATH** inside a stage session. An interrupted session that
-  tries `writai dev why` gets "command not found". Run it from the repo root as
-  `.venv/bin/writai dev why`, or `PYTHONPATH=backend .venv/bin/python -m
-  writai.cli dev why`. Both are verified working; `dev status` and `dev why`
-  render correctly against the running service.
-- `writai dev ack` releases only a session the service reports as **blocked and
-  awaiting a human** — an assignment invalidated outright with no corrected plan
-  to hand over. A session that is merely denied-until-acknowledged is not that:
-  its hook acknowledges automatically on the next tool call, and `dev ack`
-  correctly answers `DECISION_ID_UNRESOLVED`. That is not a bug; do not go
-  looking for one on stage.
-- **Known cosmetic defect, `scripts/demo/ack.sh`:** its blocked-session line
-  renders as `blocked by yesnonointerruptedgraph-v17graph-v18` — several fields
-  concatenated with no separators — and it then reports `[FAIL]` for a session
-  `dev ack` considers not blocked. The demo does not need this script (the hook
-  self-acknowledges), so **do not run it on stage.** Logged, not fixed.
-- **Two rehearsals in a row without a re-seed is the single most likely way to make
-  a working demo look broken.** Step 6 exists for that reason.
+- Store: `.writai/live-workspaces.json` unless
+  `WRITAI_WORKSPACE_STORE` overrides it.
+- Generated session directories: a Superset worktree, or
+  `../writai-demo/session-N`.
+- Logs and manifests: `scripts/demo/logs/` and `scripts/demo/state/`.
+- Hooks: `hooks/writai_session_start.py`,
+  `hooks/writai_pre_tool_use.py`, and `hooks/writai_session_end.py`.
+- Agent, authority, and executor ports: `8002`, `8001`, and `8003`.
+- Decision: `DEC-018` supersedes `DEC-004` for
+  `export.authorization`.
+- Example provenance:
+  `DEC-018 → DEC-004 → SPEC-009 → TICKET-100 → TASK-203 → PLAN-027`.
+- The launcher never writes `~/.claude/settings.json`.

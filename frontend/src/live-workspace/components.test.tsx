@@ -332,9 +332,10 @@ describe("Live Workspace components", () => {
       expect(html).toContain("audience");
       expect(html).toContain("No real Composio webhook");
       expect(html).toContain("--scope/--was/--now");
-      // The CrustData payload is replayed, and is not even a real capture.
-      expect(html).toContain("never fires live here");
-      expect(html).toContain("documentation-reconstructed, not captured");
+      // The CrustData fallback cannot be mistaken for a live or captured delivery.
+      expect(html).toContain("stage fallback is a replay, not a live webhook");
+      expect(html).toContain("documentation-reconstructed");
+      expect(html).toContain("No genuine CrustData delivery");
       // The seeder's bypass is named, scoped, and shown to be gated.
       expect(html).toContain("approves without channel authentication");
       expect(html).toContain("WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1");

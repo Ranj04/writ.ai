@@ -7,9 +7,9 @@ and what degrades without it.
 **The one command:**
 
 ```bash
-writai doctor            # or: PYTHONPATH=backend .venv/bin/python -m writai.cli doctor
-writai doctor --json     # machine-readable
-writai doctor composio   # just one
+writai doctor              # or: PYTHONPATH=backend python3 -m writai.cli doctor
+writai --json doctor       # machine-readable; global options precede the command
+writai doctor composio     # just one
 ```
 
 It does not check that an environment variable is non-empty. **It makes a real,
@@ -39,9 +39,9 @@ Run `writai doctor` for the current answer. At the time of writing:
 |---|---|---|
 | **Gemini** | `LIVE` | Key accepted; 50 models visible, including `gemini-3.6-flash`. |
 | **Composio** | `DEAD` | Key accepted **and Slack is connected**, but `COMPOSIO_SLACK_AUTH_CONFIG_ID` is unset. Doctor prints the id to paste. |
-| **Hexclave** | `DEAD` | Secret key **valid**, project resolves, but the project contains **zero teams**, so no valid `HEXCLAVE_TEAM_ID` can exist yet. A provisioning gap, not a bad key. |
+| **Hexclave** | `LIVE` | Secret key accepted and the configured team resolves (1 team in the project). |
 | **Callwright** | `----` | `CALLWRIGHT_API_KEY` unset. |
-| **CrustData** | `----` | `CRUSTDATA_API_KEY` unset; the path runs on a replayed fixture. |
+| **CrustData** | `DEAD` | The existing key was accepted by the read-only Person Watcher list endpoint using Bearer auth and API version `2025-11-01`, but the account has **zero active watchers**. No callback has been captured; the demo still uses a reconstructed replay. |
 | **Superset** | `----` | `superset` is not on `PATH`. |
 
 ---
@@ -188,25 +188,41 @@ for human review. **It flags; it never invalidates** — nothing here writes
 | Variable | Where to get it | Required |
 |---|---|---|
 | `CRUSTDATA_API_KEY` | CrustData dashboard | to talk to the API |
+| `CRUSTDATA_API_VERSION` | set to `2025-11-01` | yes |
 | `CRUSTDATA_WEBHOOK_BEARER` | you choose it; CrustData documents no webhook signing, so this bearer is the compensating control | yes, to accept a delivery |
+| `CRUSTDATA_REPLAY_BEARER` | choose a different operator-only bearer | yes, to replay a captured delivery |
+| `CRUSTDATA_CAPTURE_DIR` | defaults to `.writai/crustdata-captures` | no |
+| `CRUSTDATA_PERSON_IDENTITY_BINDINGS` | human-provisioned CrustData person-id → Hexclave user-id mapping | yes, to join a real observation to approvals |
 
 **Verify:** `writai doctor crustdata`
 
-**This path is a REPLAY, and stays one even with a valid key.** The person
-watcher has a documented one-hour minimum interval, so it cannot fire inside a
-demo. The delivery is replayed on demand and labelled
-*"documentation-reconstructed payload, replayed (not captured from CrustData)"*
-on the API response, the SSE event, the CLI output and inside the fixture file.
+The current API uses `Authorization: Bearer …` and
+`x-api-version: 2025-11-01`. The configured key has been validated with a
+read-only watcher-list request. That proves the credential, not the integration:
+`writai doctor crustdata` correctly reports `DEAD` because there are currently
+**zero active watchers**. No genuine callback has been captured, and the exact
+LinkedIn target and identity binding are unset.
+
+The canonical stage fallback is:
+
+```bash
+make demo-crustdata-replay
+```
+
+It is deterministic and is always labelled
+*"documentation-reconstructed payload, replayed (not captured from
+CrustData)"*. It makes no CrustData API call, receives no callback, and is not
+evidence that the sponsor integration ran live.
 
 **The fixture is reconstructed from** CrustData's documented Person Entity
 Watcher webhook shape ([docs.crustdata.com/watcher-docs/person/entity](https://docs.crustdata.com/watcher-docs/person/entity)),
-**not captured from a real delivery**, because no API key was available when it
-was written.
+**not captured from a real delivery**.
 
 **Still needs a real capture:** one genuine watcher delivery, saved in place of
-the reconstructed fixture. Also needs an identity mapping — the join currently
-compares a CrustData person id against a Hexclave user id, which works on the
-fixture because both sides are seeded consistently and will not on real data.
+the reconstructed fixture. The real LinkedIn profile must be selected by a
+human, its returned CrustData person id must be bound to the exact Hexclave user
+id, and the first silent baseline must run before a later change can produce a
+delivery. Never infer this join from a name, title, or email address.
 
 **Without it:** nothing observes an approver leaving, so decisions keep resting
 on approvals that may no longer hold.

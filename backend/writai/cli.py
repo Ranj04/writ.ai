@@ -1035,6 +1035,12 @@ def _print_human(command: str, payload: JsonObject) -> None:
                 f"at {_string(item.get('approved_at'))}"
             )
             print(f"  Why: {_string(item.get('explanation'))}")
+        if safe.get("duplicate") is True:
+            raw_existing = safe.get("existing_flag_ids", [])
+            existing = raw_existing if isinstance(raw_existing, list) else []
+            print(f"Existing review flags retained: {len(existing)}")
+            for flag_id in existing:
+                print(f"- {_string(flag_id)}")
         return
 
     if command == "list":

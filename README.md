@@ -255,7 +255,7 @@ CRUSTDATA_API_VERSION=2025-11-01
 CRUSTDATA_WEBHOOK_BEARER=<strong-random-callback-secret>
 CRUSTDATA_REPLAY_BEARER=<different-strong-random-operator-secret>
 CRUSTDATA_CAPTURE_DIR=.writai/crustdata-captures
-CRUSTDATA_PERSON_IDENTITY_BINDINGS={"schema_version":1,"people":[{"crustdata_person_id":6324687,"hexclave_user_id":"<hexclave-user-id>","evidence_ref":"provisioning://crustdata/person/6324687"}]}
+CRUSTDATA_PERSON_IDENTITY_BINDINGS={"schema_version":1,"people":[{"crustdata_person_id":<CRUSTDATA_PERSON_ID>,"hexclave_user_id":"<HEXCLAVE_USER_ID>","evidence_ref":"provisioning://crustdata/person/<CRUSTDATA_PERSON_ID>"}]}
 ```
 
 The identity binding is human-provisioned server configuration. writ.ai never infers a Hexclave
@@ -279,34 +279,78 @@ ngrok http 8002 \
   --inspect=false
 ```
 
-Configure the CrustData Person Entity Watcher with:
+The existing key has been accepted by the current read-only Person Watcher list endpoint, but
+there are currently zero watchers and no genuine callback has been captured. Do not provision one
+until a human supplies the exact LinkedIn target and the matching Hexclave user id; writ.ai never
+guesses either identity.
 
-```text
-POST https://api.crustdata.com/watch/person
-Authorization: Bearer $CRUSTDATA_API_KEY
-x-api-version: 2025-11-01
+List active watchers without changing vendor state:
+
+```bash
+curl --fail-with-body \
+  'https://api.crustdata.com/watch/person?status=active&limit=50&offset=0' \
+  --header "Authorization: Bearer ${CRUSTDATA_API_KEY}" \
+  --header 'Accept: application/json' \
+  --header 'x-api-version: 2025-11-01'
 ```
 
-Use a Person watcher with the target LinkedIn profile URL, role/departure fields, an interval of at
-least one hour, and this notification:
+Once the target and identity binding are confirmed, create the Person watcher with
+`POST https://api.crustdata.com/watch/person`, `Authorization: Bearer
+<CRUSTDATA_API_KEY>`, `x-api-version: 2025-11-01`, `Content-Type:
+application/json`, and this complete body:
 
 ```json
 {
-  "type": "webhook",
-  "url": "https://<public-agent-host>/intake/crustdata/person/capture",
-  "headers": {
-    "Authorization": "Bearer <CRUSTDATA_WEBHOOK_BEARER>"
-  }
+  "entities": {
+    "professional_network_profile_urls": [
+      "<LINKEDIN_PROFILE_URL>"
+    ]
+  },
+  "track": {
+    "op": "or",
+    "conditions": [
+      {
+        "field": "experience.employment_details.current",
+        "type": "added"
+      },
+      {
+        "field": "basic_profile.current_title",
+        "type": "changed"
+      }
+    ]
+  },
+  "fields": [
+    "basic_profile",
+    "experience"
+  ],
+  "config": {
+    "trigger": {
+      "type": "interval",
+      "every_hours": 24
+    },
+    "max_results_per_run": 100,
+    "refresh_frequency_days": 30
+  },
+  "notifications": [
+    {
+      "type": "webhook",
+      "url": "https://<PUBLIC_AGENT_HOST>/intake/crustdata/person/capture",
+      "headers": {
+        "Authorization": "Bearer <CRUSTDATA_WEBHOOK_BEARER>"
+      }
+    }
+  ]
 }
 ```
 
+The 24-hour trigger is an 86,400-second interval; the documented minimum is one hour. The first
+run establishes a silent baseline, so creating a watcher is not a stage-time change event.
 The callback only writes an owner-readable replay file; it does not create a review or mutate the
 graph. CrustData does not document a vendor webhook signature, so the capture records that it
 arrived with the configured shared bearer and explicitly records that no vendor signature was
 verified. The retained file is minimized to the watched identity/profile fields and delivered
 change evidence, but it still contains personal data; delete it after the review/demo according to
-your retention policy. The first watcher run establishes a silent baseline. After a later change
-is captured, replay the returned file deliberately:
+your retention policy. After a later change is captured, replay the returned file deliberately:
 
 ```bash
 writai workspace replay-crustdata \
@@ -319,6 +363,25 @@ server-side capture; a caller cannot self-assert that a payload was captured. Ca
 labelled `configured CrustData callback payload, replayed from server capture (not live; no vendor
 signature verified)`. The original documentation-reconstructed fixture remains available as an
 explicitly simulated fallback.
+
+For a deterministic rehearsal that does not call CrustData or require a callback:
+
+```bash
+make demo-crustdata-replay
+```
+
+That command is reconstructed fallback evidence only, never a live sponsor demonstration. After
+the real watcher is no longer needed, delete it explicitly and verify it no longer appears in the
+read-only list:
+
+```bash
+curl --fail-with-body --request DELETE \
+  'https://api.crustdata.com/watch/person/<WATCHER_ID>' \
+  --header "Authorization: Bearer ${CRUSTDATA_API_KEY}" \
+  --header 'x-api-version: 2025-11-01'
+# Expected: HTTP 204. Then repeat the active-watcher GET above.
+```
+
 See the current [API authentication reference](https://docs.crustdata.com/openapi-specs/2025-11-01/introduction)
 and [Person Entity Watcher contract](https://docs.crustdata.com/watcher-docs/person/entity).
 

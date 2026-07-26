@@ -102,6 +102,21 @@ Show only:
 2. the scope-intersection rule;
 3. the snapshot and plan-hash checks.
 
+## Optional CrustData rehearsal — 20 seconds
+
+Run before the stage session, or show only if a judge asks about sponsor
+integration:
+
+```bash
+make demo-crustdata-replay
+```
+
+Say: “This is a deterministic, documentation-reconstructed replay. CrustData
+did not send it live, this command makes no vendor API call, and it is not
+sponsor-usage evidence. The real path can capture a Person Watcher delivery,
+join it through a human-provisioned person-id mapping, and flag that approver's
+decisions for review. A human still decides what happens next.”
+
 ## Close
 
 “Most agent controls ask whether the agent may act. writ.ai verifies whether the objective driving that action still follows from current approved company intent.”
@@ -125,3 +140,10 @@ If the canonical runtime is using Neo4j, clarify: “Examples intentionally use 
 If asked whether Run All is a durable benchmark, say: “No. It runs the same isolated service flow
 serially and keeps session-only, process-local results. Restarting the agent service clears that
 history.”
+
+If asked whether CrustData is live, say: “The existing key passed a real,
+read-only watcher-list request using Bearer authentication and API version
+`2025-11-01`. That validates the credential only. There are zero watchers, no
+genuine callback has been captured, and the exact LinkedIn target and
+CrustData-person-to-Hexclave-user binding are still unset. The stage beat is
+explicitly reconstructed replay.”

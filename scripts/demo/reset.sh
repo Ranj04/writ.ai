@@ -200,18 +200,36 @@ if [[ -n "${WRITAI_WORKSPACE_STORE:-}" ]]; then
   store_source="WRITAI_WORKSPACE_STORE"
 elif [[ -f "$REPO_DIR/.env" ]]; then
   # One key, read with a literal pattern — never eval the .env file.
-  configured="$(grep -E '^[[:space:]]*WRITAI_WORKSPACE_STORE=' "$REPO_DIR/.env" 2>/dev/null \
-    | tail -n 1 | cut -d= -f2- | tr -d '"'"'"' \r' || true)"
+  configured="$(dotenv_value "$REPO_DIR/.env" "WRITAI_WORKSPACE_STORE")"
   if [[ -n "$configured" ]]; then
     store_relative="$configured"
     store_source=".env"
   fi
 fi
 
+# The agent service derives the CrustData delivery ledger from the workspace
+# store name. Clear that derived rehearsal state too, without touching genuine
+# callback captures.
+store_directory="$(dirname "$store_relative")"
+store_filename="$(basename "$store_relative")"
+case "$store_filename" in
+  *.*)
+    store_stem="${store_filename%.*}"
+    store_suffix=".${store_filename##*.}"
+    ;;
+  *)
+    store_stem="$store_filename"
+    store_suffix=".json"
+    ;;
+esac
+crustdata_replay_relative="$store_directory/${store_stem}-crustdata-deliveries${store_suffix}"
+
 removed=0
 for relative in \
   "$store_relative" \
+  "$crustdata_replay_relative" \
   ".writai/live-workspaces.json" \
+  ".writai/live-workspaces-crustdata-deliveries.json" \
   ".writai/hook-verdict-cache.json" \
   ".writai/callwright-attempts.json" \
   ".writai/attach" \

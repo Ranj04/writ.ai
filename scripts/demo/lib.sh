@@ -91,14 +91,43 @@ DEMO_API="$DEMO_DIR/demo_api.py"
 DEMO_HOOK_API_KEY="writai-demo-hook-key"
 HOOK_API_KEY_SOURCE="default"
 
+# Read one dotenv assignment without evaluating the file. Strip only
+# surrounding whitespace and one matching pair of quotes; never delete
+# characters from inside a secret. Resolve an exact ${OTHER_VARIABLE}
+# reference recursively because python-dotenv does the same when services load
+# `.env`; command substitutions and partial interpolations remain inert text.
+dotenv_value() {
+  local file="$1" name="$2" depth="${3:-0}" raw="" reference=""
+  [[ -f "$file" ]] || return 0
+  (( depth < 8 )) || return 0
+  raw="$(grep -E "^[[:space:]]*${name}=" "$file" 2>/dev/null \
+    | tail -n 1 | cut -d= -f2- || true)"
+  raw="${raw#"${raw%%[![:space:]]*}"}"
+  raw="${raw%"${raw##*[![:space:]]}"}"
+  if (( ${#raw} >= 2 )); then
+    if [[ "${raw:0:1}" == '"' && "${raw: -1}" == '"' ]] \
+      || [[ "${raw:0:1}" == "'" && "${raw: -1}" == "'" ]]; then
+      raw="${raw:1:${#raw}-2}"
+    fi
+  fi
+  if [[ "$raw" =~ ^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$ ]]; then
+    reference="${BASH_REMATCH[1]}"
+    if [[ -n "${!reference:-}" ]]; then
+      raw="${!reference}"
+    else
+      raw="$(dotenv_value "$file" "$reference" "$((depth + 1))")"
+    fi
+  fi
+  printf '%s\n' "$raw"
+}
+
 if [[ -n "${WRITAI_HOOK_API_KEY:-}" ]]; then
   HOOK_API_KEY_SOURCE="environment"
 else
   hook_key_configured=""
   if [[ -f "$REPO_DIR/.env" ]]; then
     # One key, read with a literal pattern — never eval the .env file.
-    hook_key_configured="$(grep -E '^[[:space:]]*WRITAI_HOOK_API_KEY=' "$REPO_DIR/.env" 2>/dev/null \
-      | tail -n 1 | cut -d= -f2- | tr -d '"'"'"' \r' || true)"
+    hook_key_configured="$(dotenv_value "$REPO_DIR/.env" "WRITAI_HOOK_API_KEY")"
   fi
   if [[ -n "$hook_key_configured" ]]; then
     WRITAI_HOOK_API_KEY="$hook_key_configured"

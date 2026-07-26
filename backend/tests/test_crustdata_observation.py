@@ -866,6 +866,41 @@ def test_cli_replay_output_and_request_preserve_replayed_label(
     assert "Source: live" not in output
 
 
+def test_cli_duplicate_replay_names_retained_review_flags(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    retained_flag = "crustdata-review-" + "a" * 64
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "source_label": SOURCE_LABEL,
+                "duplicate": True,
+                "flags": [],
+                "existing_flag_ids": [retained_flag],
+            },
+        )
+
+    exit_code = run(
+        [
+            "workspace",
+            "replay-crustdata",
+            str(FIXTURE_PATH),
+            "--bearer",
+            "expected-secret",
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert exit_code == 0
+    output = capsys.readouterr().out
+    assert "New review flags: 0" in output
+    assert "Existing review flags retained: 1" in output
+    assert retained_flag in output
+
+
 def test_an_abandoned_reservation_is_retried_rather_than_losing_the_review(
     tmp_path: Path,
 ) -> None:

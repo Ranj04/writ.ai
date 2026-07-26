@@ -9,16 +9,34 @@ never required.
 ## On stage, in order
 
 ```bash
+export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1  # local fallback; omit with Hexclave configured
 scripts/demo/reset.sh          # ~1s, safe to run twice, run it between rehearsals
 scripts/demo/up.sh             # arms 5 sessions, then stops. Fires nothing.
 scripts/demo/check.sh          # green/red readiness. Exits non-zero only on red.
 #   ... talk over the armed sessions ...
 scripts/demo/fire.sh           # the only script that changes the graph
-writai dev status            # 3 interrupted, 2 continuing
-writai dev why <session-id>  # the path from the decision to that person's task
+writai --agent-url http://127.0.0.1:8002 dev status
+writai --agent-url http://127.0.0.1:8002 dev why <session-id>
 scripts/demo/ack.sh            # the human beat: releases the blocked sessions
 #   ... the three agents rewrite their own work to admin-only ...
 ```
+
+This `reset → up → check → fire → status/why → ack` sequence is the canonical
+launcher flow. See [`docs/STAGE_RUNBOOK.md`](../../docs/STAGE_RUNBOOK.md) for
+the cold-machine checklist and recovery notes.
+
+## Optional CrustData rehearsal
+
+```bash
+make demo-crustdata-replay
+```
+
+This is the canonical deterministic fallback. It replays the
+documentation-reconstructed fixture locally; it makes no CrustData API call,
+receives no callback, and provides no evidence of live sponsor usage. The
+configured key has passed a read-only watcher-list request, but there are
+currently zero watchers, no genuine capture, and no selected LinkedIn
+target/identity binding.
 
 If the live run dies:
 

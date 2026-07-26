@@ -235,6 +235,12 @@ else
   : > "$registered_file"
 fi
 
+if (( expected > registered )) \
+  && grep -qs "monthly spend limit" "$LOG_DIR"/session-*.log 2>/dev/null; then
+  fail "Claude Code refused the demo sessions: monthly spend limit reached"
+  note "Raise/reset the Claude Code usage limit, then reset.sh and up.sh."
+fi
+
 # The three silent demo-killers, checked per REGISTERED SESSION — including
 # sessions this launcher did not create, and sessions bound into a workspace
 # this check is not otherwise looking at.
@@ -414,7 +420,25 @@ else
 fi
 
 # --------------------------------------------------------------------------- #
-# 6. Backup
+# 6. CrustData fallback
+# --------------------------------------------------------------------------- #
+
+step "CrustData fallback"
+
+crustdata_output="$(
+  cd "$REPO_DIR" \
+    && PYTHONPATH=backend "$HELPER_PYTHON" -m writai.crustdata_demo 2>&1
+)" || crustdata_output=""
+if [[ "$crustdata_output" == *"DOCUMENTATION-RECONSTRUCTED REPLAY, NOT LIVE"* ]] \
+  && [[ "$crustdata_output" == *"CrustData API called: no"* ]] \
+  && [[ "$crustdata_output" == *"Graph mutated: no"* ]]; then
+  pass "deterministic CrustData replay is ready and cannot be mistaken for live"
+else
+  fail "CrustData fallback rehearsal failed its honesty contract"
+fi
+
+# --------------------------------------------------------------------------- #
+# 7. Backup
 # --------------------------------------------------------------------------- #
 
 step "Backup"

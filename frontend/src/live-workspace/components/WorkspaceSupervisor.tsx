@@ -314,11 +314,11 @@ export function WorkspaceSupervisor({
             <code>--scope/--was/--now</code>.
           </li>
           <li>
-            <b>The CrustData person watcher never fires live here.</b> Its
-            watcher has a one-hour minimum interval, so the approver
-            role-change and departure path replays a stored payload on demand.
-            That payload is <i>documentation-reconstructed, not captured</i> —
-            no CrustData delivery has been recorded against this build.
+            <b>The CrustData stage fallback is a replay, not a live webhook.</b>{" "}
+            This surface uses a deterministic, documentation-reconstructed
+            payload. No genuine CrustData delivery has been recorded against
+            this build yet; the configured callback path remains separate and
+            fail-closed.
           </li>
           <li>
             <b>The demo seeder approves without channel authentication.</b> It

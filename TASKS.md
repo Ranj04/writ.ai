@@ -73,7 +73,8 @@ See `INTEGRATION_REPORT.md` for evidence against every item below.
 - [x] `.writai/attach` wired end to end (built by sol).
 - [x] CI `--require-grant` on by default, scoped so an unbound branch still passes.
 - [x] `check.sh` hard-fails, loudly, on the three silent demo-killers.
-- [x] CrustData person watcher — replayed, never labelled live (built by sol).
+- [x] CrustData observation path — captured deliveries are replay-gated and
+      reconstructed fallback data is never labelled live (built by sol).
 - [x] `/approvals` reachable; Lane D's last audit divergence closed.
 - [x] Lane C's launcher arms and fires again after Lane B disabled the legacy approvals.
 - [x] The seeder's channel-auth bypass is opt-in and on the honesty panel.
@@ -84,17 +85,19 @@ See `INTEGRATION_REPORT.md` for evidence against every item below.
 - [ ] **INT-2 is deferred, not forgotten.** Grant verification belongs behind a server
       endpoint, not reimplemented in the stdlib 3.9 check. Invariant 5 holds meanwhile:
       the executor verifies run_id, task_id and plan_hash. See the register.
-- [ ] **Provision a Hexclave team, then configure `HEXCLAVE_TEAM_ID`.** The current
-      project authenticates but returns zero teams, so there is no valid id to set.
-      Authenticated approvals correctly fail closed in the meantime.
+- [x] **Provision a Hexclave team, then configure `HEXCLAVE_TEAM_ID`.** The
+      current secret key and team resolve successfully through `writai doctor
+      hexclave`.
 - [x] Make *Branch authorization is current* a required status check on protected
       `main` (configured and verified 2026-07-25).
 - [ ] **Operationalize the required check.** It currently fails closed until a
       GitHub runner can reach a narrowly exposed authenticated agent service and
       the PR has an honest task binding plus a current unexpired grant.
 - [ ] **Capture a real CrustData payload** to replace the documentation-reconstructed
-      fixture, and map CrustData person ids to Hexclave user ids.
-      `CRUSTDATA_API_KEY` is currently unset.
+      fixture. The existing API key has passed a read-only watcher-list request,
+      but there are zero watchers and no genuine callback. Select the exact
+      LinkedIn target, provision the watcher, and set the human-confirmed
+      CrustData person-id → Hexclave user-id binding; never infer it.
 
 ## P5 — presentation hardening
 

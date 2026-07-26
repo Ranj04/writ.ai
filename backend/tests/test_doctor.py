@@ -115,15 +115,69 @@ def test_a_live_key_pointed_at_a_missing_model_is_invalid(
 def test_a_replayed_integration_says_so_even_when_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CrustData with a valid key STILL cannot fire live. Never imply it can."""
+    """A fully provisioned watcher still uses the deliberate replay boundary."""
 
-    _stub_http(monkeypatch, 200, "{}")
-    (result,) = run_probes(_settings(crustdata_api_key="k"), only=["crustdata"])
+    _stub_http(monkeypatch, 200, '[{"id":46936,"status":"active"}]')
+    (result,) = run_probes(
+        _settings(
+            crustdata_api_key="k",
+            crustdata_webhook_bearer="callback-secret",
+            crustdata_replay_bearer="operator-secret",
+            crustdata_person_identity_bindings=(
+                '{"schema_version":1,"people":[{"crustdata_person_id":6324687,'
+                '"hexclave_user_id":"hex-user-001",'
+                '"evidence_ref":"provisioning://crustdata/person/6324687"}]}'
+            ),
+        ),
+        only=["crustdata"],
+    )
 
     assert result.status is ProbeStatus.LIVE
     assert result.replayed is True
     assert "replay" in result.detail.lower() or "replay" in result.replay_note.lower()
     assert "REPLAYED" in render([result])
+
+
+def test_crustdata_probe_uses_current_read_only_watcher_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def respond(request: object, **kwargs: object) -> _Response:
+        seen["request"] = request
+        seen["kwargs"] = kwargs
+        return _Response(200, "[]")
+
+    monkeypatch.setattr(doctor.urllib.request, "urlopen", respond)
+    (result,) = run_probes(
+        _settings(crustdata_api_key="k", crustdata_api_version="2025-11-01"),
+        only=["crustdata"],
+    )
+
+    request = cast("Any", seen["request"])
+    headers = {key.casefold(): value for key, value in request.header_items()}
+    assert request.full_url == (
+        "https://api.crustdata.com/watch/person?status=active&limit=1&offset=0"
+    )
+    assert request.method == "GET"
+    assert headers["authorization"] == "Bearer k"
+    assert headers["x-api-version"] == "2025-11-01"
+    assert result.status is ProbeStatus.INVALID
+    assert "ZERO active Person Watchers" in result.detail
+
+
+def test_crustdata_probe_never_treats_http_400_as_live(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_http(monkeypatch, 400, '{"detail":"bad request"}')
+
+    (result,) = run_probes(
+        _settings(crustdata_api_key="k"),
+        only=["crustdata"],
+    )
+
+    assert result.status is ProbeStatus.UNVERIFIED
+    assert not result.ok
 
 
 def test_hexclave_distinguishes_a_bad_key_from_missing_provisioning(

@@ -1,12 +1,15 @@
 PYTHON ?= python3
 
-.PHONY: install demo test check authority agent executor frontend stack neo4j cli
+.PHONY: install demo demo-crustdata-replay test check authority agent executor frontend stack neo4j cli
 
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
 
 demo:
 	PYTHONPATH=backend $(PYTHON) -m writai.demo
+
+demo-crustdata-replay:
+	PYTHONPATH=backend $(PYTHON) -m writai.crustdata_demo
 
 test:
 	PYTHONPATH=backend $(PYTHON) -m pytest

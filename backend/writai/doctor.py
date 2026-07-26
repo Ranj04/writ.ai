@@ -30,6 +30,7 @@ import urllib.request
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from writai.config import Settings
 from writai.config import settings as default_settings
@@ -416,11 +417,13 @@ def _probe_crustdata(settings: Settings) -> ProbeResult:
             "CRUSTDATA_API_KEY is unset; the watcher path runs on a replayed fixture.",
         )
     try:
-        status, _body = _get(
-            "https://api.crustdata.com/screener/company",
+        status, body = _get(
+            "https://api.crustdata.com/watch/person"
+            "?status=active&limit=1&offset=0",
             {
-                "Authorization": f"Token {settings.crustdata_api_key}",
+                "Authorization": f"Bearer {settings.crustdata_api_key}",
                 "Accept": "application/json",
+                "x-api-version": settings.crustdata_api_version,
             },
         )
     except Exception as exc:  # noqa: BLE001
@@ -431,11 +434,91 @@ def _probe_crustdata(settings: Settings) -> ProbeResult:
         return _result(probe, ProbeStatus.INVALID, f"API key rejected (HTTP {status}).")
     if status >= 500:
         return _result(probe, ProbeStatus.UNVERIFIED, f"service error HTTP {status}.")
+    if status >= 400:
+        return _result(
+            probe,
+            ProbeStatus.UNVERIFIED,
+            f"watcher list returned unexpected HTTP {status}.",
+        )
+
+    try:
+        active_watchers = json.loads(body)
+    except (TypeError, ValueError):
+        return _result(
+            probe,
+            ProbeStatus.UNVERIFIED,
+            "API key was accepted, but the watcher list was not valid JSON.",
+        )
+    if not isinstance(active_watchers, list):
+        return _result(
+            probe,
+            ProbeStatus.UNVERIFIED,
+            "API key was accepted, but the watcher list had an unexpected shape.",
+        )
+    if not active_watchers:
+        return _result(
+            probe,
+            ProbeStatus.INVALID,
+            "API key accepted, but the account has ZERO active Person Watchers.",
+        )
+
+    missing = [
+        name
+        for name, value in (
+            ("CRUSTDATA_WEBHOOK_BEARER", settings.crustdata_webhook_bearer),
+            ("CRUSTDATA_REPLAY_BEARER", settings.crustdata_replay_bearer),
+            (
+                "CRUSTDATA_PERSON_IDENTITY_BINDINGS",
+                settings.crustdata_person_identity_bindings,
+            ),
+        )
+        if not value
+    ]
+    if missing:
+        return _result(
+            probe,
+            ProbeStatus.INVALID,
+            f"API key accepted and {len(active_watchers)} active watcher(s) found, "
+            f"but configuration is incomplete: unset {', '.join(missing)}.",
+        )
+    if settings.crustdata_webhook_bearer == settings.crustdata_replay_bearer:
+        return _result(
+            probe,
+            ProbeStatus.INVALID,
+            "CrustData callback and replay credentials must be distinct.",
+        )
+
+    from writai.intake.crustdata import (  # local: keep doctor startup lightweight
+        CrustDataIdentityMappingError,
+        CrustDataPersonIdentityBindings,
+    )
+
+    try:
+        CrustDataPersonIdentityBindings.from_json(
+            settings.crustdata_person_identity_bindings
+        )
+    except CrustDataIdentityMappingError:
+        return _result(
+            probe,
+            ProbeStatus.INVALID,
+            "API key and watcher are live, but the identity bindings are invalid.",
+        )
+
+    try:
+        captures = sum(
+            1
+            for _item in Path(settings.crustdata_capture_dir).expanduser().glob(
+                "crustdata-capture-*.json"
+            )
+        )
+    except OSError:
+        captures = 0
     return _result(
         probe,
         ProbeStatus.LIVE,
-        "API key accepted. The watcher still cannot fire inside a demo "
-        "(one-hour minimum interval), so the flag path stays a labelled replay.",
+        f"API key accepted; {len(active_watchers)} active watcher(s), valid "
+        f"callback/replay credentials and identity bindings; {captures} genuine "
+        "callback capture(s) stored.",
     )
 
 
@@ -554,23 +637,29 @@ PROBES: dict[str, _Probe] = {
     ),
     "crustdata": _Probe(
         name="CrustData",
-        variables=("CRUSTDATA_API_KEY", "CRUSTDATA_WEBHOOK_BEARER"),
+        variables=(
+            "CRUSTDATA_API_KEY",
+            "CRUSTDATA_WEBHOOK_BEARER",
+            "CRUSTDATA_REPLAY_BEARER",
+            "CRUSTDATA_PERSON_IDENTITY_BINDINGS",
+        ),
         degrades_to=(
             "Nothing observes an approver changing role or leaving, so decisions "
             "keep resting on an approval that may no longer hold."
         ),
         fallback=(
-            "drive it on demand — writai replay-crustdata. The key would not "
-            "change this: the watcher's one-hour minimum interval means it "
-            "cannot fire inside a demo either way, so this stays a replay and "
-            "says so on every surface."
+            "run scripts/demo/check.sh (or `make demo-crustdata-replay`) for the "
+            "deterministic fallback. It is explicitly reconstructed, makes no "
+            "API call, and cannot be presented as live sponsor evidence. A "
+            "genuine watcher delivery is captured first and replayed only after "
+            "operator review."
         ),
         run=_probe_crustdata,
         replayed=True,
         replay_note=(
-            "The watcher has a one-hour minimum interval and cannot fire inside a "
-            "demo. This path REPLAYS a stored payload, and that payload is "
-            "reconstructed from CrustData's documentation — not a real capture."
+            "Callbacks are captured for deliberate operator replay, never applied "
+            "live. Until a genuine delivery is stored, the stage fallback uses a "
+            "payload reconstructed from CrustData's documentation."
         ),
     ),
     "superset": _Probe(

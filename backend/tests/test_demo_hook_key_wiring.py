@@ -138,6 +138,33 @@ def test_a_quoted_dotenv_value_is_unwrapped(fake_repo: Path) -> None:
     assert _resolve(fake_repo, {})["key"] == "quoted-key"
 
 
+def test_dotenv_value_preserves_internal_secret_characters(fake_repo: Path) -> None:
+    """Parsing may unwrap quotes, but it must never delete letters in a secret."""
+
+    key = "server-secret-with-repeated-r-characters"
+    (fake_repo / ".env").write_text(
+        f"WRITAI_HOOK_API_KEY={key}\n",
+        encoding="utf-8",
+    )
+
+    assert _resolve(fake_repo, {})["key"] == key
+
+
+def test_dotenv_exact_variable_reference_matches_service_loading(
+    fake_repo: Path,
+) -> None:
+    """The launcher and python-dotenv must resolve aliases to the same key."""
+
+    key = "shared-server-secret-with-r-characters"
+    (fake_repo / ".env").write_text(
+        "WRITAI_HOOK_API_KEY=${DRAGBACK_HOOK_API_KEY}\n"
+        f"DRAGBACK_HOOK_API_KEY={key}\n",
+        encoding="utf-8",
+    )
+
+    assert _resolve(fake_repo, {})["key"] == key
+
+
 @pytest.mark.parametrize("env", [{}, {"WRITAI_HOOK_API_KEY": "from-shell"}])
 def test_the_key_is_always_exported(fake_repo: Path, env: dict[str, str]) -> None:
     """A plain shell variable never reaches uvicorn or demo_api.py."""
