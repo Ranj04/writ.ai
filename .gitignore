@@ -10,6 +10,10 @@ __pycache__/
 .coverage
 htmlcov/
 .writai/
+# The pre-rename marker dir. Still ignored on purpose: a machine that ran an
+# older build has one, and a runtime grant store already reached a commit once
+# because only the new name was listed here.
+.dragback/
 
 # Hook wiring is per-developer and demo-local. It must not reach a teammate's
 # checkout by being committed, and never belongs in user-level settings.

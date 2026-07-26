@@ -64,6 +64,11 @@ class ProbeResult:
     detail: str
     #: What the product loses while this is not LIVE.
     degrades_to: str
+    #: What to actually DO to keep going without it — a command or a switch, not
+    #: a description. `degrades_to` says what you lost; this says what to type.
+    #: An operator running this as step 1 of the runbook must not have to go
+    #: looking for the workaround in another document.
+    fallback: str = ""
     #: The variables this integration reads, for the fix-it hint.
     variables: tuple[str, ...] = ()
     #: Set when the integration is running on a fixture or a replay rather than
@@ -82,6 +87,7 @@ class _Probe:
     variables: tuple[str, ...]
     degrades_to: str
     run: Callable[[Settings], ProbeResult]
+    fallback: str = ""
     replayed: bool = False
     replay_note: str = ""
 
@@ -96,6 +102,7 @@ def _result(
         status=status,
         detail=detail,
         degrades_to=probe.degrades_to,
+        fallback=probe.fallback,
         variables=probe.variables,
         replayed=probe.replayed,
         replay_note=probe.replay_note,
@@ -478,6 +485,12 @@ PROBES: dict[str, _Probe] = {
             "Slack messages cannot be turned into decision proposals. "
             "`--scope/--was/--now` still works and needs no model."
         ),
+        fallback=(
+            "state the change explicitly instead of extracting it — "
+            'writai approve --text "<message>" --scope export.authorization '
+            "--was all_users --now admin_only. The staged demo already does "
+            "this: scripts/demo/fire.sh puts no model in the path."
+        ),
         run=_probe_gemini,
     ),
     "hexclave": _Probe(
@@ -491,6 +504,14 @@ PROBES: dict[str, _Probe] = {
             "No approval can resolve a real person, so every authenticated "
             "approval path fails closed. The demo falls back to the gated "
             "in-process seam, which bypasses channel auth and no authority check."
+        ),
+        fallback=(
+            "run the demo on the unauthenticated seam — keep "
+            "WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1 on the seed and serve "
+            "commands (the runbook already sets it). /approvals renders and "
+            "approves, labelled a rehearsal. Do NOT set "
+            "VITE_WRITAI_HEXCLAVE_SIGN_IN=1 until a team exists: browser "
+            "sign-in against a team-less project hangs the tab."
         ),
         run=_probe_hexclave,
     ),
@@ -507,6 +528,12 @@ PROBES: dict[str, _Probe] = {
             "from a channel, no approval card is posted back, and no reaction "
             "can approve. Message text must be supplied by hand."
         ),
+        fallback=(
+            "supply the message by hand — scripts/demo/fire.sh fires the "
+            "seeded change fixture straight at the workspace with no webhook "
+            "in the path, and the five-session deny is unaffected. Show the "
+            "Slack loop as its own beat, not as the demo's spine."
+        ),
         run=_probe_composio,
     ),
     "callwright": _Probe(
@@ -516,6 +543,13 @@ PROBES: dict[str, _Probe] = {
             "An unacknowledged interrupt cannot escalate to a phone call. "
             "The fixture client records the attempt instead."
         ),
+        fallback=(
+            "nothing to do — escalation still runs and the fixture client "
+            "records the attempt instead of dialling, and an interrupted "
+            "session acknowledges through its own hook without a phone call. "
+            "Note a key alone never dials: CALLWRIGHT_LIVE_CALLS_ENABLED=true "
+            "is a separate, deliberate switch."
+        ),
         run=_probe_callwright,
     ),
     "crustdata": _Probe(
@@ -524,6 +558,12 @@ PROBES: dict[str, _Probe] = {
         degrades_to=(
             "Nothing observes an approver changing role or leaving, so decisions "
             "keep resting on an approval that may no longer hold."
+        ),
+        fallback=(
+            "drive it on demand — writai replay-crustdata. The key would not "
+            "change this: the watcher's one-hour minimum interval means it "
+            "cannot fire inside a demo either way, so this stays a replay and "
+            "says so on every surface."
         ),
         run=_probe_crustdata,
         replayed=True,
@@ -539,6 +579,11 @@ PROBES: dict[str, _Probe] = {
         degrades_to=(
             "The five demo sessions get plain directories instead of isolated "
             "worktrees. The demo still runs; the sessions just share a filesystem."
+        ),
+        fallback=(
+            "nothing to do — the launcher falls back to plain directories "
+            "under /tmp/writai-stage and prints `superset could not provision "
+            "session-N`. That line is the clean fallback, not a failure."
         ),
         run=_probe_superset,
     ),
@@ -565,10 +610,30 @@ def run_probes(
                     status=ProbeStatus.UNVERIFIED,
                     detail=f"the probe itself failed: {type(exc).__name__}: {exc}",
                     degrades_to=probe.degrades_to,
+                    fallback=probe.fallback,
                     variables=probe.variables,
                 )
             )
     return results
+
+
+def _wrap(text: str, *, indent: int, width: int = 78) -> list[str]:
+    """Soft-wrap one paragraph to a fixed indent, never splitting a word."""
+
+    pad = " " * indent
+    words = text.split()
+    if not words:
+        return []
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        if len(current) + 1 + len(word) + indent > width:
+            lines.append(pad + current)
+            current = word
+        else:
+            current = f"{current} {word}"
+    lines.append(pad + current)
+    return lines
 
 
 _MARK = {
@@ -586,13 +651,19 @@ def render(results: Sequence[ProbeResult]) -> str:
     lines.append("  " + "-" * 66)
     for item in results:
         lines.append(f"  {_MARK[item.status]}  {item.name}")
-        lines.append(f"            {item.detail}")
+        lines.extend(_wrap(item.detail, indent=12))
         if item.replayed:
-            lines.append(f"            REPLAYED · {item.replay_note}")
+            lines.extend(_wrap(f"REPLAYED · {item.replay_note}", indent=12))
         if not item.ok:
-            lines.append(f"            without it: {item.degrades_to}")
+            lines.extend(_wrap(f"without it: {item.degrades_to}", indent=12))
+            # The point of running this as step 1: an operator learns the state
+            # AND what to do about it, in one command, without opening a second
+            # document. Wrapped because a fallback that scrolls off the right
+            # edge of a terminal is a fallback nobody reads.
+            if item.fallback:
+                lines.extend(_wrap(f"so: {item.fallback}", indent=12))
             if item.variables:
-                lines.append(f"            set: {', '.join(item.variables)}")
+                lines.extend(_wrap(f"set: {', '.join(item.variables)}", indent=12))
         lines.append("")
     live = sum(1 for item in results if item.status is ProbeStatus.LIVE)
     dead = sum(1 for item in results if item.status is ProbeStatus.INVALID)
@@ -604,14 +675,22 @@ def render(results: Sequence[ProbeResult]) -> str:
         f"{unknown} unverified · {absent} not configured"
     )
     if dead:
-        lines.append(
-            "  A DEAD credential is worse than an absent one: it is set, so the "
-            "code takes the live path and fails at the worst moment."
+        lines.extend(
+            _wrap(
+                "A DEAD credential is worse than an absent one: it is set, so "
+                "the code takes the live path and fails at the worst moment. "
+                "Each one above has a `so:` line — that is the way through "
+                "without it.",
+                indent=2,
+            )
         )
     if unknown:
-        lines.append(
-            "  UNVERIFIED is not a pass. It means this command could not prove "
-            "the credential works, so treat it as unknown."
+        lines.extend(
+            _wrap(
+                "UNVERIFIED is not a pass. It means this command could not "
+                "prove the credential works, so treat it as unknown.",
+                indent=2,
+            )
         )
     lines.append("")
     return "\n".join(lines)
@@ -631,6 +710,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "status": item.status.value,
                         "detail": item.detail,
                         "degrades_to": item.degrades_to,
+                        "fallback": item.fallback,
                         "variables": list(item.variables),
                         "replayed": item.replayed,
                         "replay_note": item.replay_note,

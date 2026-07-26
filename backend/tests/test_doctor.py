@@ -286,3 +286,87 @@ def test_crustdata_replay_fails_closed_without_its_bearer() -> None:
 
     with pytest.raises(CrustDataAuthenticationNotConfigured):
         CrustDataWebhookBearerVerifier(expected_bearer="").require("Bearer anything")
+
+
+# --------------------------------------------------------------------------------------
+# Step 1 of the runbook: state AND what to do about it, in one command
+# --------------------------------------------------------------------------------------
+
+
+def test_every_probe_carries_a_concrete_fallback() -> None:
+    """A DEAD integration with no stated workaround is a dead end on stage.
+
+    `doctor` is the runbook's first step. An operator who sees DEAD must learn
+    what to type next from this same output, not from a second document they
+    have to go find while a room waits.
+    """
+
+    from writai import doctor
+
+    for key, probe in doctor.PROBES.items():
+        assert probe.fallback.strip(), f"{key} has no fallback"
+        # A fallback names an action, not a feeling. Each of ours points at a
+        # command, a switch, or an explicit "nothing to do".
+        assert any(
+            token in probe.fallback
+            for token in ("writai ", "scripts/", "=1", "=true", "nothing to do")
+        ), f"{key}'s fallback names no concrete action: {probe.fallback}"
+
+
+def test_a_dead_integration_renders_its_fallback() -> None:
+    """The rendered report, not just the dataclass, has to carry it."""
+
+    from writai.doctor import ProbeResult, ProbeStatus, render
+
+    rendered = render(
+        [
+            ProbeResult(
+                name="Hexclave",
+                status=ProbeStatus.INVALID,
+                detail="zero teams",
+                degrades_to="approvals fail closed",
+                fallback="keep WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1",
+            )
+        ]
+    )
+    assert "DEAD" in rendered
+    assert "WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1" in rendered
+
+
+def test_a_live_integration_does_not_nag_with_a_fallback() -> None:
+    """Working is working. Printing a workaround under LIVE invites doubt."""
+
+    from writai.doctor import ProbeResult, ProbeStatus, render
+
+    rendered = render(
+        [
+            ProbeResult(
+                name="Gemini",
+                status=ProbeStatus.LIVE,
+                detail="key accepted",
+                degrades_to="no extraction",
+                fallback="use the explicit delta",
+            )
+        ]
+    )
+    assert "LIVE" in rendered
+    assert "use the explicit delta" not in rendered
+
+
+def test_long_guidance_is_wrapped_rather_than_scrolled_off_screen() -> None:
+    """An unwrapped fallback is one nobody reads."""
+
+    from writai.doctor import ProbeResult, ProbeStatus, render
+
+    rendered = render(
+        [
+            ProbeResult(
+                name="Composio",
+                status=ProbeStatus.INVALID,
+                detail="rejected " * 40,
+                degrades_to="the Slack loop is shut " * 20,
+                fallback="scripts/demo/fire.sh " * 20,
+            )
+        ]
+    )
+    assert max(len(line) for line in rendered.splitlines()) <= 80

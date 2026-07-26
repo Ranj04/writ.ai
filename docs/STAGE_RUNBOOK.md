@@ -6,23 +6,69 @@ Cold machine to the deny landing. Read top to bottom, one command per step.
 
 ## 0. Prerequisites
 
-`.venv` must exist at the repo root and be **python3.12**. System `python3` is 3.9 and will not work.
+Work from a checkout that has **all four** of: a `.venv` on python3.12, the
+`writai` package installed into it, a `.env`, and the branch you actually mean
+to demo. Missing any one of them fails later and less obviously.
 
 ```
-cd /Users/ranjivj/writ.ai
+cd <your writ.ai checkout> && .venv/bin/python --version && .venv/bin/writai --help >/dev/null && ls .env && git log --oneline -1
 ```
 
-```
-.venv/bin/python --version
-```
+All four must succeed. What each one catches:
 
-Expect `Python 3.12.x`. If `.venv` is missing, stop and build it first.
+- **`Python 3.12.x`** — system `python3` is 3.9 and will not work.
+- **`.venv/bin/writai`** — the console script. It did not exist for a while after
+  the rename: the venv still held an *editable* install of the old `dragback`
+  package pointed at a **different directory**, so `dragback …` ran pre-rename
+  code from the archive tree and looked completely normal doing it. If `writai`
+  is missing, or `.venv/bin/dragback` still exists, fix it before anything else:
+  ```
+  .venv/bin/pip uninstall -y dragback && .venv/bin/pip install -e .
+  ```
+- **`.env`** — `load_dotenv()` reads it **from the working directory**. Run step 1
+  from a tree without one and every integration reports `[ ---- ] not
+  configured` and the command **exits 0**. That is a clean-looking report that
+  proves nothing. If step 1 says everything is absent, suspect the tree first.
+- **the commit** — more than one checkout of this repo exists on this machine.
+  Confirm you are on the one you mean to record.
 
-Every command below sets `PYTHONPATH=backend`. Omitting it fails on `import writai`.
+Every command below sets `PYTHONPATH=backend`. Omitting it fails on `import
+writai`. `.venv/bin/writai …` is equivalent once the install above is correct.
 
 ---
 
-## 1. Seed
+## 1. `writai doctor` — what is live, and what to do about what isn't
+
+One command, before you touch anything else.
+
+```
+.venv/bin/writai doctor
+```
+
+Read it as: **the marks are the state, the `so:` lines are the plan.** Every
+integration that is not `[ LIVE ]` prints a `so:` line naming the concrete
+command or switch that gets you through the demo without it. You should not
+need a second document.
+
+| | Meaning | Do |
+|---|---|---|
+| `[ LIVE ]` | A real call proved the credential works | nothing |
+| `[ DEAD ]` | Set, and broken. **Worse than absent** — the code takes the live path | follow its `so:` line |
+| `[  ??  ]` | Could not be checked. **Not a pass** | treat as unknown |
+| `[ ---- ]` | Not configured. A choice, not a fault | follow its `so:` line |
+
+**Exit 1 means a dead credential, not a blocked demo.** At the last run: Gemini
+`LIVE`; Hexclave and Composio `DEAD`; Callwright, CrustData and Superset
+`----`. The five-session deny below depends on none of them — it runs on the
+seeded fixture and the unauthenticated approval seam, which is what
+`WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1` on every command below is for.
+
+The two `DEAD` ones change what you may *claim*, not whether the demo runs.
+Read "What is NOT live" at the bottom before you say anything on stage.
+
+---
+
+## 2. Seed
 
 Deletes and rebuilds `/tmp/writai-stage/` — store, hook copy, and the five session dirs.
 
@@ -35,7 +81,7 @@ It prints the five directories, marked `survives` (Sara TASK-201, Alex TASK-202)
 
 ---
 
-## 2. Start the server
+## 3. Start the server
 
 Leave this terminal open. It re-seeds, then serves on `127.0.0.1:8002`.
 
@@ -54,7 +100,7 @@ lsof -tiTCP:8002 -sTCP:LISTEN | xargs kill
 
 ---
 
-## 3. Verify before you touch Claude Code
+## 4. Verify before you touch Claude Code
 
 The session routes authenticate the hook and fail closed without a key, so both
 calls carry the demo key the seeder set.
@@ -67,13 +113,42 @@ curl -s -X POST http://127.0.0.1:8002/supervisor/sessions/start -H 'Content-Type
 curl -s -X POST http://127.0.0.1:8002/supervisor/sessions/sess-priya/check -H 'Content-Type: application/json' -H 'X-writ.ai-Hook-API-Key: writai-demo-hook-key' -d '{"session_id":"sess-priya","tool_name":"Edit","timestamp":"2026-07-25T09:00:00+00:00"}'
 ```
 
-Expect `"decision":"deny"` with `"decision_snapshot":"graph-v18"` and a non-null `redirect_instruction`.
+Expect, in the second response:
 
-**This curl consumes the deny-once on `sess-priya`.** Re-seed (step 5) before the real run, or skip this check.
+```
+"decision": "deny"
+"denial_mode": "until-acknowledged"
+"binding_source": "task-file"
+"redirect_instruction": "Exports are admin-only. …"     (non-null)
+"provenance_path": ["DEC-018","DEC-004","SPEC-009","TICKET-100","TASK-203","PLAN-027"]
+```
+
+There is **no `decision_snapshot` field** in this response — an earlier version of
+this runbook said to look for `"decision_snapshot":"graph-v18"`, and an operator
+who went looking for it would have concluded a working demo was broken. The
+snapshot is on the assignment, not the verdict; `writai dev why <session>` shows
+the graph transition.
+
+**This curl consumes nothing, and you can run it as often as you like.** A bare
+curl never acknowledges: the deny is held open **until acknowledged**, and the
+acknowledgement is a `redirect_id` the service issued on a previous deny and the
+*hook* echoes back on its next call. Curl doesn't echo it, so curl keeps getting
+`deny` — which is the correct answer, not a stuck session. (Older text here said
+the deny was one-shot and that this curl "burned" TASK-203. It is not, and it
+does not.)
+
+To watch the whole beat by hand, echo the id back the way the hook does:
+
+```
+curl -s -X POST http://127.0.0.1:8002/supervisor/sessions/sess-priya/check -H 'Content-Type: application/json' -H 'X-writ.ai-Hook-API-Key: writai-demo-hook-key' -d '{"session_id":"sess-priya","tool_name":"Edit","timestamp":"2026-07-25T09:00:00+00:00","acknowledged_redirect_id":"<redirect_id from the deny>"}'
+```
+
+That returns `"decision":"allow"`. Denied until acknowledged, then released — no
+second round trip, no human in the loop for a redirect the agent already saw.
 
 ---
 
-## 4. Launch the five sessions
+## 5. Launch the five sessions
 
 One terminal each. `PROMPT.txt` is the starter prompt. `.claude/settings.local.json` in each dir wires
 SessionStart, PreToolUse and SessionEnd to the repo's `hooks/writai_*.py`, with the
@@ -103,9 +178,18 @@ Sara and Alex run to completion. Priya, Marcus and Dan hit the deny on their fir
 
 ---
 
-## 5. RE-SEED BETWEEN EVERY RUN — this is what breaks the second rehearsal
+## 6. RE-SEED BETWEEN EVERY RUN — this is what breaks the second rehearsal
 
-Deny-once is **per assignment**. Once an assignment has delivered its redirect, every later check on it returns `allow`. A second rehearsal against a used store silently allows all five sessions and looks like the product is broken.
+A session that has already **acknowledged** its redirect is allowed from then on,
+and the acknowledgement is stored per assignment. So a second rehearsal against a
+used store silently allows all five sessions and looks like the product is
+broken.
+
+(The mechanism, since it moved: the deny is held **until acknowledged**, not
+delivered once. Every tool call is denied until the hook echoes back the
+`redirect_id` the service issued — which it does automatically on the very next
+call, so a live session sees exactly one deny and continues. The store remembers
+that, which is why it has to be rebuilt between rehearsals.)
 
 Between runs, in the server terminal: `Ctrl-C`, then
 
@@ -125,10 +209,12 @@ Also close and relaunch the five `claude` sessions — a session that already sa
 
 ---
 
-## 6. If it does not deny
+## 7. If it does not deny
 
 - **The deny lands on the FIRST tool call, whichever tool that is.** Usually `Read`, not `Edit`. If the session read the file before you were watching, the deny already fired — check the scrollback.
-- **Deny-once is per assignment, so a smoke test consumes it.** The step 3 curl burns `TASK-203`. Re-seed before the real run.
+- **A previously acknowledged assignment stays allowed.** The step 4 curl does
+  *not* cause this — it never acknowledges — but a completed rehearsal does.
+  Re-seed between runs.
 - **The server must be running** on 8002. Confirm: `curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8002/openapi.json` → `200`. The hook fails closed, so a dead server denies with `writ.ai hook failed closed:` instead of the WRITAI block — that is a different failure.
 - **The session dir must contain `.writai/task`.** Without it the session binds to
   nothing, reads as unbound, and an unbound session is **allowed everything** — which
@@ -173,6 +259,17 @@ Also close and relaunch the five `claude` sessions — a session that already sa
   `APPROVAL_AUTHENTICATION_FAILED` and `fire.sh` falls back to the in-process
   seam, which needs `WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1`. Every authority
   check still runs; only the channel authentication is bypassed.
+
+  **Browser sign-in exists now and is OFF by default. Leave it off.** `/approvals`
+  reads a Hexclave identity only when `VITE_WRITAI_HEXCLAVE_SIGN_IN=1`. Setting
+  it against the current project — which has a valid key but **zero teams** —
+  hangs the browser tab: not a slow load, an unresponsive tab that stops
+  answering clicks and navigation. `/approvals` is the screen you fall back TO
+  when the live path breaks, so it must never be the thing that breaks. With the
+  flag off it renders, approves on the unauthenticated seam, and labels itself
+  `Rehearsal · nothing was applied` — verified by loading it, not by reasoning
+  about it. Turn sign-in on only after `writai doctor hexclave` reads `LIVE`, and
+  re-load `/approvals` before relying on it in front of anyone.
 - **The CrustData payload is documentation-reconstructed, not captured.**
 
 ## Facts worth having on hand
@@ -190,8 +287,18 @@ Also close and relaunch the five `claude` sessions — a session that already sa
 - `writai` is **not on PATH** inside a stage session. An interrupted session that
   tries `writai dev why` gets "command not found". Run it from the repo root as
   `.venv/bin/writai dev why`, or `PYTHONPATH=backend .venv/bin/python -m
-  writai.cli dev why`. (`GET /supervisor/sessions` exists now, so `dev status`,
-  `dev why` and `dev ack` all work against the merged service — the note in
-  HANDOFF.md saying otherwise predates that route.)
+  writai.cli dev why`. Both are verified working; `dev status` and `dev why`
+  render correctly against the running service.
+- `writai dev ack` releases only a session the service reports as **blocked and
+  awaiting a human** — an assignment invalidated outright with no corrected plan
+  to hand over. A session that is merely denied-until-acknowledged is not that:
+  its hook acknowledges automatically on the next tool call, and `dev ack`
+  correctly answers `DECISION_ID_UNRESOLVED`. That is not a bug; do not go
+  looking for one on stage.
+- **Known cosmetic defect, `scripts/demo/ack.sh`:** its blocked-session line
+  renders as `blocked by yesnonointerruptedgraph-v17graph-v18` — several fields
+  concatenated with no separators — and it then reports `[FAIL]` for a session
+  `dev ack` considers not blocked. The demo does not need this script (the hook
+  self-acknowledges), so **do not run it on stage.** Logged, not fixed.
 - **Two rehearsals in a row without a re-seed is the single most likely way to make
-  a working demo look broken.** Step 5 exists for that reason.
+  a working demo look broken.** Step 6 exists for that reason.
