@@ -33,6 +33,7 @@ Run `make demo` first for the zero-configuration deterministic proof.
 The design lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 Known defects and trade-offs live in [`outputs/OPEN-ITEMS-REGISTER.md`](outputs/OPEN-ITEMS-REGISTER.md).
 Deliberate weaknesses, and how to report one that is not, live in [`SECURITY.md`](SECURITY.md).
+Every environment variable, and what `WRITAI_ENV` actually changes, is in [`docs/CONFIGURATION.md`](docs/CONFIGURATION.md).
 
 <details>
 <summary>Full document index</summary>

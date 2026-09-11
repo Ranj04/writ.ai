@@ -90,10 +90,10 @@ disposition of each.
 
 | # | Item | Severity | Disposition |
 |---|---|---|---|
-| ENV-1 | **4 low-severity npm advisories**, all one transitive edge: `elliptic` under `@hexclave/shared`, inherited by `@hexclave/react` and `@hexclave/ui`. `npm audit fix` cannot resolve them without changing the Hexclave dependency itself. | Low | **DEFERRED by the user's explicit call** — "four low-severity transitive advisories are not worth a dependency change tonight". Not exploitable from this surface: `@hexclave/react` is imported by `/approvals` only, and browser sign-in is off by default, so the SDK is not even constructed on the demo path. Revisit after the recording. |
-| ENV-2 | **`scripts/demo/ack.sh` renders a garbled blocked-session line** — `blocked by yesnonointerruptedgraph-v17graph-v18`, several fields concatenated with no separators — then reports `[FAIL]` for a session that `writai dev ack` considers not blocked. | Low | **LOGGED, NOT FIXED.** Nothing on the staged path needs it: a denied-until-acknowledged session is released by its own hook echoing the `redirect_id` on the next tool call, with no human step. `dev ack` is for the narrower case of an assignment invalidated outright with no corrected plan, and it answers `DECISION_ID_UNRESOLVED` correctly for anything else. STAGE_RUNBOOK.md now says do not run this script on stage. |
-| ENV-3 | **The venv held an editable install of the pre-rename `dragback` package pointed at `/Users/ranjivj/DragBack`.** `dragback …` ran old code from the archive tree and looked entirely normal doing it, while `.venv/bin/writai` did not exist at all — so the runbook's own `writai` commands and `writai doctor` could not run. | Medium | **FIXED** in `writai-verify`: `pip uninstall dragback && pip install -e .`. Step 0 of STAGE_RUNBOOK.md now checks for it. **Any other checkout on this machine may still have it** — the check is `ls .venv/bin/dragback`; if that file exists, the venv is stale. |
-| ENV-4 | **`docs/BUILD_LANE_A.md` still specifies "deny once"** (line ~99), which INT-3 superseded with deny-until-acknowledged. | Low | **NOT EDITED.** It is a build-lane design record of what was specified at the time, not operator-facing guidance, and rewriting history there would hide that the design moved. STAGE_RUNBOOK.md — the document an operator actually reads — has been corrected. |
+| DEMO-ENV-1 | **4 low-severity npm advisories**, all one transitive edge: `elliptic` under `@hexclave/shared`, inherited by `@hexclave/react` and `@hexclave/ui`. `npm audit fix` cannot resolve them without changing the Hexclave dependency itself. | Low | **DEFERRED by the user's explicit call** — "four low-severity transitive advisories are not worth a dependency change tonight". Not exploitable from this surface: `@hexclave/react` is imported by `/approvals` only, and browser sign-in is off by default, so the SDK is not even constructed on the demo path. Revisit after the recording. |
+| DEMO-ENV-2 | **`scripts/demo/ack.sh` renders a garbled blocked-session line** — `blocked by yesnonointerruptedgraph-v17graph-v18`, several fields concatenated with no separators — then reports `[FAIL]` for a session that `writai dev ack` considers not blocked. | Low | **LOGGED, NOT FIXED.** Nothing on the staged path needs it: a denied-until-acknowledged session is released by its own hook echoing the `redirect_id` on the next tool call, with no human step. `dev ack` is for the narrower case of an assignment invalidated outright with no corrected plan, and it answers `DECISION_ID_UNRESOLVED` correctly for anything else. STAGE_RUNBOOK.md now says do not run this script on stage. |
+| DEMO-ENV-3 | **The venv held an editable install of the pre-rename `dragback` package pointed at `/Users/ranjivj/DragBack`.** `dragback …` ran old code from the archive tree and looked entirely normal doing it, while `.venv/bin/writai` did not exist at all — so the runbook's own `writai` commands and `writai doctor` could not run. | Medium | **FIXED** in `writai-verify`: `pip uninstall dragback && pip install -e .`. Step 0 of STAGE_RUNBOOK.md now checks for it. **Any other checkout on this machine may still have it** — the check is `ls .venv/bin/dragback`; if that file exists, the venv is stale. |
+| DEMO-ENV-4 | **`docs/BUILD_LANE_A.md` still specifies "deny once"** (line ~99), which INT-3 superseded with deny-until-acknowledged. | Low | **NOT EDITED.** It is a build-lane design record of what was specified at the time, not operator-facing guidance, and rewriting history there would hide that the design moved. STAGE_RUNBOOK.md — the document an operator actually reads — has been corrected. |
 
 ---
 
@@ -179,6 +179,14 @@ observed after `save()` returns is `0o600`. The SQLite file is `0o600` from crea
 
 ---
 
+## Documentation consistency
+
+| id | Item | Severity | Disposition |
+|---|---|---|---|
+| DOC-1 | **Two documents disagree about whether a Hexclave team exists.** `TASKS.md:88-90` ticks "Provision a Hexclave team, then configure `HEXCLAVE_TEAM_ID`" and states the current secret key and team resolve through `writai doctor hexclave`. `INTEGRATION_REPORT.md:500` and `:765` say the project returns zero teams and there is therefore no valid `HEXCLAVE_TEAM_ID`, so authenticated approvals fail closed and the demo uses the gated in-process seam. | Low (documentation) | **RECORDED, not resolved.** The `TASKS.md` claim is the later of the two and `INTEGRATION_REPORT.md` is a historical build record rather than current operator guidance, so the checkbox is probably right — but neither can be confirmed without live Hexclave credentials, which are not present in this environment. Asserting either as current fact would be the kind of unverified claim this register exists to catch. Run `writai doctor hexclave` on a configured machine and settle it in one place; `docs/SPONSORS.md:117,150` also documents the provisioning step and should agree. |
+| DOC-2 | **`ENV-1`/`ENV-2` were reused for two unrelated tables.** The T0 environment block and the demo-eve block both used those ids for different items, so anything keying on an id collided. | Low | **RESOLVED.** The demo-eve block is now `DEMO-ENV-1`…`DEMO-ENV-4`, and the roll-up references match. |
+| DOC-3 | **B2-1 read as both skipped and resolved.** The rule-8 ledger recorded it "Skipped under rule 8" while the B2 table and the roll-up recorded it resolved. | Low | **RESOLVED.** Both were true of different moments: the ledger is a chronological record of why a stage stopped, not a status table. The ledger row now says so and points at the B2 table and the commit that closed it. |
+
 ## Plan execution — integration
 
 T1 ran on the merged tree (`df28f11`; Tracks A, B and C merged). Gate `bash scripts/check.sh`
@@ -200,7 +208,7 @@ zero environment variables, and `WRITAI_ENV=production` still raises the
 | B | none recorded under rule 8 (B1 steps 6–7 were delivered differently and closed in round 2; see B1-1) | — |
 | C5 steps 4–6 | `config.py:66` default | **Resolved**: re-derived to `config.py:103`. |
 | C5 post-merge citation verification | citations into three files being rewritten by A and B | **Resolved by T1** (table below). |
-| T1 `.env.example` line | orchestrator note: "you may add that one line to `.env.example`" for `WRITAI_HOOK_API_KEYS` (B2-1) | **Skipped under rule 8.** `backend/tests/test_runtime_config.py:106-118` `test_every_documented_env_var_has_a_settings_field` fails for any `NAME=` in `.env.example` that is neither in `_READ_OUTSIDE_SETTINGS` (`:77`, whose hook entry at `:80` lists only `WRITAI_HOOK_API_KEY`) nor present in `config.py` source, and `WRITAI_HOOK_API_KEYS` is neither. That test file is T0's, outside T1's ownership. The goal still matters: B2-1 stays open and needs one `.env.example` line plus one allow-list entry in the same change. |
+| T1 `.env.example` line | orchestrator note: "you may add that one line to `.env.example`" for `WRITAI_HOOK_API_KEYS` (B2-1) | **Skipped under rule 8.** `backend/tests/test_runtime_config.py:106-118` `test_every_documented_env_var_has_a_settings_field` fails for any `NAME=` in `.env.example` that is neither in `_READ_OUTSIDE_SETTINGS` (`:77`, whose hook entry at `:80` lists only `WRITAI_HOOK_API_KEY`) nor present in `config.py` source, and `WRITAI_HOOK_API_KEYS` is neither. That test file is T0's, outside T1's ownership. The goal still matters: B2-1 needs one `.env.example` line plus one allow-list entry in the same change. **Superseded — both landed in `76afc1e`; see B2-1 in the B2 table. This row records why it was skipped at the time, not its current status.** |
 
 ### T1 step 1 — the cross-track line
 
@@ -257,7 +265,7 @@ already sorted, so the suite cannot observe it either. Own change, own test.
 - B1-2 (orchestrator read-modify-write sites), B1-3 (sibling stores named `.sqlite3`),
   B2-2 (`HookApiKeyVerifier` alias), B2-4 (session list not filtered by owner), T0-1
   (`uv.lock` consumed by nothing), T0-2 (two unread env vars), INT-2 (PR check grant
-  validation), A1-1 to A1-5, demo-eve ENV-1 to ENV-4, and the `outgoing_edges` divergence above.
+  validation), A1-1 to A1-5, DEMO-ENV-1 to DEMO-ENV-4, and the `outgoing_edges` divergence above.
 
 ---
 
