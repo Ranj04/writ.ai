@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
+from dotenv import dotenv_values, find_dotenv, load_dotenv
 
 
 def _load_env() -> str:
@@ -41,10 +42,35 @@ DEFAULT_HEXCLAVE_API_URL = "https://api.hexclave.com/api/v1"
 # `require_production_secrets`, because anyone who has read this file can mint a grant
 # with it.
 DEFAULT_DEMO_GRANT_SECRET = "writai-local-demo-secret"
+# The placeholder `.env.example` published on `main` until 6325d01 emptied it. It is in
+# no file the tree ships any more, so the data-driven set below cannot see it, yet every
+# `.env` copied before then still holds it. Named here for the same reason as the default.
+RETIRED_PUBLISHED_GRANT_SECRET = "replace-this-for-any-shared-demo"
 # The one definition of "this is a demo machine". Shared by the demo-reset default and
 # the production secret guard so the two can never disagree.
 DEMO_ENVIRONMENTS = frozenset({"development", "demo", "local", "test"})
 MIN_GRANT_SECRET_LENGTH = 32
+_ENV_EXAMPLE_PATH = Path(__file__).resolve().parents[2] / ".env.example"
+
+
+def _published_placeholder_secrets(example: Path = _ENV_EXAMPLE_PATH) -> frozenset[str]:
+    """Every value this repository itself publishes for a secret-bearing variable.
+
+    Derived from `.env.example` rather than hand-maintained, so a placeholder added
+    there is refused by `require_production_secrets` the moment it is documented.
+    An installed wheel carries no `.env.example`; the demo default and the retired
+    placeholder are refused there all the same.
+    """
+
+    published = {DEFAULT_DEMO_GRANT_SECRET, RETIRED_PUBLISHED_GRANT_SECRET}
+    if example.is_file():
+        for name, value in dotenv_values(example).items():
+            if value and value.strip() and name.endswith(("_SECRET", "_KEY")):
+                published.add(value.strip())
+    return frozenset(published)
+
+
+PUBLISHED_PLACEHOLDER_SECRETS = _published_placeholder_secrets()
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -259,12 +285,20 @@ def require_production_secrets(config: Settings | None = None) -> None:
     if active.env.strip().lower() in DEMO_ENVIRONMENTS:
         return
     generate = 'python3 -c "import secrets;print(secrets.token_urlsafe(48))"'
-    if active.grant_secret == DEFAULT_DEMO_GRANT_SECRET:
+    # Stripped once, up front: whitespace padding must not manufacture length, and a
+    # whitespace-only value is then caught by the length check as the empty string.
+    secret = active.grant_secret.strip()
+    if secret in PUBLISHED_PLACEHOLDER_SECRETS:
         raise RuntimeError(
-            f"WRITAI_ENV={active.env!r} is running on the public default signing secret. "
-            f"Set WRITAI_GRANT_SECRET to a private value, for example: {generate}"
+            f"WRITAI_ENV={active.env!r} is running on a publicly known placeholder signing "
+            f"secret. Set WRITAI_GRANT_SECRET to a private value, for example: {generate}"
         )
-    if len(active.grant_secret) < MIN_GRANT_SECRET_LENGTH:
+    if secret.startswith("#"):
+        raise RuntimeError(
+            f"WRITAI_ENV={active.env!r} has a WRITAI_GRANT_SECRET that parses as a comment, "
+            f"not a secret. Generate one with: {generate}"
+        )
+    if len(secret) < MIN_GRANT_SECRET_LENGTH:
         raise RuntimeError(
             f"WRITAI_ENV={active.env!r} has a WRITAI_GRANT_SECRET shorter than "
             f"{MIN_GRANT_SECRET_LENGTH} characters. Generate one with: {generate}"

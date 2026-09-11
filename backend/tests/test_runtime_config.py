@@ -208,6 +208,79 @@ def test_production_accepts_a_real_signing_secret() -> None:
     assert production.grant_secret != config.DEFAULT_DEMO_GRANT_SECRET
 
 
+def _placeholders_the_repo_publishes() -> list[str]:
+    """Every non-empty ``*_SECRET`` / ``*_KEY`` value in ``.env.example``, read here
+    independently of config.py so the test cannot inherit a bug in the helper."""
+
+    example = pathlib.Path(__file__).resolve().parents[2] / ".env.example"
+    published = re.findall(
+        r"^([A-Z][A-Z0-9_]*(?:_SECRET|_KEY))=(.+)$", example.read_text(), flags=re.MULTILINE
+    )
+    return sorted({value.strip() for _name, value in published if value.strip()})
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    [*_placeholders_the_repo_publishes(), "replace-this-for-any-shared-demo"],
+)
+def test_production_refuses_every_placeholder_the_repo_publishes(placeholder: str) -> None:
+    """A placeholder the repository itself has shipped is a publicly known signing key.
+
+    Parametrised over `.env.example`, so a placeholder added there later is refused
+    without anyone editing this test; the literal is the value `main` shipped before
+    T0 emptied it.
+    """
+
+    production = replace(Settings(), env="production", grant_secret=placeholder)
+
+    with pytest.raises(RuntimeError, match="WRITAI_GRANT_SECRET"):
+        config.require_production_secrets(production)
+
+
+def test_production_refuses_a_whitespace_only_secret() -> None:
+    """Padding must not manufacture length: 40 spaces is longer than the minimum."""
+
+    production = replace(Settings(), env="production", grant_secret=" " * 40)
+
+    with pytest.raises(RuntimeError, match="WRITAI_GRANT_SECRET"):
+        config.require_production_secrets(production)
+
+
+def test_production_refuses_a_comment_shaped_secret() -> None:
+    """python-dotenv hands an inline comment back as the value; a comment is never a secret."""
+
+    comment = "# " + secrets.token_urlsafe(48)
+    production = replace(Settings(), env="production", grant_secret=comment)
+
+    with pytest.raises(RuntimeError, match="WRITAI_GRANT_SECRET"):
+        config.require_production_secrets(production)
+
+
+def test_production_still_accepts_a_real_random_secret() -> None:
+    """The guard against over-correcting: a generated secret must still boot."""
+
+    production = replace(
+        Settings(), env="production", grant_secret=secrets.token_urlsafe(48)
+    )
+
+    config.require_production_secrets(production)
+
+    assert production.grant_secret.strip() not in config.PUBLISHED_PLACEHOLDER_SECRETS
+
+
+def test_placeholder_set_falls_back_to_the_demo_default_without_env_example(
+    tmp_path: pathlib.Path,
+) -> None:
+    """An installed wheel has no `.env.example`; the demo default is refused all the same."""
+
+    published = config._published_placeholder_secrets(tmp_path / "absent.env.example")
+
+    assert published == frozenset(
+        {config.DEFAULT_DEMO_GRANT_SECRET, config.RETIRED_PUBLISHED_GRANT_SECRET}
+    )
+    assert config.PUBLISHED_PLACEHOLDER_SECRETS >= published
+
+
 @pytest.mark.parametrize(
     ("reset_enabled", "expected_calls", "expected_version"),
     [(False, 0, 0), (True, 1, 17)],
