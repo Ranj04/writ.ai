@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,6 +40,8 @@ from writai.notify.escalate import (
 )
 from writai.services import executor_api
 from writai.services.escalation_api import (
+    InterruptEscalationScheduler,
+    build_interrupt_escalation_router,
     compose_interrupt_escalation_router,
 )
 from writai.services.support import (
@@ -1019,3 +1022,88 @@ def test_production_source_suppresses_ineligible_sessions(
     assert transport.authorize_calls == 0
     assert in_process_executor.calls == 0
     assert fixture.submission_count == 0
+
+
+# --------------------------------------------------------------------------------------
+# The scheduler's lifecycle
+#
+# Until this section existed, `grep -rn scheduler backend/tests/` returned nothing:
+# InterruptEscalationScheduler had `running`, `scan_count`, `start` and `stop` and no
+# test anywhere. A plan reviewed alongside this one asserted the lifespan never ran at
+# all, on the grounds that `include_router` copies routes and not lifespan. That is true
+# of Starlette and false here — FastAPI's `APIRouter.include_router` calls
+# `_merge_lifespan_context`, so the router's lifespan is merged into the app's. These
+# tests pin the behaviour that refuted it, so the next reader does not have to re-derive
+# which of the two frameworks does the wiring.
+# --------------------------------------------------------------------------------------
+
+
+def _idle_scanner() -> InterruptEscalationScanner:
+    """A scanner with nothing due: the lifecycle is what is under test, not the scan."""
+
+    return _scanner(
+        source=StaticEscalationSource(
+            AuthorizedInterruptEscalation(
+                intent=_intent(),
+                grant_token=SecretStr("unused-lifecycle-grant"),
+            )
+        ),
+        acknowledgements=NeverAcknowledged(),
+        executor=FailingExecutor(),
+        enabled=False,
+    )
+
+
+def _scheduled_app(
+    scanner: InterruptEscalationScanner,
+    *,
+    enabled: bool,
+    interval_seconds: float = 1.0,
+) -> tuple[FastAPI, InterruptEscalationScheduler]:
+    """Mount the router the way `agent_api` does: include_router, no app-level lifespan."""
+
+    scheduler = InterruptEscalationScheduler(
+        scanner, enabled=enabled, interval_seconds=interval_seconds
+    )
+    router = build_interrupt_escalation_router(
+        scanner,
+        internal_service_secret="test-secret",
+        scheduler=scheduler,
+    )
+    app = FastAPI()
+    app.include_router(router)
+    return app, scheduler
+
+
+def test_the_scheduler_runs_for_exactly_the_lifetime_of_the_app() -> None:
+    """Entering the app starts the scanner; leaving it stops it."""
+
+    app, scheduler = _scheduled_app(_idle_scanner(), enabled=True)
+
+    assert scheduler.running is False, "not started before the app is entered"
+
+    with TestClient(app):
+        assert scheduler.running is True, (
+            "the router's lifespan did not reach the app. FastAPI's include_router "
+            "merges it; if this fails, that wiring changed"
+        )
+        deadline = time.monotonic() + 5.0
+        while scheduler.scan_count == 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert scheduler.scan_count > 0, "the periodic scan never fired"
+
+    assert scheduler.running is False, "the scheduler outlived the app"
+
+
+def test_a_disabled_scheduler_stays_inert_across_the_same_lifecycle() -> None:
+    """The feature gate is the whole safety story: off means it never scans."""
+
+    app, scheduler = _scheduled_app(_idle_scanner(), enabled=False)
+
+    with TestClient(app):
+        time.sleep(0.3)
+        assert scheduler.running is False
+        assert scheduler.scan_count == 0
+
+    assert scheduler.running is False
+    assert scheduler.scan_count == 0

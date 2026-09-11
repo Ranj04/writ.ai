@@ -1,0 +1,20 @@
+name: Feature request
+description: Propose a change to what writ.ai does
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth reading `AGENTS.md` first: the product invariant is that the LLM may
+        propose structure, deterministic code decides and enforces, and a human confirms.
+        Proposals that let a model output become a verdict will be declined.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is hard or impossible today?
+    validations: {required: true}
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change

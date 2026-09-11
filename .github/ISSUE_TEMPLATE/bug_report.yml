@@ -1,0 +1,31 @@
+name: Bug report
+description: Something behaves differently from what the docs or tests claim
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Configuration changes the answer materially here. `WRITAI_ENV` and whether demo
+        reset is enabled decide, among other things, whether `/decisions/ingest` accepts
+        an anonymous decision at all — see "Where the trust boundary is" in the README.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations: {required: true}
+  - type: textarea
+    id: repro
+    attributes:
+      label: Smallest reproduction
+      description: A failing test is ideal; a command sequence is fine.
+    validations: {required: true}
+  - type: input
+    id: commit
+    attributes:
+      label: Commit or version
+    validations: {required: true}
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: "Output of `writai doctor`, plus WRITAI_ENV and WRITAI_GRAPH_BACKEND. Never paste a secret."
