@@ -1,0 +1,73 @@
+# writai-check: run the project's own gate on the PR's own code.
+#
+# This workflow is deliberately separate from writai-pr-authorization.yml, and the two
+# must never be merged. That workflow is the ENFORCEMENT BACKSTOP: it checks the checker
+# out from the base branch and treats the PR head as inert data, precisely so that a
+# candidate change cannot rewrite the check that judges it. This workflow does the
+# opposite on purpose: it checks out the PR head and runs the PR's own tests, lint,
+# types and build, because that is what "the tests pass" has to mean. Nothing in this
+# file may be copied into that one.
+#
+# The `check` job invokes scripts/check.sh rather than repeating its steps, so the gate
+# a reviewer runs locally and the gate CI runs are the same script.
+name: writai-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -e ".[dev]"
+      - run: npm --prefix frontend ci
+      - run: bash scripts/check.sh
+
+  neo4j:
+    # Runs the opt-in Neo4j suite against a real neo4j:5-community container. Today that
+    # is the two tests in backend/tests/test_neo4j_integration.py; the graph-store
+    # contract suite is what makes this job meaningful, and it lands in Track A.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/writai-demo
+        ports: ["7687:7687"]
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p writai-demo 'RETURN 1'"
+          --health-interval 10s
+          --health-retries 12
+    env:
+      WRITAI_RUN_NEO4J_TESTS: "1"
+      NEO4J_URI: bolt://localhost:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: writai-demo
+      NEO4J_DATABASE: neo4j
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e ".[dev,graph]"
+      # --no-cov: the total coverage floor in pyproject.toml is for the full suite; a
+      # marker-selected run of two tests would trip it for no reason.
+      - run: PYTHONPATH=backend python3 -m pytest -m neo4j -q --no-cov

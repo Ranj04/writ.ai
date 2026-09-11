@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
+from dotenv import dotenv_values, find_dotenv, load_dotenv
 
 
 def _load_env() -> str:
@@ -37,6 +38,39 @@ DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_VENICE_BASE_URL = "https://api.venice.ai/api/v1"
 DEFAULT_VENICE_MODEL = "openai-gpt-4o-mini-2024-07-18"
 DEFAULT_HEXCLAVE_API_URL = "https://api.hexclave.com/api/v1"
+# The zero-config signing secret. Fine on a demo machine; refused everywhere else by
+# `require_production_secrets`, because anyone who has read this file can mint a grant
+# with it.
+DEFAULT_DEMO_GRANT_SECRET = "writai-local-demo-secret"
+# The placeholder `.env.example` published on `main` until 6325d01 emptied it. It is in
+# no file the tree ships any more, so the data-driven set below cannot see it, yet every
+# `.env` copied before then still holds it. Named here for the same reason as the default.
+RETIRED_PUBLISHED_GRANT_SECRET = "replace-this-for-any-shared-demo"
+# The one definition of "this is a demo machine". Shared by the demo-reset default and
+# the production secret guard so the two can never disagree.
+DEMO_ENVIRONMENTS = frozenset({"development", "demo", "local", "test"})
+MIN_GRANT_SECRET_LENGTH = 32
+_ENV_EXAMPLE_PATH = Path(__file__).resolve().parents[2] / ".env.example"
+
+
+def _published_placeholder_secrets(example: Path = _ENV_EXAMPLE_PATH) -> frozenset[str]:
+    """Every value this repository itself publishes for a secret-bearing variable.
+
+    Derived from `.env.example` rather than hand-maintained, so a placeholder added
+    there is refused by `require_production_secrets` the moment it is documented.
+    An installed wheel carries no `.env.example`; the demo default and the retired
+    placeholder are refused there all the same.
+    """
+
+    published = {DEFAULT_DEMO_GRANT_SECRET, RETIRED_PUBLISHED_GRANT_SECRET}
+    if example.is_file():
+        for name, value in dotenv_values(example).items():
+            if value and value.strip() and name.endswith(("_SECRET", "_KEY")):
+                published.add(value.strip())
+    return frozenset(published)
+
+
+PUBLISHED_PLACEHOLDER_SECRETS = _published_placeholder_secrets()
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -51,7 +85,7 @@ def _default_demo_reset_enabled(environment: str, graph_backend: str) -> bool:
 
     return (
         graph_backend.strip().lower() == "memory"
-        and environment.strip().lower() in {"development", "demo", "local", "test"}
+        and environment.strip().lower() in DEMO_ENVIRONMENTS
     )
 
 
@@ -63,7 +97,10 @@ class Settings:
         _default_demo_reset_enabled(_ENVIRONMENT, _GRAPH_BACKEND),
     )
     graph_backend: str = _GRAPH_BACKEND
-    grant_secret: str = os.getenv("WRITAI_GRANT_SECRET", "writai-local-demo-secret")
+    # `or`, not a default argument: a copied .env.example leaves this set-but-empty, and
+    # an empty HMAC key is rejected by GrantSigner. Outside a demo environment the
+    # fallback is then refused by `require_production_secrets`.
+    grant_secret: str = os.getenv("WRITAI_GRANT_SECRET") or DEFAULT_DEMO_GRANT_SECRET
     grant_ttl_seconds: int = int(os.getenv("WRITAI_GRANT_TTL_SECONDS", "3600"))
     authority_threshold: float = float(
         os.getenv("WRITAI_AUTHORITY_THRESHOLD", str(DEFAULT_AUTHORITY_THRESHOLD))
@@ -78,11 +115,21 @@ class Settings:
         "WRITAI_EXECUTOR_URL", "http://localhost:8003"
     ).rstrip("/")
     service_timeout_seconds: float = float(os.getenv("WRITAI_SERVICE_TIMEOUT_SECONDS", "5"))
+    log_level: str = os.getenv("WRITAI_LOG_LEVEL", "INFO")
+    # The public intake limiter is per uvicorn worker: N workers allow N x this value.
+    rate_limit_enabled: bool = _env_flag("WRITAI_RATE_LIMIT_ENABLED", True)
+    public_intake_rate_limit_per_minute: int = int(
+        os.getenv("WRITAI_PUBLIC_INTAKE_RATE_LIMIT_PER_MINUTE", "60")
+    )
     execution_provider: str = os.getenv("WRITAI_EXECUTION_PROVIDER", "fixture").strip().lower()
+    # A .json suffix selects the legacy JsonFileLiveWorkspaceRepository; any other suffix
+    # selects the SQLite store, which migrates an existing sibling .json store on first start.
     workspace_store: str = os.getenv(
         "WRITAI_WORKSPACE_STORE",
-        ".writai/live-workspaces.json",
+        ".writai/live-workspaces.sqlite3",
     )
+    # Upper bound on live per-workspace authority contexts held in memory at once.
+    max_authority_contexts: int = int(os.getenv("WRITAI_MAX_AUTHORITY_CONTEXTS", "256"))
     neo4j_uri: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     neo4j_username: str = os.getenv("NEO4J_USERNAME", "neo4j")
     neo4j_password: str = os.getenv("NEO4J_PASSWORD", "writai-demo")
@@ -91,6 +138,7 @@ class Settings:
     gemini_model: str = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
     gemini_base_url: str = os.getenv("GEMINI_BASE_URL", DEFAULT_GEMINI_BASE_URL).rstrip("/")
     gemini_timeout_seconds: float = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "30"))
+    gemini_max_output_tokens: int = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
     # Extraction provider: fixture | gemini | venice. Venice speaks the OpenAI-compatible
     # API, so LLM_MODEL/LLM_BACKUP_MODEL are Venice model slugs. LLM_TIMEOUT_MS is in
     # milliseconds to match the vendor's own naming; it is normalised to seconds here.
@@ -220,3 +268,38 @@ class Settings:
 
 
 settings = Settings()
+
+
+def require_production_secrets(config: Settings | None = None) -> None:
+    """Refuse to serve outside a demo environment on the public default signing secret.
+
+    ``grant_secret`` is the HMAC key for every signed grant, the derivation key for
+    the internal-service capability, and the seed for every per-workspace context
+    secret. On a demo machine the default is what makes a fresh clone run with zero
+    configuration; anywhere else it means anyone who has read this repository can mint
+    a valid grant. Called at module scope by every service so the process never binds
+    a port on the default. A set-but-trivial secret is refused for the same reason.
+    """
+
+    active = settings if config is None else config
+    if active.env.strip().lower() in DEMO_ENVIRONMENTS:
+        return
+    generate = 'python3 -c "import secrets;print(secrets.token_urlsafe(48))"'
+    # Stripped once, up front: whitespace padding must not manufacture length, and a
+    # whitespace-only value is then caught by the length check as the empty string.
+    secret = active.grant_secret.strip()
+    if secret in PUBLISHED_PLACEHOLDER_SECRETS:
+        raise RuntimeError(
+            f"WRITAI_ENV={active.env!r} is running on a publicly known placeholder signing "
+            f"secret. Set WRITAI_GRANT_SECRET to a private value, for example: {generate}"
+        )
+    if secret.startswith("#"):
+        raise RuntimeError(
+            f"WRITAI_ENV={active.env!r} has a WRITAI_GRANT_SECRET that parses as a comment, "
+            f"not a secret. Generate one with: {generate}"
+        )
+    if len(secret) < MIN_GRANT_SECRET_LENGTH:
+        raise RuntimeError(
+            f"WRITAI_ENV={active.env!r} has a WRITAI_GRANT_SECRET shorter than "
+            f"{MIN_GRANT_SECRET_LENGTH} characters. Generate one with: {generate}"
+        )

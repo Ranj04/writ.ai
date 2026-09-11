@@ -847,12 +847,23 @@ def test_notify_denied_swallows_a_failing_runner() -> None:
     assert lib.notify_denied(config, "blocked", runner=broken, system="darwin") is False
 
 
-def test_notify_denied_fires_once_per_deny() -> None:
+def test_notify_denied_fires_once_per_deny(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(lib.shutil, "which", lambda _name: "/usr/bin/osascript")
     seen: list[Any] = []
     config = lib.HookConfig(notifications_enabled=True)
     assert lib.notify_denied(config, "blocked", runner=seen.append, system="darwin") is True
     assert seen[0][0] == "osascript"
     assert "display notification" in seen[0][2]
+
+
+def test_notify_denied_is_silent_when_the_notifier_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(lib.shutil, "which", lambda _name: None)
+    config = lib.HookConfig(notifications_enabled=True)
+    seen: list[Any] = []
+    assert lib.notify_denied(config, "blocked", runner=seen.append, system="darwin") is False
+    assert seen == []
 
 
 def test_notifications_are_easy_to_disable() -> None:

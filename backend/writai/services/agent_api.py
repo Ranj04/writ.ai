@@ -21,7 +21,7 @@ from writai.auth.hexclave import (
     HexclaveUserApiKeyIdentityResolver,
 )
 from writai.auth.hexclave_webhooks import HexclaveCacheInvalidationRequest
-from writai.config import settings
+from writai.config import require_production_secrets, settings
 from writai.domain import (
     AgentPlan,
     AgentRun,
@@ -132,6 +132,7 @@ app.add_middleware(
     expose_headers=[CORRELATION_ID_HEADER],
 )
 install_api_support(app)
+require_production_secrets()
 
 run_state: AgentRun | None = None
 last_authorization: AuthorizationResult | None = None
