@@ -31,3 +31,30 @@ button {
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+/* Render-failure fallback (see ErrorBoundary.tsx). Global on purpose: it
+   must render on every route, including ones whose own stylesheet never
+   loaded. */
+.app-failure {
+  max-width: 40rem;
+  margin: 4rem auto;
+  padding: 0 1.5rem;
+}
+
+.app-failure__title {
+  font-size: 1.5rem;
+  margin: 0 0 1rem;
+}
+
+.app-failure__reload {
+  padding: 0.5rem 1rem;
+  border: 1px solid #0a0a0a;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.app-failure__detail {
+  color: #6b6b6b;
+  font-size: 0.875rem;
+}

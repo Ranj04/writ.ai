@@ -1,4 +1,5 @@
 import { ApprovalsRoute } from "./approvals/ApprovalsRoute";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { LiveWorkspaceRoute } from "./live-workspace/LiveWorkspaceRoute";
 import { ScenarioLabRoute } from "./scenario-lab/ScenarioLabRoute";
 
@@ -26,6 +27,20 @@ export default function App() {
   // We do not need the provider. It exists to supply React context to Hexclave
   // UI components, and we render none: the only thing this surface wants is a
   // token, which `hexclaveApprovalToken()` fetches directly and defensively.
-  if (route === "approvals") return <ApprovalsRoute />;
-  return route === "examples" ? <ScenarioLabRoute /> : <LiveWorkspaceRoute />;
+  //
+  // The boundary is the other half of that reasoning: a hang is worse than a
+  // white screen, but a white screen is still a failure nobody can read. A
+  // render-time throw on any route now lands on a page that says no approval
+  // was submitted and how to recover, instead of an empty `#root`.
+  return (
+    <ErrorBoundary>
+      {route === "approvals" ? (
+        <ApprovalsRoute />
+      ) : route === "examples" ? (
+        <ScenarioLabRoute />
+      ) : (
+        <LiveWorkspaceRoute />
+      )}
+    </ErrorBoundary>
+  );
 }

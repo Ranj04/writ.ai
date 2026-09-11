@@ -1,5 +1,3 @@
-import { HexclaveClientApp } from "@hexclave/react";
-
 /**
  * The browser's Hexclave identity, used by the `/approvals` surface only.
  *
@@ -18,10 +16,20 @@ import { HexclaveClientApp } from "@hexclave/react";
  * unconfigured integration must degrade to a labelled fallback, not a crash, so
  * every failure here resolves to "no identity" instead.
  *
+ * **Loaded lazily too.** `@hexclave/react` is imported with `await import()`
+ * inside `createClient`, the same way `document-extraction.ts` loads
+ * `tesseract.js`, `pdfjs-dist` and `mammoth`. With sign-in switched on, the
+ * static import put the whole SDK in the entry chunk (~590 kB minified) for
+ * every route, including ones that never ask for an identity. With it off,
+ * Vite inlines the flag and Rollup drops the unreachable SDK, but the bundle
+ * should not depend on that accident of constant folding. Now the SDK is
+ * fetched only when something actually asks for an identity.
+ *
  * `tokenStore: "cookie"` keeps the session out of `localStorage`, so an XSS on
  * this page cannot read the approval credential out of JS-readable storage.
  */
-function createClient() {
+async function createClient() {
+  const { HexclaveClientApp } = await import("@hexclave/react");
   return new HexclaveClientApp({
     projectId: import.meta.env.VITE_HEXCLAVE_PROJECT_ID,
     tokenStore: "cookie",
@@ -31,9 +39,11 @@ function createClient() {
 
 // Inferred, not annotated: `HexclaveClientApp` is generic, and writing the bare
 // name widens `tokenStore` to include null and stops matching the provider prop.
-type HexclaveClient = ReturnType<typeof createClient>;
+type HexclaveClient = Awaited<ReturnType<typeof createClient>>;
 
-let cached: HexclaveClient | null | undefined;
+// The in-flight (or settled) load, so concurrent callers share one SDK
+// instance and one import instead of constructing twice.
+let cached: Promise<HexclaveClient | null> | undefined;
 
 /**
  * Sign-in is OFF unless explicitly switched on with
@@ -61,24 +71,25 @@ export function hexclaveSignInEnabled(): boolean {
   );
 }
 
-export function hexclaveClient(): HexclaveClient | null {
-  if (cached !== undefined) return cached;
-  if (!hexclaveSignInEnabled()) {
-    cached = null;
-    return cached;
-  }
+async function loadClient(): Promise<HexclaveClient | null> {
+  if (!hexclaveSignInEnabled()) return null;
   try {
-    cached = createClient();
+    return await createClient();
   } catch (error) {
-    // No project configured. This is a supported state: the approval screen
-    // renders a labelled rehearsal and nothing is ever posted.
+    // No project configured, or the SDK could not be fetched. Both are
+    // supported states: the approval screen renders a labelled rehearsal and
+    // nothing is ever posted.
     console.warn(
       `[writai/hexclave] identity unavailable, approvals will rehearse (${
         error instanceof Error ? error.message.split("\n")[0] : String(error)
       })`,
     );
-    cached = null;
+    return null;
   }
+}
+
+export function hexclaveClient(): Promise<HexclaveClient | null> {
+  if (cached === undefined) cached = loadClient();
   return cached;
 }
 
@@ -89,7 +100,7 @@ export function hexclaveClient(): HexclaveClient | null {
  * proves who the human is, but it does not confirm or apply a decision.
  */
 export async function redirectToHexclaveSignIn(): Promise<boolean> {
-  const app = hexclaveClient();
+  const app = await hexclaveClient();
   if (app === null) return false;
   try {
     await app.redirectToSignIn();
@@ -116,7 +127,7 @@ export async function redirectToHexclaveSignIn(): Promise<boolean> {
 const TOKEN_TIMEOUT_MS = 2_500;
 
 export async function hexclaveApprovalToken(): Promise<string | null> {
-  const app = hexclaveClient();
+  const app = await hexclaveClient();
   if (app === null) return null;
   try {
     // Bounded on purpose. `getAuthorizationHeader()` talks to Hexclave, and an
