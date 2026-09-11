@@ -4,8 +4,10 @@ import hashlib
 import hmac
 import logging
 import re
+import threading
+import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from typing import Any, TypeVar, cast
 
@@ -18,6 +20,8 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from writai.config import settings
+
 CORRELATION_ID_HEADER = "X-Correlation-ID"
 INTERNAL_SERVICE_AUTH_HEADER = "X-writ.ai-Internal-Authorization"
 DEMO_FRONTEND_ORIGINS = [
@@ -27,8 +31,147 @@ DEMO_FRONTEND_ORIGINS = [
 _CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _correlation_id: ContextVar[str | None] = ContextVar("writai_correlation_id", default=None)
 logger = logging.getLogger(__name__)
+_logging_configured = False
+
+PUBLIC_INTAKE_ROUTES: frozenset[str] = frozenset(
+    {
+        "/webhooks/hexclave",
+        "/intake/slack/{workspace_id}",
+        "/intake/slack/{workspace_id}/reaction",
+        "/intake/crustdata/person/capture",
+    }
+)
 
 ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
+
+
+class _CorrelationIdFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        for field in ("correlation_id", "method", "path", "status", "duration_ms"):
+            if not hasattr(record, field):
+                setattr(record, field, "-")
+        return True
+
+
+def configure_logging() -> None:
+    """Configure one process-wide structured request-log formatter."""
+
+    global _logging_configured
+    if _logging_configured:
+        return
+    level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    log_format = (
+        "timestamp=%(asctime)s level=%(levelname)s logger=%(name)s "
+        "message=%(message)s correlation_id=%(correlation_id)s method=%(method)s "
+        "path=%(path)s status=%(status)s duration_ms=%(duration_ms)s"
+    )
+    logging.basicConfig(
+        level=level,
+        format=log_format,
+        force=False,
+    )
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(_CorrelationIdFilter())
+        handler.setFormatter(logging.Formatter(log_format))
+    # httpx logs raw request URLs at INFO, including workspace IDs and unmatched paths.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # The sanitised request line deliberately replaces uvicorn's access line: its raw
+    # path carries workspace IDs, while this service logs the registered route template.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    _logging_configured = True
+
+
+class TokenBucketLimiter:
+    """Per-worker token buckets for bounded public-intake verification work.
+
+    N uvicorn workers have N independent buckets, so the effective limit is N times
+    the configured value. A shared limiter needs Redis and is out of scope; adding a
+    dependency without shared state would retain the same limitation at extra cost.
+    """
+
+    def __init__(
+        self,
+        requests_per_minute: int,
+        *,
+        clock: Callable[[], float] = time.perf_counter,
+    ) -> None:
+        if requests_per_minute < 1:
+            raise ValueError("requests_per_minute must be at least 1")
+        self._capacity = float(requests_per_minute)
+        self._refill_per_second = self._capacity / 60.0
+        self._refill_window_seconds = 60.0
+        self._clock = clock
+        self._buckets: dict[tuple[str, str], tuple[float, float]] = {}
+        self._lock = threading.RLock()
+
+    def allow(self, route_template: str, client_host: str) -> bool:
+        now = self._clock()
+        key = (route_template, client_host)
+        with self._lock:
+            self._evict_idle(now)
+            tokens, last_refill = self._buckets.get(key, (self._capacity, now))
+            tokens = min(
+                self._capacity,
+                tokens + (now - last_refill) * self._refill_per_second,
+            )
+            allowed = tokens >= 1.0
+            if allowed:
+                tokens -= 1.0
+            self._buckets[key] = (tokens, now)
+            return allowed
+
+    def reset(self) -> None:
+        with self._lock:
+            self._buckets.clear()
+
+    def _evict_idle(self, now: float) -> None:
+        expired = [
+            key
+            for key, (_tokens, last_refill) in self._buckets.items()
+            if now - last_refill > self._refill_window_seconds
+        ]
+        for key in expired:
+            del self._buckets[key]
+
+
+public_intake_limiter = TokenBucketLimiter(
+    settings.public_intake_rate_limit_per_minute
+)
+
+
+def _public_intake_route(path: str) -> str | None:
+    if path in PUBLIC_INTAKE_ROUTES:
+        return path
+    prefix = "/intake/slack/"
+    suffix = path[len(prefix) :] if path.startswith(prefix) else ""
+    if suffix and "/" not in suffix:
+        return "/intake/slack/{workspace_id}"
+    if suffix.endswith("/reaction") and "/" not in suffix[: -len("/reaction")]:
+        return "/intake/slack/{workspace_id}/reaction"
+    return None
+
+
+class PublicIntakeRateLimitMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not settings.rate_limit_enabled:
+            await self.app(scope, receive, send)
+            return
+        route_template = _public_intake_route(scope["path"])
+        client = scope.get("client")
+        client_host = client[0] if client else "<unknown>"
+        if route_template is not None and not public_intake_limiter.allow(
+            route_template, client_host
+        ):
+            raise ApiError(
+                status_code=429,
+                code="RATE_LIMITED",
+                message="The public intake rate limit was exceeded.",
+                retryable=True,
+            )
+        await self.app(scope, receive, send)
 
 
 def internal_service_token(secret: str) -> str:
@@ -206,17 +349,24 @@ class CorrelationIdMiddleware:
         )
         context_token = _correlation_id.set(correlation_id)
         response_started = False
+        status = 500
+        started_at = time.perf_counter()
 
         async def send_with_correlation_id(message: Message) -> None:
-            nonlocal response_started
+            nonlocal response_started, status
             if message["type"] == "http.response.start":
                 response_started = True
+                status = message["status"]
                 response_headers = MutableHeaders(scope=message)
                 response_headers[CORRELATION_ID_HEADER] = correlation_id
             await send(message)
 
         try:
             await self.app(scope, receive, send_with_correlation_id)
+        except ApiError as exc:
+            if response_started:
+                raise
+            await _error_response(exc)(scope, receive, send_with_correlation_id)
         except Exception:
             if response_started:
                 raise
@@ -233,15 +383,30 @@ class CorrelationIdMiddleware:
                 )
             )(scope, receive, send_with_correlation_id)
         finally:
+            route = scope.get("route")
+            # Never log the raw path: it may contain workspace IDs or other user data.
+            route_path = getattr(route, "path", "<unmatched>")
+            logger.info(
+                "request",
+                extra={
+                    "correlation_id": correlation_id,
+                    "method": scope["method"],
+                    "path": route_path,
+                    "status": status,
+                    "duration_ms": (time.perf_counter() - started_at) * 1000,
+                },
+            )
             _correlation_id.reset(context_token)
 
 
 def install_api_support(app: FastAPI) -> None:
     """Install the same correlation and error contract on every service."""
 
+    configure_logging()
     app.add_exception_handler(ApiError, _api_error_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, _http_error_handler)
+    app.add_middleware(PublicIntakeRateLimitMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
 
 

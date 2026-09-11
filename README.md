@@ -4,20 +4,48 @@
 
 > Tests prove the code works. writ.ai proves the work is still wanted.
 
+[![checks](https://github.com/Ranj04/writ.ai/actions/workflows/writai-check.yml/badge.svg)](https://github.com/Ranj04/writ.ai/actions/workflows/writai-check.yml)
+
+## Fastest start
+
+Requires Python 3.11+.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
+pip install -e ".[dev]"
+make demo   # zero configuration; prints the six-stage proof (~0.1 seconds measured)
+make check  # full gate: pytest, ruff, mypy, compileall, vitest, tsc, Vite build (~32.7 seconds measured)
+```
+
+No Anthropic key or Neo4j database is required for those commands. Run `make demo`
+first for the proof, then `make check` when you are ready for the complete gate.
+
 writ.ai detects when an approved upstream company decision changes while a coding-agent run is active. It traces the change through a typed provenance graph, selectively invalidates only affected downstream work, rejects authorizations bound to stale graph snapshots, and moves the agent loop to `REPLAN`, `BLOCK`, or `HUMAN_REVIEW`.
 
 This repository is a Codex-ready hackathon starter. The deterministic demo works without external API keys. Neo4j and Anthropic integrations are included as optional extension points.
 
 ## Read first
 
-Codex and human contributors should read these files in order:
+Run `make demo` first for the zero-configuration deterministic proof.
+The design lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+Known defects and trade-offs live in [`outputs/OPEN-ITEMS-REGISTER.md`](outputs/OPEN-ITEMS-REGISTER.md).
 
-1. [`AGENTS.md`](AGENTS.md) — implementation rules and non-negotiable invariants.
-2. [`writai.md`](writai.md) — complete product brief.
-3. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — service and data flow.
-4. [`docs/GRAPH_SCHEMA.md`](docs/GRAPH_SCHEMA.md) — nodes, edges, scopes, and traversal semantics.
-5. [`TASKS.md`](TASKS.md) — prioritized work queue.
-6. [`docs/CODEX_START_PROMPT.md`](docs/CODEX_START_PROMPT.md) — a ready-to-paste Codex prompt.
+<details>
+<summary>Full document index</summary>
+
+- [`AGENTS.md`](AGENTS.md) — implementation rules and non-negotiable invariants.
+- [`writai.md`](writai.md) — complete product brief.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — service and data flow.
+- [`docs/GRAPH_SCHEMA.md`](docs/GRAPH_SCHEMA.md) — nodes, edges, scopes, and traversal semantics.
+- [`TASKS.md`](TASKS.md) — prioritized work queue.
+- [`docs/CODEX_START_PROMPT.md`](docs/CODEX_START_PROMPT.md) — a ready-to-paste Codex prompt.
+- [`ASSUMPTIONS.md`](ASSUMPTIONS.md) — implementation assumptions.
+- [`HANDOFF.md`](HANDOFF.md) — build handoff notes.
+- [`INTEGRATION_REPORT.md`](INTEGRATION_REPORT.md) — integration history.
+- [`REPO_MANIFEST.md`](REPO_MANIFEST.md) — repository inventory.
+
+</details>
 
 ## What already works
 
@@ -105,27 +133,36 @@ retain their declared IDs and still reject duplicates:
 
 ```bash
 writai workspace import examples/writai-workspace.yaml
-writai workspace approve-baseline refund-operations --role finance-admin
+# Approve the baseline in the authenticated Workspace UI after `make stack`:
+# http://127.0.0.1:5173/
+# Without Hexclave, explicitly opt into the local-only authentication bypass and
+# approve the baseline of the workspace imported above:
+export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
+PYTHONPATH=backend python3 scripts/demo/approve_in_process.py \
+  refund-operations finance-admin
 writai workspace authorize refund-operations
+```
+
+For a pending change, the authenticated CLI command requires
+`HEXCLAVE_APPROVER_USER_API_KEY` at the point of use:
+
+```bash
+export HEXCLAVE_APPROVER_USER_API_KEY=your-approver-user-api-key
+writai approve change refund-operations DEC-REFUND-002
+```
+
+There is no credential-free production approval route. On a local demo machine only, the same
+explicit opt-in can approve that pending change through the in-process demo seam:
+
+```bash
+export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
+PYTHONPATH=backend python3 scripts/demo/approve_in_process.py \
+  refund-operations finance-admin DEC-REFUND-002
 ```
 
 The complete CLI flow, exit-code contract, and reusable GitHub Action are documented in
 [`docs/LIVE_WORKSPACE_CLI.md`](docs/LIVE_WORKSPACE_CLI.md). Persistent state defaults to
 `.writai/live-workspaces.json`; change it with `WRITAI_WORKSPACE_STORE`.
-
-## Fastest start
-
-Requires Python 3.11+.
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
-pip install -e ".[dev]"
-make demo
-make check
-```
-
-No Anthropic key or Neo4j database is required for those commands.
 
 ## Run the full stack
 
@@ -396,9 +433,39 @@ pip install -e ".[dev,graph]"
 WRITAI_RUN_NEO4J_TESTS=1 python -m pytest -m neo4j
 ```
 
-The suite seeds `graph-v17` repeatedly and compares the persisted graph, selective invalidation
-report, and `ALLOW`/`REPLAN` behavior with the in-memory store. Without the opt-in variable, the
-tests skip and the normal deterministic suite needs no Neo4j credentials.
+The suite seeds `graph-v17` repeatedly and compares persisted graph content, the selective
+invalidation report, and `ALLOW`/`REPLAN` behavior with the in-memory store. Its
+`_canonical_graph` helper sorts both sides before comparison, so it establishes content parity;
+ordering and error parity are not established. Without the opt-in variable, the tests skip and
+the normal deterministic suite needs no Neo4j credentials.
+<!-- TODO(T1): confirm graph-store contract coverage once Track A merges -->
+
+## Known limits
+
+- **The default signing secret.** The default at `backend/writai/config.py:103` comes from the
+  repository-published constant at `backend/writai/config.py:44`. It is the HMAC key accepted for
+  every `SignedGrant`, with only non-emptiness validated (`backend/writai/grants.py:13-17`); the
+  derivation key for the internal-service capability that gates authority write routes
+  (`backend/writai/services/support.py:170`, enforced at
+  `backend/writai/services/support.py:180`); and the seed for each per-workspace context secret
+  (`backend/writai/workspaces/authority_contexts.py:173`). `writai doctor` validates six
+  integrations, not this secret. A startup guard now refuses to boot outside a demo environment
+  when the secret is the default or any placeholder the repository itself publishes.
+- **The enforcement hot path.** The JSON store is reparsed on every `get()`
+  (`backend/writai/workspaces/repository.py:89`) through the `PreToolUse` assignment gateway
+  (`backend/writai/workspaces/session_enforcement.py:244`), behind a three-second fail-open hook
+  (`backend/writai/config.py:212`). As the store grows, degradation can therefore become silent
+  enforcement loss instead of an error.
+<!-- TODO(T1): timings -->
+- **The world-readable write window.** The repository calls `chmod(0o600)` only after replacing
+  the destination (`backend/writai/workspaces/repository.py:63-64`), leaving a window on a file
+  that serialises signed grant tokens.
+- **Store and graph parity.** The Neo4j backend diverges from `graph/memory.py` on duplicate IDs,
+  ordering, and missing endpoints (`backend/writai/graph/neo4j_store.py:115`,
+  `backend/writai/graph/neo4j_store.py:140`, and
+  `backend/writai/graph/neo4j_store.py:145`).
+
+See the [full open-items register](outputs/OPEN-ITEMS-REGISTER.md).
 
 ## Repository layout
 

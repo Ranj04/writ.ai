@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import replace
-from typing import cast
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -13,6 +14,139 @@ from writai.fixtures import load_decision_v18, load_graph_fixture
 from writai.services import agent_api, authority_api, executor_api, support
 
 CORRELATION_ID = "demo-run-27"
+
+
+@pytest.fixture(autouse=True)
+def _reset_public_intake_limiter() -> None:
+    support.public_intake_limiter.reset()
+
+
+def _request_records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [
+        record
+        for record in caplog.records
+        if record.name == support.logger.name and record.getMessage() == "request"
+    ]
+
+
+def _record_contains(record: logging.LogRecord, value: str) -> bool:
+    return any(value in str(item) for item in record.__dict__.values())
+
+
+def test_uvicorn_access_log_is_silenced_before_it_can_log_raw_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    records: list[logging.LogRecord] = []
+
+    class _CaptureHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _CaptureHandler()
+    access_logger.addHandler(handler)
+    monkeypatch.setattr(support, "_logging_configured", False)
+    monkeypatch.setattr(access_logger, "disabled", False)
+    monkeypatch.setattr(access_logger, "level", logging.INFO)
+    try:
+        support.configure_logging()
+        access_logger.info(
+            '%s - "%s %s HTTP/%s" %d',
+            "127.0.0.1:1234",
+            "GET",
+            "/live-workspaces/ws-secret-in-access-log",
+            "1.1",
+            404,
+        )
+    finally:
+        access_logger.removeHandler(handler)
+
+    assert access_logger.getEffectiveLevel() >= logging.WARNING
+    assert records == []
+
+
+def test_every_request_writes_one_log_line_carrying_its_correlation_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        response = TestClient(authority_api.app).get("/health")
+
+    records = _request_records(caplog)
+    assert len(records) == 1
+    record = cast(Any, records[0])
+    assert record.correlation_id == response.json()["correlation_id"]
+    assert record.path == "/health"
+    assert record.status == 200
+    assert record.duration_ms >= 0
+
+
+def test_a_request_log_line_never_contains_a_workspace_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    workspace_id = "ws-secret-do-not-log"
+    with caplog.at_level(logging.INFO):
+        TestClient(agent_api.app).get(f"/live-workspaces/{workspace_id}")
+
+    records = _request_records(caplog)
+    assert len(records) == 1
+    record = cast(Any, records[0])
+    assert record.path == "/live-workspaces/{workspace_id}"
+    assert not any(_record_contains(record, workspace_id) for record in caplog.records)
+
+
+def test_an_unmatched_route_logs_the_placeholder_not_the_path(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO):
+        TestClient(authority_api.app).get("/nope/ws-secret")
+
+    records = _request_records(caplog)
+    assert len(records) == 1
+    record = cast(Any, records[0])
+    assert record.path == "<unmatched>"
+    assert not any(_record_contains(record, "ws-secret") for record in caplog.records)
+
+
+def test_public_slack_intake_is_rate_limited() -> None:
+    client = TestClient(authority_api.app)
+
+    responses = [client.post("/intake/slack/ws-1", content=b"{}") for _ in range(61)]
+
+    assert [response.status_code for response in responses[:60]] == [503] * 60
+    assert responses[60].status_code == 429
+    assert responses[60].json()["error"]["code"] == "RATE_LIMITED"
+
+
+def test_the_rate_limit_precedes_signature_verification() -> None:
+    client = TestClient(authority_api.app)
+
+    for _ in range(60):
+        assert client.post("/intake/slack/ws-1", content=b"{}").status_code == 503
+    response = client.post("/intake/slack/ws-1", content=b"{}")
+
+    assert response.status_code == 429
+    assert response.status_code != 503
+
+
+def test_authorize_is_not_rate_limited() -> None:
+    client = TestClient(authority_api.app)
+
+    responses = [client.post("/authorize", json={}) for _ in range(100)]
+
+    assert all(response.status_code != 429 for response in responses)
+
+
+def test_the_limiter_evicts_idle_buckets() -> None:
+    now = 0.0
+    limiter = support.TokenBucketLimiter(1, clock=lambda: now)
+
+    assert limiter.allow("/first", "client")
+    assert not limiter.allow("/first", "client")
+    now = 61.0
+    assert limiter.allow("/second", "client")
+
+    assert ("/first", "client") not in limiter._buckets
+    assert ("/second", "client") in limiter._buckets
 
 
 @pytest.mark.parametrize(

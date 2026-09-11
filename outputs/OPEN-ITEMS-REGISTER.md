@@ -169,3 +169,10 @@ observed after `save()` returns is `0o600`. The SQLite file is `0o600` from crea
 | B3-1 | **`DynamicAuthorityContextRegistry.__init__` gives `max_contexts` a default of `settings.max_authority_contexts`** (`workspaces/authority_contexts.py`), so `authority_api.py` passes it explicitly and callers that omit it — `backend/tests/test_workspace_approval_recovery.py:55-61`, outside Track B's ownership — get the same configured bound rather than "unbounded". This imports `writai.config` into the registry module; `workspaces/transport.py:8` already did. | **DESIGN CHOICE, disclosed.** |
 | B3-2 | **The LRU touch lives in `_access` only.** `state`, `approve_baseline`, `approve_mutation`, `authorize` and `verify_grant` all pass through it, so `authorize` needs no second `move_to_end`; `test_authorize_and_verify_count_as_use` proves the enforcement-facing paths count as use. | **BY DESIGN.** |
 | B3-3 | **The `evaluate_plan` call the plan cites as `authority_contexts.py:417` is now at `:459`** because of the additions above. It still has no `report=` argument — that line is T1's on the merged tree. | **FOR T1**, line number updated. |
+
+## Plan execution — Track C
+
+| Phase | Premise versus reality | Disposition |
+|---|---|---|
+| C5, steps 4–6 | The original prompt said `config.py:66` defaults `grant_secret` to `"writai-local-demo-secret"`. T0's changes shifted the definition to `backend/writai/config.py:103` through `DEFAULT_DEMO_GRANT_SECRET`; the original `path:line` was stale. | **RESOLVED.** The work was originally skipped under standing rule 8 because publishing a stale citation in Known limits would make the audit less trustworthy. The orchestrator re-derived the citations against the Track C worktree, and C5 steps 4–6 are now complete with the corrected `config.py:66` → `config.py:103` premise. |
+| C5, post-merge citation verification | Known-limits citations into `workspaces/repository.py`, `workspaces/session_enforcement.py`, and `graph/neo4j_store.py` are correct in the Track C worktree but those files are being rewritten by Tracks A and B. | **OPEN for T1.** Re-verify every affected `path:line` after Tracks A and B merge. |
