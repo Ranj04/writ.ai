@@ -9,6 +9,8 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage.json
+coverage.xml
 .writai/
 # The pre-rename marker dir. Still ignored on purpose: a machine that ran an
 # older build has one, and a runtime grant store already reached a commit once

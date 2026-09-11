@@ -16,6 +16,7 @@ test:
 
 check:
 	PYTHONPATH=backend $(PYTHON) -m pytest
+	$(PYTHON) scripts/ci/coverage_floors.py
 	$(PYTHON) -m ruff check backend
 	$(PYTHON) -m mypy backend
 	$(PYTHON) -m compileall -q backend
