@@ -23,13 +23,16 @@ first for the proof, then `make check` when you are ready for the complete gate.
 
 writ.ai detects when an approved upstream company decision changes while a coding-agent run is active. It traces the change through a typed provenance graph, selectively invalidates only affected downstream work, rejects authorizations bound to stale graph snapshots, and moves the agent loop to `REPLAN`, `BLOCK`, or `HUMAN_REVIEW`.
 
-This repository is a Codex-ready hackathon starter. The deterministic demo works without external API keys. Neo4j and Anthropic integrations are included as optional extension points.
+The deterministic proof runs with no API keys and no database: `make demo` walks six stages end to end in about a tenth of a second. The gate behind it is 947 backend tests and 184 frontend tests, ruff, mypy over 148 source files, and a coverage floor with per-module sub-floors, all run in CI on every push. Neo4j and Anthropic are optional extension points; the graph-store contract suite runs against a real Neo4j service container in CI.
+
+What is real and what is simulated is stated explicitly rather than implied — see [Where the trust boundary is](#where-the-trust-boundary-is), [Known limits](#known-limits), and the open-items register. Those sections are load-bearing: tests read them back, so they cannot drift from the code without CI going red.
 
 ## Read first
 
 Run `make demo` first for the zero-configuration deterministic proof.
 The design lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 Known defects and trade-offs live in [`outputs/OPEN-ITEMS-REGISTER.md`](outputs/OPEN-ITEMS-REGISTER.md).
+Deliberate weaknesses, and how to report one that is not, live in [`SECURITY.md`](SECURITY.md).
 
 <details>
 <summary>Full document index</summary>
@@ -38,8 +41,6 @@ Known defects and trade-offs live in [`outputs/OPEN-ITEMS-REGISTER.md`](outputs/
 - [`writai.md`](writai.md) — complete product brief.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — service and data flow.
 - [`docs/GRAPH_SCHEMA.md`](docs/GRAPH_SCHEMA.md) — nodes, edges, scopes, and traversal semantics.
-- [`TASKS.md`](TASKS.md) — prioritized work queue.
-- [`docs/CODEX_START_PROMPT.md`](docs/CODEX_START_PROMPT.md) — a ready-to-paste Codex prompt.
 - [`ASSUMPTIONS.md`](ASSUMPTIONS.md) — implementation assumptions.
 - [`HANDOFF.md`](HANDOFF.md) — build handoff notes.
 - [`INTEGRATION_REPORT.md`](INTEGRATION_REPORT.md) — integration history.
@@ -623,6 +624,6 @@ corrected-plan wording/actions, and pull-request creation are fixture-driven or 
 prototype. Corrective actions are explicitly labeled fixture-generated `plan-action` previews;
 they are not persisted or presented as graph Task artifacts.
 
-## Hackathon scope
+## Scope: what is built for real
 
 Build the reasoning and enforcement for real. Keep OAuth, webhooks, real PR creation, multitenancy, and production key management simulated. Route authentication is not simulated: it is real where it exists and absent where it does not, and [Where the trust boundary is](#where-the-trust-boundary-is) lists which is which. The exact scope boundaries are in [`AGENTS.md`](AGENTS.md).
