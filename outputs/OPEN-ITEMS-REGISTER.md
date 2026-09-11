@@ -94,3 +94,17 @@ disposition of each.
 | ENV-2 | **`scripts/demo/ack.sh` renders a garbled blocked-session line** — `blocked by yesnonointerruptedgraph-v17graph-v18`, several fields concatenated with no separators — then reports `[FAIL]` for a session that `writai dev ack` considers not blocked. | Low | **LOGGED, NOT FIXED.** Nothing on the staged path needs it: a denied-until-acknowledged session is released by its own hook echoing the `redirect_id` on the next tool call, with no human step. `dev ack` is for the narrower case of an assignment invalidated outright with no corrected plan, and it answers `DECISION_ID_UNRESOLVED` correctly for anything else. STAGE_RUNBOOK.md now says do not run this script on stage. |
 | ENV-3 | **The venv held an editable install of the pre-rename `dragback` package pointed at `/Users/ranjivj/DragBack`.** `dragback …` ran old code from the archive tree and looked entirely normal doing it, while `.venv/bin/writai` did not exist at all — so the runbook's own `writai` commands and `writai doctor` could not run. | Medium | **FIXED** in `writai-verify`: `pip uninstall dragback && pip install -e .`. Step 0 of STAGE_RUNBOOK.md now checks for it. **Any other checkout on this machine may still have it** — the check is `ls .venv/bin/dragback`; if that file exists, the venv is stale. |
 | ENV-4 | **`docs/BUILD_LANE_A.md` still specifies "deny once"** (line ~99), which INT-3 superseded with deny-until-acknowledged. | Low | **NOT EDITED.** It is a build-lane design record of what was specified at the time, not operator-facing guidance, and rewriting history there would hide that the design moved. STAGE_RUNBOOK.md — the document an operator actually reads — has been corrected. |
+
+---
+
+## Plan execution — T0 Foundation
+
+No phase was skipped under standing rule 8. Items recorded for later tracks or a
+separate change:
+
+| # | Item | Disposition |
+|---|---|---|
+| T0-1 | **`uv.lock` is still consumed by nothing.** T0.1 capped `pyproject.toml` (`svix<2` and ceilings on every dependency) so a fresh `pip install` resolves the version that passes. Moving `scripts/bootstrap.sh` and CI to `uv sync --locked` is the durable fix. | **OUT OF SCOPE**, recorded as instructed. |
+| T0-2 | **Two documented variables are read by nothing in the tree:** `WRITAI_PUBLIC_WEBHOOK_URL` and `HEXCLAVE_PUBLISHABLE_CLIENT_KEY` in `.env.example`. `test_every_documented_env_var_has_a_settings_field` allow-lists them literally with that note rather than deleting operator documentation. | **LOGGED.** Track C owns the docs; decide whether to wire or drop them. |
+| T0-3 | **`workspace_store` now defaults to `.writai/live-workspaces.sqlite3` before the SQLite store exists.** Until Track B's B1 lands, `agent_api.py` still constructs `JsonFileLiveWorkspaceRepository` against that path (a JSON document under a `.sqlite3` name), and the sibling stores derived in `authority_api.py:730` and `agent_api.py:680` inherit the suffix. Gate is green; nothing asserts on the literal default. | **HANDED TO TRACK B** (B1 suffix routing and migration). |
+| T0-4 | **The `neo4j` CI job passes `--no-cov`.** With `fail_under = 83` in `pyproject.toml`, a marker-selected run of two tests measures 35.8% and would fail for no reason. The full-suite floor is enforced by the `check` job. | **BY DESIGN**, disclosed here because the plan text omitted the flag. |
