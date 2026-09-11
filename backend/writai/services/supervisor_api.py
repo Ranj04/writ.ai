@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import hmac
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Annotated
 
 from fastapi import APIRouter, Header
 
 from writai.services.support import ApiError, correlated_payload
+from writai.workspaces.session_binding import DEFAULT_HOOK_DEVELOPER_ID
 from writai.workspaces.session_enforcement import (
     ClaudeCodeSessionEnforcement,
     ClaudePreToolUseRequest,
@@ -25,18 +27,82 @@ from writai.workspaces.session_enforcement import (
 HOOK_API_KEY_HEADER = "X-writ.ai-Hook-API-Key"
 
 
-@dataclass(frozen=True)
-class HookApiKeyVerifier:
-    """Constant-time authentication for the organisation-managed hook."""
+#: ``developer_id:secret,developer_id:secret`` — one credential per developer.
+HOOK_API_KEYS_ENV = "WRITAI_HOOK_API_KEYS"
+#: Single-developer fallback; its holder is developer ``"default"``.
+HOOK_API_KEY_ENV = "WRITAI_HOOK_API_KEY"
 
-    expected_api_key: str = field(repr=False)
+
+def parse_hook_credentials(raw: str) -> dict[str, str]:
+    """Parse ``WRITAI_HOOK_API_KEYS`` into ``{secret: developer_id}``.
+
+    Blank segments are ignored and whitespace around both halves is stripped. A
+    segment without a ``:`` — or with an empty half, or a secret already used by
+    another developer — is a configuration error, raised here so a misconfigured
+    service fails at startup rather than authenticating nobody.
+    """
+
+    credentials: dict[str, str] = {}
+    for segment in raw.split(","):
+        entry = segment.strip()
+        if not entry:
+            continue
+        developer_id, separator, secret = entry.partition(":")
+        developer_id = developer_id.strip()
+        secret = secret.strip()
+        if not separator or not developer_id or not secret:
+            raise ValueError(
+                f"{HOOK_API_KEYS_ENV} entries must be developer_id:secret; "
+                "got a segment with no usable separator."
+            )
+        if credentials.get(secret, developer_id) != developer_id:
+            raise ValueError(
+                f"{HOOK_API_KEYS_ENV} configures one secret for two developers."
+            )
+        credentials[secret] = developer_id
+    return credentials
+
+
+@dataclass(frozen=True)
+class HookCredentialVerifier:
+    """Constant-time authentication for the organisation-managed hook.
+
+    A credential identifies exactly one developer. ``credentials`` maps
+    secret -> developer id from ``WRITAI_HOOK_API_KEYS``; ``expected_api_key``
+    is the single-developer ``WRITAI_HOOK_API_KEY`` fallback, mapped to
+    developer ``"default"`` so an existing one-key setup keeps working.
+    """
+
+    credentials: Mapping[str, str] = field(default_factory=dict, repr=False)
+    expected_api_key: str = field(default="", repr=False)
 
     @classmethod
-    def from_environment(cls) -> HookApiKeyVerifier:
-        return cls(expected_api_key=os.getenv("WRITAI_HOOK_API_KEY", ""))
+    def from_environment(cls) -> HookCredentialVerifier:
+        return cls(
+            credentials=parse_hook_credentials(os.getenv(HOOK_API_KEYS_ENV, "")),
+            expected_api_key=os.getenv(HOOK_API_KEY_ENV, ""),
+        )
 
-    def require(self, supplied_api_key: str | None) -> None:
-        expected = self.expected_api_key.strip()
+    def _configured(self) -> list[tuple[str, str]]:
+        configured = [
+            (secret.strip(), developer_id)
+            for secret, developer_id in self.credentials.items()
+            if secret.strip()
+        ]
+        single = self.expected_api_key.strip()
+        if single:
+            configured.append((single, DEFAULT_HOOK_DEVELOPER_ID))
+        return configured
+
+    def resolve(self, supplied_api_key: str | None) -> str:
+        """Return the developer id behind ``supplied_api_key``.
+
+        The two failure modes are unchanged from the single-key verifier: 503
+        when nothing is configured, 401 otherwise. Neither response names a
+        developer or a secret.
+        """
+
+        expected = self._configured()
         if not expected:
             raise ApiError(
                 status_code=503,
@@ -45,21 +111,34 @@ class HookApiKeyVerifier:
                 retryable=False,
             )
         supplied = supplied_api_key.strip() if supplied_api_key else ""
-        if not supplied or not hmac.compare_digest(supplied, expected):
+        resolved: str | None = None
+        for secret, developer_id in expected:
+            # Every configured secret is compared, in turn, with compare_digest.
+            # A dict lookup keyed on the secret would be a timing oracle.
+            if supplied and hmac.compare_digest(supplied, secret):
+                resolved = developer_id
+        if resolved is None:
             raise ApiError(
                 status_code=401,
                 code="HOOK_AUTHENTICATION_FAILED",
                 message="Claude Code hook authentication failed.",
                 retryable=False,
             )
+        return resolved
+
+
+#: Compatibility name. ``backend/tests/test_five_session_demo.py:438`` constructs
+#: ``HookApiKeyVerifier(expected_api_key=...)`` and is outside Track B's
+#: ownership; drop this alias once that caller moves to the new name.
+HookApiKeyVerifier = HookCredentialVerifier
 
 
 def build_supervisor_session_router(
     enforcement: ClaudeCodeSessionEnforcement,
     *,
-    api_key_verifier: HookApiKeyVerifier | None = None,
+    api_key_verifier: HookCredentialVerifier | None = None,
 ) -> APIRouter:
-    verifier = api_key_verifier or HookApiKeyVerifier.from_environment()
+    verifier = api_key_verifier or HookCredentialVerifier.from_environment()
     router = APIRouter(
         prefix="/supervisor/sessions",
         tags=["supervisor-sessions"],
@@ -73,8 +152,8 @@ def build_supervisor_session_router(
             Header(alias=HOOK_API_KEY_HEADER),
         ] = None,
     ) -> dict[str, object]:
-        verifier.require(hook_api_key)
-        return correlated_payload(enforcement.start(request))
+        owner_id = verifier.resolve(hook_api_key)
+        return correlated_payload(enforcement.start(request, owner_id=owner_id))
 
     @router.get("")
     def list_sessions(
@@ -95,7 +174,7 @@ def build_supervisor_session_router(
         machines are running which task, which is not public.
         """
 
-        verifier.require(hook_api_key)
+        verifier.resolve(hook_api_key)
         return correlated_payload(
             {
                 "sessions": [
@@ -113,9 +192,9 @@ def build_supervisor_session_router(
             Header(alias=HOOK_API_KEY_HEADER),
         ] = None,
     ) -> dict[str, object]:
-        verifier.require(hook_api_key)
+        owner_id = verifier.resolve(hook_api_key)
         _require_matching_session(session_id, request.session_id)
-        return correlated_payload(enforcement.check(request))
+        return correlated_payload(enforcement.check(request, owner_id=owner_id))
 
     @router.post("/{session_id}/end")
     def session_end(
@@ -126,9 +205,9 @@ def build_supervisor_session_router(
             Header(alias=HOOK_API_KEY_HEADER),
         ] = None,
     ) -> dict[str, object]:
-        verifier.require(hook_api_key)
+        owner_id = verifier.resolve(hook_api_key)
         _require_matching_session(session_id, request.session_id)
-        return correlated_payload(enforcement.end(request))
+        return correlated_payload(enforcement.end(request, owner_id=owner_id))
 
     @router.post("/{session_id}/acknowledge")
     def acknowledge(
@@ -138,9 +217,12 @@ def build_supervisor_session_router(
             Header(alias=HOOK_API_KEY_HEADER),
         ] = None,
     ) -> dict[str, object]:
-        verifier.require(hook_api_key)
+        owner_id = verifier.resolve(hook_api_key)
         try:
-            result = enforcement.acknowledge(session_id=session_id)
+            result = enforcement.acknowledge(
+                session_id=session_id,
+                owner_id=owner_id,
+            )
         except KeyError as exc:
             raise ApiError(
                 status_code=404,

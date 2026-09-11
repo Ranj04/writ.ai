@@ -10,6 +10,7 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from writai.hashing import stable_hash
+from writai.services.support import ApiError
 from writai.workspaces.models import LiveWorkspaceRecord
 from writai.workspaces.repository import (
     LiveWorkspaceNotFound,
@@ -19,6 +20,7 @@ from writai.workspaces.runtimes.claude_code import (
     ClaudeCodeSupervisorRuntime,
 )
 from writai.workspaces.session_binding import (
+    DEFAULT_HOOK_DEVELOPER_ID,
     AssignmentLocator,
     ClaudeCodeSessionBinding,
     ClaudeCodeSessionRegistry,
@@ -389,19 +391,27 @@ class ClaudeCodeSessionEnforcement:
     def start(
         self,
         request: ClaudeSessionStartRequest,
+        *,
+        owner_id: str = DEFAULT_HOOK_DEVELOPER_ID,
     ) -> ClaudeSessionStartResponse:
         binding = self._registry.register(
             session_id=request.session_id,
             cwd=request.cwd,
             branch=request.branch,
             candidates=self._assignments.list_live_claude_assignments(),
+            owner_id=owner_id,
         )
         return ClaudeSessionStartResponse(binding=binding)
 
     def end(
         self,
         request: ClaudeSessionEndRequest,
+        *,
+        owner_id: str = DEFAULT_HOOK_DEVELOPER_ID,
     ) -> ClaudeSessionEndResponse:
+        binding = self._registry.get(request.session_id)
+        if binding is not None:
+            _require_owner(binding, owner_id)
         return ClaudeSessionEndResponse(
             released=self._registry.release(request.session_id)
         )
@@ -445,6 +455,8 @@ class ClaudeCodeSessionEnforcement:
     def check(
         self,
         request: ClaudePreToolUseRequest,
+        *,
+        owner_id: str = DEFAULT_HOOK_DEVELOPER_ID,
     ) -> ClaudeHookVerdict:
         binding = self._registry.get(request.session_id)
         if binding is None:
@@ -456,6 +468,9 @@ class ClaudeCodeSessionEnforcement:
                 ),
                 denial_mode=HookDenialMode.UNTIL_REGISTERED,
             )
+        # Another developer's credential gets neither an allow nor a deny for
+        # this session: a deny would look like enforcement working.
+        _require_owner(binding, owner_id)
         if binding.source is SessionBindingSource.UNRESOLVED_ATTACHMENT:
             # This session asked to be supervised by a named assignment and that
             # assignment does not exist. Allowing it would make one junk
@@ -575,9 +590,13 @@ class ClaudeCodeSessionEnforcement:
         self,
         *,
         session_id: str,
+        owner_id: str = DEFAULT_HOOK_DEVELOPER_ID,
     ) -> ClaudeSessionAcknowledgement:
         binding = self._registry.get(session_id)
-        if binding is None or binding.assignment is None:
+        if binding is None:
+            raise KeyError(session_id)
+        _require_owner(binding, owner_id)
+        if binding.assignment is None:
             raise KeyError(session_id)
         snapshot = self._assignments.get(binding.assignment)
         if snapshot is None:
@@ -590,6 +609,22 @@ class ClaudeCodeSessionEnforcement:
         return ClaudeSessionAcknowledgement(
             acknowledged=True,
             interrupt_key=interrupt_key,
+        )
+
+
+def _require_owner(binding: ClaudeCodeSessionBinding, owner_id: str) -> None:
+    """Refuse a credential that did not register this session.
+
+    Both ids were resolved by the service from hook credentials; neither is a
+    secret, so a plain comparison is not a timing oracle.
+    """
+
+    if binding.owner_id != owner_id:
+        raise ApiError(
+            status_code=403,
+            code="HOOK_SESSION_NOT_OWNED",
+            message="This session belongs to another developer.",
+            retryable=False,
         )
 
 
