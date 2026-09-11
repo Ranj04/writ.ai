@@ -110,9 +110,9 @@ from writai.workspaces.orchestrator import (
     LiveWorkspaceStateConflict,
 )
 from writai.workspaces.repository import (
-    JsonFileLiveWorkspaceRepository,
     LiveWorkspaceConflict,
     LiveWorkspaceNotFound,
+    open_live_workspace_repository,
 )
 from writai.workspaces.runtimes.claude_code import (
     ClaudeCodeSupervisorRuntime,
@@ -160,7 +160,7 @@ crustdata_replay_stores: dict[Path, JsonCrustDataDeliveryReplayStore] = {}
 crustdata_capture_store_lock = RLock()
 crustdata_capture_stores: dict[Path, FileCrustDataCaptureStore] = {}
 scenario_runner = ScenarioRunner()
-workspace_repository = JsonFileLiveWorkspaceRepository(settings.workspace_store)
+workspace_repository = open_live_workspace_repository(settings.workspace_store)
 supervisor_runtime = ClaudeCodeSupervisorRuntime()
 workspace_orchestrator = LiveWorkspaceOrchestrator(
     repository=workspace_repository,

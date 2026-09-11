@@ -17,6 +17,11 @@ from writai.workspaces.supervisor import SupervisorAssignment
 
 _MAX_TASK_FILE_BYTES = 512
 
+#: Developer id behind the single-key ``WRITAI_HOOK_API_KEY`` setup. It is also
+#: the owner recorded for in-process callers that never pass through the hook
+#: router, so one developer's sessions keep working exactly as before.
+DEFAULT_HOOK_DEVELOPER_ID = "default"
+
 
 class _FrozenModel(BaseModel):
     model_config = ConfigDict(
@@ -88,6 +93,13 @@ class ClaudeCodeSessionBinding(_FrozenModel):
     """Visible binding state; unbound is an intentional successful outcome."""
 
     session_id: str = Field(min_length=1, max_length=255)
+    #: The developer whose hook credential registered this session.
+    #:
+    #: Privacy boundary unchanged: identity comes from the credential the hook
+    #: already sends in the ``X-writ.ai-Hook-API-Key`` header, resolved by the
+    #: service, never from a field on any hook request. The four-field
+    #: ``ClaudePreToolUseRequest`` gains nothing.
+    owner_id: str = Field(min_length=1, max_length=255)
     cwd: str = Field(min_length=1, max_length=4096)
     branch: str = Field(default="", max_length=1024)
     source: SessionBindingSource
@@ -142,6 +154,7 @@ class ClaudeCodeSessionRegistry:
         cwd: str | Path,
         branch: str,
         candidates: list[SupervisorAssignmentTarget],
+        owner_id: str = DEFAULT_HOOK_DEVELOPER_ID,
     ) -> ClaudeCodeSessionBinding:
         normalized_cwd = _canonical_cwd(cwd)
         unique_candidates = _unique_targets(candidates)
@@ -153,6 +166,7 @@ class ClaudeCodeSessionRegistry:
             # file is attacker-adjacent input carrying only an assignment ID.
             binding = _resolve_binding(
                 session_id=session_id,
+                owner_id=owner_id,
                 cwd=normalized_cwd,
                 branch=branch.strip(),
                 candidates=unique_candidates,
@@ -209,6 +223,7 @@ class ClaudeCodeSessionRegistry:
 def _resolve_binding(
     *,
     session_id: str,
+    owner_id: str,
     cwd: str,
     branch: str,
     candidates: list[SupervisorAssignmentTarget],
@@ -225,6 +240,7 @@ def _resolve_binding(
         if len(matches) == 1:
             return _bound(
                 session_id=session_id,
+                owner_id=owner_id,
                 cwd=cwd,
                 branch=branch,
                 source=SessionBindingSource.EXPLICIT,
@@ -233,6 +249,7 @@ def _resolve_binding(
             )
         return _unresolved_attachment(
             session_id=session_id,
+            owner_id=owner_id,
             cwd=cwd,
             branch=branch,
             detail=(
@@ -270,6 +287,7 @@ def _resolve_binding(
         if len(matches) == 1:
             return _bound(
                 session_id=session_id,
+                owner_id=owner_id,
                 cwd=cwd,
                 branch=branch,
                 source=SessionBindingSource.EXPLICIT,
@@ -279,6 +297,7 @@ def _resolve_binding(
         if len(matches) > 1:
             return _unresolved_attachment(
                 session_id=session_id,
+                owner_id=owner_id,
                 cwd=cwd,
                 branch=branch,
                 detail=(
@@ -288,6 +307,7 @@ def _resolve_binding(
             )
         return _unresolved_attachment(
             session_id=session_id,
+            owner_id=owner_id,
             cwd=cwd,
             branch=branch,
             detail=(
@@ -298,6 +318,7 @@ def _resolve_binding(
 
     binding = _resolve_by_branch_then_task_file(
         session_id=session_id,
+        owner_id=owner_id,
         cwd=cwd,
         branch=branch,
         candidates=candidates,
@@ -319,6 +340,7 @@ def _with_skipped_marker(detail: str, reason: str) -> str:
 def _resolve_by_branch_then_task_file(
     *,
     session_id: str,
+    owner_id: str,
     cwd: str,
     branch: str,
     candidates: list[SupervisorAssignmentTarget],
@@ -333,6 +355,7 @@ def _resolve_by_branch_then_task_file(
     if len(branch_matches) == 1:
         return _bound(
             session_id=session_id,
+            owner_id=owner_id,
             cwd=cwd,
             branch=branch,
             source=SessionBindingSource.BRANCH,
@@ -342,6 +365,7 @@ def _resolve_by_branch_then_task_file(
     if len(branch_matches) > 1:
         return _unbound(
             session_id=session_id,
+            owner_id=owner_id,
             cwd=cwd,
             branch=branch,
             detail="The Git branch name matches more than one assignment.",
@@ -355,6 +379,7 @@ def _resolve_by_branch_then_task_file(
         if len(task_matches) == 1:
             return _bound(
                 session_id=session_id,
+                owner_id=owner_id,
                 cwd=cwd,
                 branch=branch,
                 source=SessionBindingSource.TASK_FILE,
@@ -364,12 +389,14 @@ def _resolve_by_branch_then_task_file(
         if len(task_matches) > 1:
             return _unbound(
                 session_id=session_id,
+                owner_id=owner_id,
                 cwd=cwd,
                 branch=branch,
                 detail=".writai/task matches assignments in multiple workspaces.",
             )
         return _unbound(
             session_id=session_id,
+            owner_id=owner_id,
             cwd=cwd,
             branch=branch,
             detail=".writai/task does not name an available live assignment.",
@@ -377,6 +404,7 @@ def _resolve_by_branch_then_task_file(
 
     return _unbound(
         session_id=session_id,
+        owner_id=owner_id,
         cwd=cwd,
         branch=branch,
         detail=(
@@ -389,6 +417,7 @@ def _resolve_by_branch_then_task_file(
 def _bound(
     *,
     session_id: str,
+    owner_id: str,
     cwd: str,
     branch: str,
     source: SessionBindingSource,
@@ -397,6 +426,7 @@ def _bound(
 ) -> ClaudeCodeSessionBinding:
     return ClaudeCodeSessionBinding(
         session_id=session_id,
+        owner_id=owner_id,
         cwd=cwd,
         branch=branch,
         source=source,
@@ -408,6 +438,7 @@ def _bound(
 def _unresolved_attachment(
     *,
     session_id: str,
+    owner_id: str,
     cwd: str,
     branch: str,
     detail: str,
@@ -421,6 +452,7 @@ def _unresolved_attachment(
 
     return ClaudeCodeSessionBinding(
         session_id=session_id,
+        owner_id=owner_id,
         cwd=cwd,
         branch=branch,
         source=SessionBindingSource.UNRESOLVED_ATTACHMENT,
@@ -431,12 +463,14 @@ def _unresolved_attachment(
 def _unbound(
     *,
     session_id: str,
+    owner_id: str,
     cwd: str,
     branch: str,
     detail: str,
 ) -> ClaudeCodeSessionBinding:
     return ClaudeCodeSessionBinding(
         session_id=session_id,
+        owner_id=owner_id,
         cwd=cwd,
         branch=branch,
         source=SessionBindingSource.UNBOUND,

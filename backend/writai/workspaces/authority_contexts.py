@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
+from collections import OrderedDict
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -10,6 +12,7 @@ from threading import RLock
 from pydantic import BaseModel, Field, model_validator
 
 from writai.authority.engine import IntentAuthority
+from writai.config import settings
 from writai.domain import (
     ApprovalStatus,
     Artifact,
@@ -34,6 +37,8 @@ from writai.workspaces.models import (
 )
 
 _CONTEXT_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{2,127}$"
+
+logger = logging.getLogger(__name__)
 
 
 class DynamicAuthorityContextCreateRequest(BaseModel):
@@ -163,12 +168,22 @@ class DynamicAuthorityContextRegistry:
         grant_secret: str,
         grant_ttl_seconds: int,
         authority_threshold: float,
+        max_contexts: int = settings.max_authority_contexts,
     ) -> None:
+        if max_contexts < 1:
+            raise ValueError("max_contexts must be at least 1")
         self._grant_secret = grant_secret
         self._grant_ttl_seconds = grant_ttl_seconds
         self._authority_threshold = authority_threshold
-        self._contexts: dict[str, _DynamicAuthorityContext] = {}
+        self._max_contexts = max_contexts
+        # Ordered least- to most-recently used; every access moves a context to
+        # the end and create() evicts from the front past ``max_contexts``.
+        self._contexts: OrderedDict[str, _DynamicAuthorityContext] = OrderedDict()
         self._lock = RLock()
+
+    @property
+    def max_contexts(self) -> int:
+        return self._max_contexts
 
     def _signing_secret(self, context_id: str) -> str:
         return hmac.new(
@@ -225,7 +240,30 @@ class DynamicAuthorityContextRegistry:
                     "The baseline Decision must enter the authority as a proposal."
                 )
             self._contexts[request.context_id] = context
+            self._evict_beyond_limit()
             return context.state()
+
+    def _evict_beyond_limit(self) -> None:
+        """Drop least-recently-used contexts past ``max_contexts``.
+
+        Safe, not silent: ``orchestrator.py:265`` ``_ensure_context`` rebuilds a
+        context whose ``context_state`` returns ``None`` by replaying the baseline
+        approval and every approved mutation from the durable record, and then
+        checks the rebuilt graph version against that record. Do not "fix" an
+        eviction by removing that rebuild.
+        """
+
+        while len(self._contexts) > self._max_contexts:
+            evicted_id, evicted = next(iter(self._contexts.items()))
+            # Same lock order as delete(): registry lock, then the context lock,
+            # so an in-flight user of the evicted context finishes first.
+            with evicted.lock:
+                del self._contexts[evicted_id]
+            logger.info(
+                "Evicted least recently used authority context %s (limit %d).",
+                evicted_id,
+                self._max_contexts,
+            )
 
     @contextmanager
     def _access(self, context_id: str) -> Iterator[_DynamicAuthorityContext]:
@@ -236,6 +274,9 @@ class DynamicAuthorityContextRegistry:
                 raise DynamicAuthorityContextNotFound(
                     f"Unknown Live Workspace authority context: {context_id}"
                 ) from exc
+            # LRU on use, not on creation: state(), approvals, authorize() and
+            # verify_grant() all pass through here.
+            self._contexts.move_to_end(context_id)
             context.lock.acquire()
         try:
             yield context
@@ -406,6 +447,7 @@ class DynamicAuthorityContextRegistry:
         context_id: str,
         request: AuthorizationRequest,
     ) -> AuthorizationResult:
+        # ``_access`` marks the context as most recently used for this call.
         with self._access(context_id) as context:
             if not context.baseline_approved:
                 return AuthorizationResult(

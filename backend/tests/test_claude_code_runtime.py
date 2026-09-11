@@ -1,6 +1,8 @@
 """A1 — the live runtime adapter and the real SupervisorInterruptPort binding."""
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 from writai.domain import (
     AgentPlan,
@@ -94,6 +96,15 @@ class _MemoryRepository:
 
     def list(self) -> list[LiveWorkspaceRecord]:
         return [record.model_copy(deep=True) for record in self._records.values()]
+
+    def mutate(
+        self,
+        workspace_id: str,
+        apply: Callable[[LiveWorkspaceRecord], LiveWorkspaceRecord],
+    ) -> LiveWorkspaceRecord:
+        updated = apply(self.get(workspace_id))
+        self.save(updated)
+        return updated
 
 
 def _record(repository: _MemoryRepository) -> LiveWorkspaceRecord:

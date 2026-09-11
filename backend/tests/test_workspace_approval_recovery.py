@@ -206,6 +206,24 @@ class FailFinalSaveRepository:
     def list(self) -> list[LiveWorkspaceRecord]:
         return self.delegate.list()
 
+    def mutate(
+        self,
+        workspace_id: str,
+        apply: Callable[[LiveWorkspaceRecord], LiveWorkspaceRecord],
+    ) -> LiveWorkspaceRecord:
+        def checked(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+            updated = apply(record)
+            if (
+                self.fail_final_once
+                and updated.status is LiveWorkspaceStatus.CHANGE_APPLIED
+                and updated.decision_approval_intent is None
+            ):
+                self.fail_final_once = False
+                raise OSError("final workspace save failed")
+            return updated
+
+        return self.delegate.mutate(workspace_id, checked)
+
 
 def _workspace_import(*, with_slack: bool = False) -> LiveWorkspaceImportRequest:
     scopes = {"scope.changed", "scope.preserved"}
