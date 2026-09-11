@@ -10,6 +10,7 @@ from writai.domain import (
     Artifact,
     ArtifactKind,
     AuthorizationRequest,
+    DecisionMutation,
     Edge,
     EdgeKind,
     MutationResult,
@@ -125,6 +126,22 @@ class LiveWorkspaceOrchestrator:
             and submitted.confirmed_proposal_instance_id
             == expected.confirmed_proposal_instance_id
         )
+
+    @staticmethod
+    def _pending_mutation(
+        record: LiveWorkspaceRecord,
+        decision_id: str,
+    ) -> DecisionMutation | None:
+        """The proposal awaiting approval for ``decision_id``, if there is one."""
+
+        mutation = record.pending_mutation
+        if (
+            record.status is not LiveWorkspaceStatus.CHANGE_PROPOSED
+            or mutation is None
+            or mutation.decision.id != decision_id
+        ):
+            return None
+        return mutation
 
     @staticmethod
     def _completed_approval_matches(
@@ -819,55 +836,61 @@ class LiveWorkspaceOrchestrator:
         request: WorkspaceApprovalRequest,
     ) -> LiveWorkspaceView:
         with self._lock:
-            record = self._repository.get(workspace_id)
-            if record.status is not LiveWorkspaceStatus.IMPORTED:
-                self._conflict("The workspace baseline is not awaiting approval.")
-            decision = record.definition.baseline_decision
-            expected_fingerprint = stable_hash(decision)
-            expected_instance_id = record.baseline_proposal_instance_id
-            evidence = request.approval_evidence
-            if (
-                expected_instance_id is None
-                or request.proposal_fingerprint != expected_fingerprint
-                or request.proposal_instance_id != expected_instance_id
-                or evidence is None
-                or evidence.workspace_id != workspace_id
-                or evidence.decision_id != decision.id
-                or evidence.permission_id != request.actor_role
-                or evidence.confirmed_proposal_fingerprint
-                != expected_fingerprint
-                or evidence.confirmed_proposal_instance_id
-                != expected_instance_id
-            ):
-                self._conflict(
-                    "The baseline approval is not bound to the current proposal."
+
+            def approve(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                if record.status is not LiveWorkspaceStatus.IMPORTED:
+                    self._conflict("The workspace baseline is not awaiting approval.")
+                decision = record.definition.baseline_decision
+                expected_fingerprint = stable_hash(decision)
+                expected_instance_id = record.baseline_proposal_instance_id
+                evidence = request.approval_evidence
+                if (
+                    expected_instance_id is None
+                    or request.proposal_fingerprint != expected_fingerprint
+                    or request.proposal_instance_id != expected_instance_id
+                    or evidence is None
+                    or evidence.workspace_id != workspace_id
+                    or evidence.decision_id != decision.id
+                    or evidence.permission_id != request.actor_role
+                    or evidence.confirmed_proposal_fingerprint
+                    != expected_fingerprint
+                    or evidence.confirmed_proposal_instance_id
+                    != expected_instance_id
+                ):
+                    self._conflict(
+                        "The baseline approval is not bound to the current proposal."
+                    )
+                self._ensure_context(record)
+                state = self._transport.approve_baseline(record.context_id, request)
+                record.baseline_approved = True
+                record.baseline_approval_role = request.actor_role
+                record.baseline_approval_evidence = evidence
+                record.status = LiveWorkspaceStatus.BASELINE_APPROVED
+                record.graph_version = state.graph_version
+                self._event(
+                    record,
+                    event_type="baseline.approved",
+                    detail=(
+                        f"{record.definition.baseline_decision.id} approved at "
+                        f"{state.graph_version}."
+                    ),
+                    actor_role=request.actor_role,
+                    data={
+                        "decision_id": decision.id,
+                        "approver_user_id": evidence.approver_user_id,
+                        "approval_channel": evidence.channel.value,
+                        "approval_evidence_ref": evidence.evidence_ref,
+                        "approved_at": evidence.approved_at.isoformat(),
+                        "confirmed_proposal_fingerprint": expected_fingerprint,
+                        "confirmed_proposal_instance_id": expected_instance_id,
+                    },
                 )
-            self._ensure_context(record)
-            state = self._transport.approve_baseline(record.context_id, request)
-            record.baseline_approved = True
-            record.baseline_approval_role = request.actor_role
-            record.baseline_approval_evidence = evidence
-            record.status = LiveWorkspaceStatus.BASELINE_APPROVED
-            record.graph_version = state.graph_version
-            self._event(
-                record,
-                event_type="baseline.approved",
-                detail=(
-                    f"{record.definition.baseline_decision.id} approved at "
-                    f"{state.graph_version}."
-                ),
-                actor_role=request.actor_role,
-                data={
-                    "decision_id": decision.id,
-                    "approver_user_id": evidence.approver_user_id,
-                    "approval_channel": evidence.channel.value,
-                    "approval_evidence_ref": evidence.evidence_ref,
-                    "approved_at": evidence.approved_at.isoformat(),
-                    "confirmed_proposal_fingerprint": expected_fingerprint,
-                    "confirmed_proposal_instance_id": expected_instance_id,
-                },
-            )
-            self._repository.save(record)
+                return record
+
+            # Status check, authority call and write share one repository
+            # mutation, so a second approver reads BASELINE_APPROVED and
+            # conflicts instead of overwriting this approval with its own copy.
+            record = self._repository.mutate(workspace_id, approve)
             return LiveWorkspaceView.from_record(record)
 
     def authorize(self, workspace_id: str) -> LiveWorkspaceView:
@@ -1120,69 +1143,77 @@ class LiveWorkspaceOrchestrator:
         request: WorkspaceApprovalRequest,
     ) -> LiveWorkspaceView:
         with self._lock:
-            record = self._repository.get(workspace_id)
-            mutation = record.pending_mutation
-            if (
-                record.status is not LiveWorkspaceStatus.CHANGE_PROPOSED
-                or mutation is None
-                or mutation.decision.id != decision_id
-            ):
+            current = self._repository.get(workspace_id)
+            if self._pending_mutation(current, decision_id) is None:
                 if self._completed_approval_matches(
-                    record,
+                    current,
                     decision_id=decision_id,
                     request=request,
                 ):
-                    return LiveWorkspaceView.from_record(record)
+                    return LiveWorkspaceView.from_record(current)
                 self._conflict("The requested Decision is not awaiting approval.")
-            expected_fingerprint = stable_hash(mutation)
-            evidence = request.approval_evidence
-            if (
-                request.proposal_fingerprint != expected_fingerprint
-                or request.proposal_instance_id
-                != record.pending_proposal_instance_id
-                or evidence is None
-                or evidence.workspace_id != workspace_id
-                or evidence.decision_id != decision_id
-                or evidence.permission_id != request.actor_role
-                or evidence.confirmed_proposal_fingerprint
-                != expected_fingerprint
-                or evidence.confirmed_proposal_instance_id
-                != record.pending_proposal_instance_id
-            ):
-                self._conflict(
-                    "Approval is not bound to the exact pending proposal."
-                )
 
+            def record_intent(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                mutation = self._pending_mutation(record, decision_id)
+                if mutation is None:
+                    self._conflict("The requested Decision is not awaiting approval.")
+                expected_fingerprint = stable_hash(mutation)
+                evidence = request.approval_evidence
+                if (
+                    request.proposal_fingerprint != expected_fingerprint
+                    or request.proposal_instance_id
+                    != record.pending_proposal_instance_id
+                    or evidence is None
+                    or evidence.workspace_id != workspace_id
+                    or evidence.decision_id != decision_id
+                    or evidence.permission_id != request.actor_role
+                    or evidence.confirmed_proposal_fingerprint
+                    != expected_fingerprint
+                    or evidence.confirmed_proposal_instance_id
+                    != record.pending_proposal_instance_id
+                ):
+                    self._conflict(
+                        "Approval is not bound to the exact pending proposal."
+                    )
+
+                intent = record.decision_approval_intent
+                if intent is None:
+                    self._ensure_context(record)
+                    record.decision_approval_intent = WorkspaceDecisionApprovalIntent(
+                        mutation=mutation.model_copy(deep=True),
+                        actor_role=request.actor_role,
+                        proposal_fingerprint=expected_fingerprint,
+                        proposal_instance_id=record.pending_proposal_instance_id,
+                        approval_evidence=evidence.model_copy(deep=True),
+                        base_graph_version=record.graph_version,
+                    )
+                elif (
+                    intent.mutation != mutation
+                    or intent.actor_role != request.actor_role
+                    or intent.proposal_fingerprint != expected_fingerprint
+                    or intent.proposal_instance_id
+                    != record.pending_proposal_instance_id
+                    or intent.approval_evidence.workspace_id != workspace_id
+                    or intent.approval_evidence.decision_id != decision_id
+                    or not self._same_approval_attempt(
+                        intent.approval_evidence,
+                        evidence,
+                    )
+                ):
+                    self._conflict(
+                        "Approval retry does not match the durable approval intent."
+                    )
+                return record
+
+            # This write-ahead record precedes every remote mutation attempt. It
+            # is validated against and written with the same read of the pending
+            # proposal, so no write landing in between can drop the intent.
+            record = self._repository.mutate(workspace_id, record_intent)
             intent = record.decision_approval_intent
             if intent is None:
-                self._ensure_context(record)
-                intent = WorkspaceDecisionApprovalIntent(
-                    mutation=mutation.model_copy(deep=True),
-                    actor_role=request.actor_role,
-                    proposal_fingerprint=expected_fingerprint,
-                    proposal_instance_id=record.pending_proposal_instance_id,
-                    approval_evidence=evidence.model_copy(deep=True),
-                    base_graph_version=record.graph_version,
-                )
-                record.decision_approval_intent = intent
-                # This write-ahead record precedes every remote mutation attempt.
-                self._repository.save(record)
-            elif (
-                intent.mutation != mutation
-                or intent.actor_role != request.actor_role
-                or intent.proposal_fingerprint != expected_fingerprint
-                or intent.proposal_instance_id
-                != record.pending_proposal_instance_id
-                or intent.approval_evidence.workspace_id != workspace_id
-                or intent.approval_evidence.decision_id != decision_id
-                or not self._same_approval_attempt(
-                    intent.approval_evidence,
-                    evidence,
-                )
-            ):
-                self._conflict(
-                    "Approval retry does not match the durable approval intent."
-                )
+                raise RuntimeError("The durable approval intent was not recorded.")
+            mutation = intent.mutation
+            expected_fingerprint = intent.proposal_fingerprint
 
             try:
                 result = self._recover_intent_mutation(record, intent)

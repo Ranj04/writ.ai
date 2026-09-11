@@ -8,6 +8,7 @@ per-workspace registry behind ``authority_api.workspace_contexts``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -37,13 +38,18 @@ from writai.workspaces.authority_contexts import (
 )
 from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
+    LiveWorkspaceRecord,
     LiveWorkspaceStatus,
     WorkspaceApprovalRequest,
+    WorkspaceEvent,
     WorkspaceExecutionResult,
     WorkspaceProposalRequest,
 )
 from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
-from writai.workspaces.repository import SqliteLiveWorkspaceRepository
+from writai.workspaces.repository import (
+    LiveWorkspaceRepository,
+    SqliteLiveWorkspaceRepository,
+)
 
 
 def _registry(max_contexts: int) -> DynamicAuthorityContextRegistry:
@@ -284,12 +290,19 @@ def _evidence(
     )
 
 
-def _apply_one_change(orchestrator: LiveWorkspaceOrchestrator) -> str:
+def _apply_one_change(
+    orchestrator: LiveWorkspaceOrchestrator,
+    *,
+    before_baseline_approval: Callable[[], None] | None = None,
+    before_change_approval: Callable[[], None] | None = None,
+) -> str:
     """Import, approve the baseline, authorize, propose and approve one change."""
 
     imported = orchestrator.import_workspace(_workspace_import())
     baseline_instance = imported.baseline_proposal_instance_id
     assert baseline_instance is not None
+    if before_baseline_approval is not None:
+        before_baseline_approval()
     orchestrator.approve_baseline(
         imported.id,
         WorkspaceApprovalRequest(
@@ -328,6 +341,8 @@ def _apply_one_change(orchestrator: LiveWorkspaceOrchestrator) -> str:
     instance_id = pending.pending_proposal_instance_id
     assert fingerprint == stable_hash(pending.pending_mutation)
     assert instance_id is not None
+    if before_change_approval is not None:
+        before_change_approval()
     applied = orchestrator.approve_decision(
         imported.id,
         "DEC-CHANGE",
@@ -404,3 +419,100 @@ def test_the_default_limit_is_the_configured_setting() -> None:
         grant_secret="x", grant_ttl_seconds=1, authority_threshold=0.5
     )
     assert unspecified.max_contexts == settings.max_authority_contexts
+
+
+# --- Approval writes must not lose a concurrent write -------------------------
+
+
+class _InterleavingRepository:
+    """A store where one other writer lands between a read and the write after it.
+
+    That is the lost-update shape of two processes on one store. ``get()``
+    returns the record as read and applies the concurrent write afterwards, so
+    a caller that saves that record overwrites it. ``mutate()`` has no gap for
+    another writer to land in, so the concurrent write is applied just before
+    it and the callable sees it.
+    """
+
+    def __init__(self, delegate: LiveWorkspaceRepository) -> None:
+        self.delegate = delegate
+        self.interleave_once: Callable[[LiveWorkspaceRecord], None] | None = None
+
+    def _land_concurrent_write(self, workspace_id: str) -> None:
+        interleave = self.interleave_once
+        if interleave is None:
+            return
+        self.interleave_once = None
+        concurrent = self.delegate.get(workspace_id)
+        interleave(concurrent)
+        self.delegate.save(concurrent)
+
+    def create(self, record: LiveWorkspaceRecord) -> None:
+        self.delegate.create(record)
+
+    def save(self, record: LiveWorkspaceRecord) -> None:
+        self.delegate.save(record)
+
+    def get(self, workspace_id: str) -> LiveWorkspaceRecord:
+        record = self.delegate.get(workspace_id)
+        self._land_concurrent_write(workspace_id)
+        return record
+
+    def list(self) -> list[LiveWorkspaceRecord]:
+        return self.delegate.list()
+
+    def mutate(
+        self,
+        workspace_id: str,
+        apply: Callable[[LiveWorkspaceRecord], LiveWorkspaceRecord],
+    ) -> LiveWorkspaceRecord:
+        self._land_concurrent_write(workspace_id)
+        return self.delegate.mutate(workspace_id, apply)
+
+
+def _concurrent_event(record: LiveWorkspaceRecord) -> None:
+    record.history.append(
+        WorkspaceEvent(
+            sequence=len(record.history) + 1,
+            event_type="concurrent.write",
+            detail="Written by another process between a read and a save.",
+        )
+    )
+
+
+def _concurrent_events(record: LiveWorkspaceRecord) -> list[WorkspaceEvent]:
+    return [event for event in record.history if event.event_type == "concurrent.write"]
+
+
+@pytest.mark.parametrize("stage", ["baseline", "change"])
+def test_an_approval_keeps_a_write_that_lands_between_its_read_and_its_write(
+    tmp_path: Path, stage: str
+) -> None:
+    """`approve_baseline` and `approve_decision` record authorization decisions
+    through `mutate()`: a write landing between their read and their write is
+    kept, where a plain get()/save() pair would silently overwrite it."""
+
+    store = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    repository = _InterleavingRepository(store)
+    orchestrator = LiveWorkspaceOrchestrator(
+        repository=repository,
+        transport=_RegistryTransport(_registry(max_contexts=4)),
+    )
+
+    def arm() -> None:
+        repository.interleave_once = _concurrent_event
+
+    workspace_id = _apply_one_change(
+        orchestrator,
+        before_baseline_approval=arm if stage == "baseline" else None,
+        before_change_approval=arm if stage == "change" else None,
+    )
+
+    assert repository.interleave_once is None, "the concurrent write never landed"
+    stored = store.get(workspace_id)
+    assert stored.status is LiveWorkspaceStatus.CHANGE_APPLIED
+    assert stored.baseline_approved is True
+    assert len(_concurrent_events(stored)) == 1
+    assert [event.sequence for event in stored.history] == list(
+        range(1, len(stored.history) + 1)
+    )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from writai.workspaces.runtimes.claude_code import (
     ClaudeCodeSupervisorRuntime,
 )
 from writai.workspaces.session_binding import (
+    AssignmentLocator,
     ClaudeCodeSessionRegistry,
     SessionBindingSource,
     SupervisorAssignmentTarget,
@@ -54,6 +56,16 @@ from writai.workspaces.supervisor import (
 class MemoryWorkspaceRepository:
     def __init__(self, record: LiveWorkspaceRecord) -> None:
         self._record = record.model_copy(deep=True)
+        #: A write by another process that lands after the next ``get()`` returns
+        #: (so a caller saving that record overwrites it) or, since ``mutate()``
+        #: leaves no gap, just before the next ``mutate()`` reads.
+        self.interleave_once: Callable[[LiveWorkspaceRecord], None] | None = None
+
+    def _land_concurrent_write(self) -> None:
+        interleave = self.interleave_once
+        if interleave is not None:
+            self.interleave_once = None
+            interleave(self._record)
 
     def create(self, record: LiveWorkspaceRecord) -> None:
         self._record = record.model_copy(deep=True)
@@ -63,10 +75,23 @@ class MemoryWorkspaceRepository:
 
     def get(self, workspace_id: str) -> LiveWorkspaceRecord:
         assert self._record.definition.id == workspace_id
-        return self._record.model_copy(deep=True)
+        record = self._record.model_copy(deep=True)
+        self._land_concurrent_write()
+        return record
 
     def list(self) -> list[LiveWorkspaceRecord]:
         return [self._record.model_copy(deep=True)]
+
+    def mutate(
+        self,
+        workspace_id: str,
+        apply: Callable[[LiveWorkspaceRecord], LiveWorkspaceRecord],
+    ) -> LiveWorkspaceRecord:
+        self._land_concurrent_write()
+        assert self._record.definition.id == workspace_id
+        updated = apply(self._record.model_copy(deep=True))
+        self.save(updated)
+        return updated
 
 
 def _definition() -> LiveWorkspaceImportRequest:
@@ -1318,3 +1343,67 @@ def test_a_stale_or_forged_acknowledgement_does_not_advance_the_assignment(
 
     (session,) = enforcement.registered_sessions()
     assert session.assignment_state.state is SupervisorAssignmentState.INTERRUPTED
+
+
+def _interrupt_task(
+    record: LiveWorkspaceRecord,
+    runtime: ClaudeCodeSupervisorRuntime,
+    task_id: str,
+) -> None:
+    assert record.supervisor is not None
+    record.supervisor.assignments = [
+        runtime.transition(
+            item,
+            state=SupervisorAssignmentState.INTERRUPTED,
+            interrupt_reason=f"{task_id} must change.",
+            redirect_instruction=f"Redirect {task_id}.",
+            interrupt_enforced=True,
+        )
+        if item.task_id == task_id
+        else item
+        for item in record.supervisor.assignments
+    ]
+
+
+def test_redirect_delivery_keeps_an_interrupt_that_lands_between_read_and_write() -> None:
+    """`mark_redirect_delivered` advances the assignment through `mutate()`.
+
+    The orchestrator interrupting a sibling assignment in another process is
+    the realistic concurrent write: with a plain get()/save() pair the
+    gateway's save would put that sibling back to RUNNING, and an approved
+    decision's interrupt would be silently lost.
+    """
+
+    repository, runtime = _live_record()
+    gateway = RepositorySupervisorAssignmentGateway(
+        repository=repository,
+        runtime=runtime,
+    )
+    record = repository.get("csv-exports")
+    _interrupt_task(record, runtime, "TASK-102")
+    repository.save(record)
+    assert record.supervisor is not None
+    target = next(
+        item for item in record.supervisor.assignments if item.task_id == "TASK-102"
+    )
+    repository.interleave_once = lambda current: _interrupt_task(
+        current, runtime, "TASK-101"
+    )
+
+    delivered = gateway.mark_redirect_delivered(
+        AssignmentLocator(
+            workspace_id="csv-exports",
+            assignment_id=target.id,
+            task_id="TASK-102",
+        ),
+        expected_run_id=target.run_id,
+    )
+
+    assert repository.interleave_once is None, "the concurrent write never landed"
+    assert delivered is not None
+    assert delivered.assignment.state is SupervisorAssignmentState.REDIRECTED
+    stored = repository.get("csv-exports")
+    assert stored.supervisor is not None
+    by_task = {item.task_id: item for item in stored.supervisor.assignments}
+    assert by_task["TASK-102"].state is SupervisorAssignmentState.REDIRECTED
+    assert by_task["TASK-101"].state is SupervisorAssignmentState.INTERRUPTED

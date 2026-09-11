@@ -341,39 +341,49 @@ class RepositorySupervisorAssignmentGateway:
                 record = self._repository.get(locator.workspace_id)
             except LiveWorkspaceNotFound:
                 return None
-            supervisor = record.supervisor
-            if (
-                supervisor is None
-                or supervisor.execution_mode
-                is not SupervisorExecutionMode.LIVE
-            ):
-                return None
-            index = next(
-                (
-                    index
-                    for index, item in enumerate(supervisor.assignments)
-                    if item.id == locator.assignment_id
-                    and item.task_id == locator.task_id
-                    and item.execution_mode is SupervisorExecutionMode.LIVE
-                ),
-                None,
-            )
+            index = _live_assignment_index(record, locator)
             if index is None:
                 return None
-            assignment = supervisor.assignments[index]
-            if (
-                assignment.run_id == expected_run_id
-                and assignment.state is SupervisorAssignmentState.INTERRUPTED
-            ):
-                supervisor.assignments[index] = self._runtime.transition(
-                    assignment,
-                    state=SupervisorAssignmentState.REDIRECTED,
-                    decision_snapshot=record.graph_version,
-                )
-                supervisor.state = SupervisorLifecycleState.REDIRECTING
-                self._repository.save(record)
-            current = supervisor.assignments[index]
-            return _snapshot(record, locator, current)
+            assignment = _assignments(record)[index]
+            if not _awaits_redirect(assignment, expected_run_id):
+                return _snapshot(record, locator, assignment)
+            # The transition is read, applied and written in one repository
+            # mutation: an orchestrator save landing between a plain get() and
+            # save() would either lose this REDIRECTED state or lose its own
+            # interrupt to it, and both are authorization state.
+            record = self._repository.mutate(
+                locator.workspace_id,
+                lambda current: self._deliver_redirect(
+                    current, locator, expected_run_id=expected_run_id
+                ),
+            )
+            index = _live_assignment_index(record, locator)
+            if index is None:
+                return None
+            return _snapshot(record, locator, _assignments(record)[index])
+
+    def _deliver_redirect(
+        self,
+        record: LiveWorkspaceRecord,
+        locator: AssignmentLocator,
+        *,
+        expected_run_id: str,
+    ) -> LiveWorkspaceRecord:
+        supervisor = record.supervisor
+        index = _live_assignment_index(record, locator)
+        if supervisor is None or index is None:
+            return record
+        assignment = supervisor.assignments[index]
+        if not _awaits_redirect(assignment, expected_run_id):
+            # Another writer advanced it inside the window; keep what it wrote.
+            return record
+        supervisor.assignments[index] = self._runtime.transition(
+            assignment,
+            state=SupervisorAssignmentState.REDIRECTED,
+            decision_snapshot=record.graph_version,
+        )
+        supervisor.state = SupervisorLifecycleState.REDIRECTING
+        return record
 
 
 class ClaudeCodeSessionEnforcement:
@@ -626,6 +636,42 @@ def _require_owner(binding: ClaudeCodeSessionBinding, owner_id: str) -> None:
             message="This session belongs to another developer.",
             retryable=False,
         )
+
+
+def _assignments(record: LiveWorkspaceRecord) -> list[SupervisorAssignment]:
+    supervisor = record.supervisor
+    return [] if supervisor is None else supervisor.assignments
+
+
+def _live_assignment_index(
+    record: LiveWorkspaceRecord,
+    locator: AssignmentLocator,
+) -> int | None:
+    """Position of the live assignment the locator names, or ``None``."""
+
+    supervisor = record.supervisor
+    if (
+        supervisor is None
+        or supervisor.execution_mode is not SupervisorExecutionMode.LIVE
+    ):
+        return None
+    return next(
+        (
+            index
+            for index, item in enumerate(supervisor.assignments)
+            if item.id == locator.assignment_id
+            and item.task_id == locator.task_id
+            and item.execution_mode is SupervisorExecutionMode.LIVE
+        ),
+        None,
+    )
+
+
+def _awaits_redirect(assignment: SupervisorAssignment, expected_run_id: str) -> bool:
+    return (
+        assignment.run_id == expected_run_id
+        and assignment.state is SupervisorAssignmentState.INTERRUPTED
+    )
 
 
 def _snapshot(

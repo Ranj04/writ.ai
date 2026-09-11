@@ -36,6 +36,19 @@ class LiveWorkspaceRepository(Protocol):
 
     def list(self) -> list[LiveWorkspaceRecord]: ...
 
+    def mutate(
+        self,
+        workspace_id: str,
+        apply: Callable[[LiveWorkspaceRecord], LiveWorkspaceRecord],
+    ) -> LiveWorkspaceRecord:
+        """Read, apply and write one record without a concurrent writer between.
+
+        ``apply`` receives the stored record, returns the record to write, and
+        may raise to leave the store untouched. Raises ``LiveWorkspaceNotFound``
+        when there is no such workspace.
+        """
+        ...
+
 
 class _WorkspaceStoreDocument(BaseModel):
     schema_version: int = 1
