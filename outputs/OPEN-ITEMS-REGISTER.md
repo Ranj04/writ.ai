@@ -187,6 +187,22 @@ observed after `save()` returns is `0o600`. The SQLite file is `0o600` from crea
 | DOC-2 | **`ENV-1`/`ENV-2` were reused for two unrelated tables.** The T0 environment block and the demo-eve block both used those ids for different items, so anything keying on an id collided. | Low | **RESOLVED.** The demo-eve block is now `DEMO-ENV-1`…`DEMO-ENV-4`, and the roll-up references match. |
 | DOC-3 | **B2-1 read as both skipped and resolved.** The rule-8 ledger recorded it "Skipped under rule 8" while the B2 table and the roll-up recorded it resolved. | Low | **RESOLVED.** Both were true of different moments: the ledger is a chronological record of why a stage stopped, not a status table. The ledger row now says so and points at the B2 table and the commit that closed it. |
 
+## Round 2 re-check — reviewer verdicts
+
+The build protocol's round 2 is *builder responds → reviewer re-checks → verdicts*. The
+first three rounds stopped after the builder's response and the orchestrator's
+verification; the reviewers never re-examined their own findings. That pass has now run
+against merged `main`. **All 16 findings came back UPHELD-FIXED** — Fable's 8 on Track A
+and 4 on Track C, Sol's 2 on Track B, 1 on T0 and 1 on PR 2 — each re-verified by
+running the original test and reading the fix at `file:line`.
+
+Two results from that pass are recorded here rather than lost in a transcript.
+
+| id | Item | Severity | Disposition |
+|---|---|---|---|
+| RC-1 | **The two graph stores disagree about nested transactions.** Track A's F2 fix made `Neo4jGraphStore.transaction()` join an already-open transaction, but `MemoryGraphStore` was not made join-aware. Where an outer block swallows an inner failure and continues — outer adds A, inner adds B and raises, outer catches and adds C — memory yields `['A', 'C']` and Neo4j yields `['A', 'B', 'C']`. | Low (latent) | **OPEN, and not a regression**: before the F2 fix Neo4j returned `['C']`, so the fix narrowed the gap rather than opening it. Latent because `apply_decision_change` is the only caller and never nests. No contract test pins nesting parity, which is why it survived the review. Closing it is its own change with its own contract-suite case, alongside the `outgoing_edges` ordering divergence already tracked above. |
+| RC-2 | **A review test went vacuous when its finding was fixed.** Track C's F2 test searched the documented walkthroughs for `scripts/demo/up.sh`; the fix removed every mention, so the test now passes without asserting anything. | Low | **RECORDED.** The reviewer noticed during the re-check and verified the finding a different way — replaying the documented flow against three isolated services on an empty store: import, approve and authorize returned `ALLOW` on `graph-v17`, and after a change `verify --grant initial` exited 1 with `STALE_SNAPSHOT` on `graph-v18`. The general lesson is worth more than the instance: a test written to catch a specific wrong string stops testing anything once that string is gone. A test asserting the *right* commands run would not have this failure mode. |
+
 ## Plan execution — integration
 
 T1 ran on the merged tree (`df28f11`; Tracks A, B and C merged). Gate `bash scripts/check.sh`
