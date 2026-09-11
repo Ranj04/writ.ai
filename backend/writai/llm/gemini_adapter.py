@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 from pydantic import ValidationError
 
+from writai.config import settings
 from writai.llm.extractor import (
     DecisionExtractionCandidate,
     decision_extraction_error,
@@ -57,6 +58,7 @@ class GeminiDecisionExtractor:
         timeout_seconds: float = 30.0,
         max_attempts: int = 2,
         repair_offsets: bool = True,
+        max_output_tokens: int = settings.gemini_max_output_tokens,
     ) -> None:
         if not api_key:
             raise ValueError("GEMINI_API_KEY must be set to use GeminiDecisionExtractor.")
@@ -68,6 +70,8 @@ class GeminiDecisionExtractor:
         self._timeout_seconds = timeout_seconds
         self._max_attempts = max_attempts
         self._repair_offsets = repair_offsets
+        # The schema is small; raise the 2048 default only after measuring a real response.
+        self._max_output_tokens = max_output_tokens
         self._auth_scheme: str | None = None
 
     def extract(
@@ -142,6 +146,7 @@ class GeminiDecisionExtractor:
                 # the prompt instead and Pydantic validates the result.
                 "responseMimeType": "application/json",
                 "temperature": 0,
+                "maxOutputTokens": self._max_output_tokens,
             },
         }
         # AI Studio issues keys in more than one format (older `AIza…`, newer `AQ.…`).

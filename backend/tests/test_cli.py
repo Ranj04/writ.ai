@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 import pytest
 import yaml
-from writai.cli import run
+from writai import cli
+from writai.cli import ROUTES, run
 from writai.domain import AgentPlan
 from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
@@ -15,6 +18,49 @@ from writai.workspaces.models import (
 
 WORKSPACE_ID = "refund workspace"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_documented_workspace_commands_are_not_deprecated() -> None:
+    command_pattern = re.compile(r"^\s*(writai [^\\\n]*?)\s*\\?$", re.MULTILINE)
+    commands = [
+        match.group(1).split()
+        for path in (REPO_ROOT / "README.md", REPO_ROOT / "docs/LIVE_WORKSPACE_CLI.md")
+        for match in command_pattern.finditer(path.read_text(encoding="utf-8"))
+    ]
+    assert len(commands) >= 20
+
+    deprecated = {"approve-baseline", "approve-change"}
+    documented_workspace_commands = {
+        tokens[tokens.index("workspace") + 1]
+        for tokens in commands
+        if "workspace" in tokens and len(tokens) > tokens.index("workspace") + 1
+    }
+    assert documented_workspace_commands.isdisjoint(deprecated)
+    assert documented_workspace_commands - {"verify"} <= ROUTES.keys()
+    if "verify" in documented_workspace_commands:
+        assert {"verify-initial", "verify-replacement"} <= ROUTES.keys()
+
+    parser = cli.build_parser()
+    group_action = next(
+        action
+        for action in parser._actions
+        if getattr(action, "dest", None) == "group"
+    )
+    group_choices = cast(dict[str, Any], group_action.choices)
+    registered_pairs = {
+        (group_name, command_name)
+        for group_name, group_parser in group_choices.items()
+        for action in group_parser._actions
+        if getattr(action, "dest", None) == "command"
+        for command_name in cast(dict[str, Any], action.choices)
+    }
+    documented_pairs = {
+        (tokens[index], tokens[index + 1])
+        for tokens in commands
+        for index in range(len(tokens) - 1)
+        if tokens[index] in {"workspace", "approve", "agent", "dev"}
+    }
+    assert documented_pairs <= registered_pairs
 
 
 def _response(payload: dict[str, object], status_code: int = 200) -> httpx.Response:

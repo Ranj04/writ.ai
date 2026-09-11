@@ -97,6 +97,25 @@ def test_prompt_requests_quotes_and_mandatory_requirements(
     assert "Never invent, rename, or translate a scope identifier" in prompts[0]
 
 
+def test_the_gemini_request_caps_its_output_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payloads: list[dict[str, object]] = []
+
+    def fake_post(url, *, headers, json, timeout):  # noqa: A002
+        payloads.append(json)
+        return _response(_candidate_json())
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    GeminiDecisionExtractor(api_key="test-key").extract(SOURCE_TEXT)
+
+    generation_config = payloads[0]["generationConfig"]
+    assert isinstance(generation_config, dict)
+    assert generation_config["maxOutputTokens"] == 2048
+    assert generation_config["responseMimeType"] == "application/json"
+    assert generation_config["temperature"] == 0
+
+
 def test_repairs_offsets_from_an_exact_quote(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

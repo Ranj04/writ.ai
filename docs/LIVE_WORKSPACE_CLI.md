@@ -118,16 +118,18 @@ Start the three writ.ai services, then run:
 # 1. Import user-owned decisions, work, provenance, and an agent plan.
 writai workspace import examples/writai-workspace.yaml
 
-# 2. An authoritative role approves the proposed baseline, creating graph-v17.
-writai workspace approve-baseline refund-operations --role finance-admin
+# 2. Approve the baseline in the authenticated Workspace UI after `make stack`:
+#    http://127.0.0.1:5173/
+#    Without Hexclave, use the explicitly unauthenticated local demo path:
+export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
+scripts/demo/up.sh
 
 # 3. Authorize the initial plan against graph-v17.
 writai workspace authorize refund-operations
 
 # 4. Propose and approve a new upstream decision, creating graph-v18.
 writai workspace propose-change refund-operations examples/writai-change.yaml
-writai workspace approve-change \
-  refund-operations DEC-REFUND-002 --role finance-admin
+writai approve change refund-operations DEC-REFUND-002
 
 # 5. The old graph-v17 grant is now rejected. This command exits 1.
 writai workspace verify refund-operations --grant initial
@@ -149,19 +151,26 @@ automatic issue-refund task is invalidated.
 requests the replacement authorization. Deterministic authority code still decides
 whether that replacement is allowed.
 
+### Why baseline approval has no CLI
+
+Baseline approval requires a Hexclave-resolvable `approval_token` carried in the
+`ApprovalAttemptEnvelope` defined at `backend/writai/services/agent_api.py:210`.
+No local CLI can mint that token, so baseline approval stays in the authenticated
+Workspace UI; the explicitly opted-in demo script is the machine-without-Hexclave path.
+
 ## Commands
 
 ```text
 writai workspace import FILE
 writai workspace list
 writai workspace show WORKSPACE_ID
-writai workspace approve-baseline WORKSPACE_ID --role ROLE
 writai workspace authorize WORKSPACE_ID
 writai workspace propose-change WORKSPACE_ID FILE
-writai workspace approve-change WORKSPACE_ID DECISION_ID --role ROLE
 writai workspace cancel-change WORKSPACE_ID
 writai workspace verify WORKSPACE_ID [--grant initial|replacement]
 writai workspace update-plan WORKSPACE_ID FILE
+writai approve pending [--workspace WORKSPACE_ID]
+writai approve change WORKSPACE_ID DECISION_ID
 writai agent run --workspace WORKSPACE_ID --task TASK_ID \
   --provider {codex,claude-code} [--cwd DIRECTORY] [--dry-run] \
   [--interrupt-timeout SECONDS] [-- PROVIDER_ARGS...]
