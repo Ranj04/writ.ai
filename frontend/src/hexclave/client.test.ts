@@ -66,7 +66,7 @@ describe("Hexclave browser identity", () => {
     const { hexclaveClient, hexclaveSignInEnabled } = await import("./client");
 
     expect(hexclaveSignInEnabled()).toBe(false);
-    expect(hexclaveClient()).toBeNull();
+    await expect(hexclaveClient()).resolves.toBeNull();
     expect(sdk.construct).not.toHaveBeenCalled();
   });
 
@@ -75,7 +75,7 @@ describe("Hexclave browser identity", () => {
     const { hexclaveClient, hexclaveSignInEnabled } = await import("./client");
 
     expect(hexclaveSignInEnabled()).toBe(false);
-    expect(hexclaveClient()).toBeNull();
+    await expect(hexclaveClient()).resolves.toBeNull();
     expect(sdk.construct).not.toHaveBeenCalled();
   });
 });
