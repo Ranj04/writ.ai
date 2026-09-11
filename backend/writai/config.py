@@ -71,7 +71,10 @@ class Settings:
         _default_demo_reset_enabled(_ENVIRONMENT, _GRAPH_BACKEND),
     )
     graph_backend: str = _GRAPH_BACKEND
-    grant_secret: str = os.getenv("WRITAI_GRANT_SECRET", DEFAULT_DEMO_GRANT_SECRET)
+    # `or`, not a default argument: a copied .env.example leaves this set-but-empty, and
+    # an empty HMAC key is rejected by GrantSigner. Outside a demo environment the
+    # fallback is then refused by `require_production_secrets`.
+    grant_secret: str = os.getenv("WRITAI_GRANT_SECRET") or DEFAULT_DEMO_GRANT_SECRET
     grant_ttl_seconds: int = int(os.getenv("WRITAI_GRANT_TTL_SECONDS", "3600"))
     authority_threshold: float = float(
         os.getenv("WRITAI_AUTHORITY_THRESHOLD", str(DEFAULT_AUTHORITY_THRESHOLD))

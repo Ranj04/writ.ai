@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import os
 import pathlib
 import re
 import secrets
+import subprocess
+import sys
 from dataclasses import replace
 
 import pytest
@@ -141,6 +144,58 @@ def test_development_keeps_the_zero_config_demo_secret() -> None:
         accepted.append(environment)
 
     assert accepted == ["development", "demo", "local", "test"]
+
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+
+def _fresh_python(code: str, **env: str) -> subprocess.CompletedProcess[str]:
+    """Run ``code`` in a fresh interpreter so module-scope guards actually execute.
+
+    ``WRITAI_GRANT_SECRET`` is pinned to the empty string so a developer's own
+    ``.env`` cannot supply a real secret and make the refusal case pass vacuously;
+    ``load_dotenv`` never overrides a variable that is already present.
+    """
+
+    child = {
+        **os.environ,
+        "PYTHONPATH": str(_REPO_ROOT / "backend"),
+        "WRITAI_GRANT_SECRET": "",
+        **env,
+    }
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=_REPO_ROOT,
+        env=child,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize("service", ["authority_api", "agent_api", "executor_api"])
+def test_each_service_refuses_to_import_in_production_on_the_default_secret(
+    service: str,
+) -> None:
+    """The guard runs at module scope: the process must never bind a port on the default."""
+
+    completed = _fresh_python(f"import writai.services.{service}", WRITAI_ENV="production")
+
+    assert completed.returncode != 0, completed.stdout
+    assert "RuntimeError" in completed.stderr
+    assert "WRITAI_GRANT_SECRET" in completed.stderr
+
+
+def test_an_empty_grant_secret_falls_back_to_the_demo_default() -> None:
+    """A copied .env.example leaves the variable set but empty; that must not crash a demo."""
+
+    completed = _fresh_python(
+        "from writai.config import settings; print(settings.grant_secret)",
+        WRITAI_ENV="development",
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == config.DEFAULT_DEMO_GRANT_SECRET
 
 
 def test_production_accepts_a_real_signing_secret() -> None:
