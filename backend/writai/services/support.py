@@ -37,6 +37,7 @@ PUBLIC_INTAKE_ROUTES: frozenset[str] = frozenset(
     {
         "/webhooks/hexclave",
         "/intake/slack/{workspace_id}",
+        "/intake/slack/{workspace_id}/reaction",
         "/intake/crustdata/person/capture",
     }
 )
@@ -74,6 +75,9 @@ def configure_logging() -> None:
         handler.setFormatter(logging.Formatter(log_format))
     # httpx logs raw request URLs at INFO, including workspace IDs and unmatched paths.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    # The sanitised request line deliberately replaces uvicorn's access line: its raw
+    # path carries workspace IDs, while this service logs the registered route template.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     _logging_configured = True
 
 
@@ -139,8 +143,11 @@ def _public_intake_route(path: str) -> str | None:
     if path in PUBLIC_INTAKE_ROUTES:
         return path
     prefix = "/intake/slack/"
-    if path.startswith(prefix) and "/" not in path[len(prefix) :] and path != prefix:
+    suffix = path[len(prefix) :] if path.startswith(prefix) else ""
+    if suffix and "/" not in suffix:
         return "/intake/slack/{workspace_id}"
+    if suffix.endswith("/reaction") and "/" not in suffix[: -len("/reaction")]:
+        return "/intake/slack/{workspace_id}/reaction"
     return None
 
 

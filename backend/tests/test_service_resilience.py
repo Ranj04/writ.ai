@@ -33,6 +33,38 @@ def _record_contains(record: logging.LogRecord, value: str) -> bool:
     return any(value in str(item) for item in record.__dict__.values())
 
 
+def test_uvicorn_access_log_is_silenced_before_it_can_log_raw_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    access_logger = logging.getLogger("uvicorn.access")
+    records: list[logging.LogRecord] = []
+
+    class _CaptureHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    handler = _CaptureHandler()
+    access_logger.addHandler(handler)
+    monkeypatch.setattr(support, "_logging_configured", False)
+    monkeypatch.setattr(access_logger, "disabled", False)
+    monkeypatch.setattr(access_logger, "level", logging.INFO)
+    try:
+        support.configure_logging()
+        access_logger.info(
+            '%s - "%s %s HTTP/%s" %d',
+            "127.0.0.1:1234",
+            "GET",
+            "/live-workspaces/ws-secret-in-access-log",
+            "1.1",
+            404,
+        )
+    finally:
+        access_logger.removeHandler(handler)
+
+    assert access_logger.getEffectiveLevel() >= logging.WARNING
+    assert records == []
+
+
 def test_every_request_writes_one_log_line_carrying_its_correlation_id(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

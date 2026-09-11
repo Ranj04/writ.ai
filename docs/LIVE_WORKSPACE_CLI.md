@@ -120,16 +120,24 @@ writai workspace import examples/writai-workspace.yaml
 
 # 2. Approve the baseline in the authenticated Workspace UI after `make stack`:
 #    http://127.0.0.1:5173/
-#    Without Hexclave, use the explicitly unauthenticated local demo path:
+#    Without Hexclave, explicitly opt into the local-only authentication bypass
+#    and approve the baseline of the workspace imported above:
 export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
-scripts/demo/up.sh
+PYTHONPATH=backend python3 scripts/demo/approve_in_process.py \
+  refund-operations finance-admin
 
 # 3. Authorize the initial plan against graph-v17.
 writai workspace authorize refund-operations
 
 # 4. Propose and approve a new upstream decision, creating graph-v18.
 writai workspace propose-change refund-operations examples/writai-change.yaml
+export HEXCLAVE_APPROVER_USER_API_KEY=your-approver-user-api-key
 writai approve change refund-operations DEC-REFUND-002
+# Without Hexclave, there is no credential-free production approval route. For a
+# local demo only, use the explicit opt-in instead of the two lines above:
+# export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
+# PYTHONPATH=backend python3 scripts/demo/approve_in_process.py \
+#   refund-operations finance-admin DEC-REFUND-002
 
 # 5. The old graph-v17 grant is now rejected. This command exits 1.
 writai workspace verify refund-operations --grant initial
@@ -157,6 +165,8 @@ Baseline approval requires a Hexclave-resolvable `approval_token` carried in the
 `ApprovalAttemptEnvelope` defined at `backend/writai/services/agent_api.py:210`.
 No local CLI can mint that token, so baseline approval stays in the authenticated
 Workspace UI; the explicitly opted-in demo script is the machine-without-Hexclave path.
+Likewise, `writai approve change` requires `HEXCLAVE_APPROVER_USER_API_KEY`; the
+in-process demo command shown above is the only credential-free local rehearsal path.
 
 ## Commands
 

@@ -135,10 +135,29 @@ retain their declared IDs and still reject duplicates:
 writai workspace import examples/writai-workspace.yaml
 # Approve the baseline in the authenticated Workspace UI after `make stack`:
 # http://127.0.0.1:5173/
-# Without Hexclave, start the local demo with:
+# Without Hexclave, explicitly opt into the local-only authentication bypass and
+# approve the baseline of the workspace imported above:
 export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
-scripts/demo/up.sh
+PYTHONPATH=backend python3 scripts/demo/approve_in_process.py \
+  refund-operations finance-admin
 writai workspace authorize refund-operations
+```
+
+For a pending change, the authenticated CLI command requires
+`HEXCLAVE_APPROVER_USER_API_KEY` at the point of use:
+
+```bash
+export HEXCLAVE_APPROVER_USER_API_KEY=your-approver-user-api-key
+writai approve change refund-operations DEC-REFUND-002
+```
+
+There is no credential-free production approval route. On a local demo machine only, the same
+explicit opt-in can approve that pending change through the in-process demo seam:
+
+```bash
+export WRITAI_DEMO_UNAUTHENTICATED_APPROVAL=1
+PYTHONPATH=backend python3 scripts/demo/approve_in_process.py \
+  refund-operations finance-admin DEC-REFUND-002
 ```
 
 The complete CLI flow, exit-code contract, and reusable GitHub Action are documented in
