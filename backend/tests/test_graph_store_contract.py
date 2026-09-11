@@ -142,3 +142,21 @@ def test_downstream_subgraph_is_ordered_and_kind_filtered(graph_store: GraphStor
         ("ROOT", EdgeKind.BASIS_FOR, "A-1"),
         ("ROOT", EdgeKind.CREATES, "B-2"),
     ]
+
+
+def test_downstream_subgraph_rejects_an_unknown_root(graph_store: GraphStore) -> None:
+    with pytest.raises(KeyError, match="Unknown artifact: NOPE"):
+        graph_store.downstream_subgraph("NOPE", {EdgeKind.CREATES})
+
+
+def test_downstream_subgraph_preserves_duplicate_edges(graph_store: GraphStore) -> None:
+    graph_store.add_artifact(_artifact("ROOT"))
+    graph_store.add_artifact(_artifact("CHILD"))
+    edge = Edge(source_id="ROOT", target_id="CHILD", kind=EdgeKind.CREATES)
+    graph_store.add_edge(edge)
+    graph_store.add_edge(edge)
+
+    _, edges = graph_store.downstream_subgraph("ROOT", {EdgeKind.CREATES})
+
+    assert len(edges) == 2
+    assert edges == graph_store.outgoing_edges("ROOT", {EdgeKind.CREATES})

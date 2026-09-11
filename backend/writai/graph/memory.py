@@ -36,7 +36,7 @@ class MemoryGraphStore:
         snapshot = deepcopy((self._version, self._artifacts, self._edges))
         try:
             yield
-        except Exception:
+        except BaseException:
             self._version, self._artifacts, self._edges = snapshot
             raise
 

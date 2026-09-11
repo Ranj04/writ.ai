@@ -213,3 +213,33 @@ def test_evaluate_plan_without_a_report_returns_empty_provenance_fields() -> Non
     assert result.preserved_artifact_ids == []
     assert result.evidence_refs == []
     assert result.invalidation_path == []
+
+
+def test_evaluate_plan_explains_only_plans_intersecting_the_last_report() -> None:
+    authority = make_authority()
+    authority.apply_decision_change(load_decision_v18())
+    report = authority.last_report
+    assert report is not None
+    _, _, _, run = load_graph_fixture()
+
+    affected = authority.evaluate_plan(
+        run_id=run.run_id,
+        task_id=run.ticket_id,
+        plan=run.plan,
+    )
+    unrelated = authority.evaluate_plan(
+        run_id="RUN-UNRELATED",
+        task_id="TASK-101",
+        plan=unrelated_valid_plan(),
+    )
+
+    assert affected.invalidated_artifact_ids == report.affected_artifact_ids
+    assert affected.preserved_artifact_ids == report.preserved_artifact_ids
+    assert affected.evidence_refs == report.evidence_refs
+    assert affected.invalidation_path == next(
+        path.node_ids for path in report.paths if path.artifact_id == run.plan.id
+    )
+    assert unrelated.invalidated_artifact_ids == []
+    assert unrelated.preserved_artifact_ids == []
+    assert unrelated.evidence_refs == []
+    assert unrelated.invalidation_path == []

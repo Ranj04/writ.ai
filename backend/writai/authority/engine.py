@@ -368,6 +368,7 @@ class IntentAuthority:
         requirements = self.current_requirements()
         mismatches: list[PlanMismatch] = []
         affected_scopes: set[str] = set()
+        dependency_artifact_ids = {task_id, plan.id}
 
         try:
             task = self.graph.get_artifact(task_id)
@@ -407,6 +408,7 @@ class IntentAuthority:
                 referenced_task_id = action.attributes.get("task_id")
                 referenced_task: Artifact | None = None
                 if isinstance(referenced_task_id, str):
+                    dependency_artifact_ids.add(referenced_task_id)
                     try:
                         referenced_task = self.graph.get_artifact(referenced_task_id)
                     except KeyError:
@@ -467,11 +469,16 @@ class IntentAuthority:
         preserved_ids: list[str] = []
         evidence_refs: list[str] = []
         path: list[str] = []
-        if report is not None:
-            invalidated_ids = list(report.affected_artifact_ids)
-            preserved_ids = list(report.preserved_artifact_ids)
-            evidence_refs = list(report.evidence_refs)
-            plan_paths = [item.node_ids for item in report.paths if item.artifact_id == plan.id]
+        resolved_report = report if report is not None else self.last_report
+        if resolved_report is not None and dependency_artifact_ids.intersection(
+            resolved_report.affected_artifact_ids
+        ):
+            invalidated_ids = list(resolved_report.affected_artifact_ids)
+            preserved_ids = list(resolved_report.preserved_artifact_ids)
+            evidence_refs = list(resolved_report.evidence_refs)
+            plan_paths = [
+                item.node_ids for item in resolved_report.paths if item.artifact_id == plan.id
+            ]
             if plan_paths:
                 path = plan_paths[0]
 

@@ -29,14 +29,18 @@ class Neo4jGraphStore:
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
+        if self._tx is not None:
+            yield
+            return
         with self._driver.session(database=self._database) as session:
             transaction = session.begin_transaction()
             self._tx = transaction
             try:
                 yield
                 transaction.commit()
-            except Exception:
-                transaction.rollback()
+            except BaseException:
+                if not transaction.closed():
+                    transaction.rollback()
                 raise
             finally:
                 self._tx = None
@@ -94,7 +98,6 @@ class Neo4jGraphStore:
 
     def reset(self, *, version: int, artifacts: list[Artifact], edges: list[Edge]) -> None:
         def seed_graph(transaction: Any) -> None:
-            transaction.run("MATCH (n) DETACH DELETE n").consume()
             transaction.run(
                 "CREATE (:GraphMeta {id: 'main', version: $version})", version=version
             ).consume()
@@ -112,6 +115,7 @@ class Neo4jGraphStore:
                 ).consume()
 
         with self._driver.session(database=self._database) as session:
+            session.run("MATCH (n) DETACH DELETE n").consume()
             session.run(
                 "CREATE CONSTRAINT artifact_id_unique IF NOT EXISTS "
                 "FOR (a:Artifact) REQUIRE a.id IS UNIQUE"
@@ -120,10 +124,10 @@ class Neo4jGraphStore:
 
     @property
     def version(self) -> int:
-        with self._driver.session(database=self._database) as session:
-            record = session.run(
-                "MATCH (m:GraphMeta {id: 'main'}) RETURN m.version AS version"
-            ).single()
+        records = self._run(
+            "MATCH (m:GraphMeta {id: 'main'}) RETURN m.version AS version"
+        ).records
+        record = records[0] if records else None
         return self._version_from_record(record)
 
     @property
@@ -217,8 +221,10 @@ class Neo4jGraphStore:
             root_id=root_id,
             kinds=sorted(kind.value for kind in kinds),
         ).records
+        if not records:
+            raise KeyError(f"Unknown artifact: {root_id}")
         artifacts: dict[str, Artifact] = {}
-        edges: dict[tuple[str, str, str], Edge] = {}
+        edges: dict[str, Edge] = {}
         for record in records:
             path = record["path"]
             for node in path.nodes:
@@ -232,7 +238,7 @@ class Neo4jGraphStore:
                     scopes=set(relationship.get("scopes", [])),
                     evidence_ref=relationship.get("evidence_ref") or None,
                 )
-                edges[(edge.source_id, edge.kind, edge.target_id)] = edge
+                edges[relationship.element_id] = edge
         return (
             sorted(artifacts.values(), key=lambda artifact: artifact.id),
             sorted(edges.values(), key=lambda edge: (edge.source_id, edge.kind, edge.target_id)),
