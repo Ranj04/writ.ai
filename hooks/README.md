@@ -21,8 +21,12 @@ The hook reads these environment variables:
 - `WRITAI_HOOK_API_KEY` — required. The hook sends this per-developer token
   only in the `X-writ.ai-Hook-API-Key` header; it never writes it to the
   verdict cache or JSON payload.
-- `WRITAI_HOOK_TIMEOUT_SECONDS` — defaults to 3 seconds and must be at most
-  30 seconds.
+- `WRITAI_HOOK_TIMEOUT_SECONDS` — defaults to 3 seconds. Values above 4 are
+  clamped to 4, not honoured. The HTTP wait must finish inside the 5-second
+  command deadline the shipped settings configure: a hook process killed before
+  it writes its verdict has, in effect, allowed the call, so a request that can
+  outlast the deadline is a fail-open dressed as a timeout. The remaining second
+  is headroom for interpreter start-up and for writing the verdict.
 - `WRITAI_HOOK_CACHE_PATH` — defaults to
   `.writai/hook-verdict-cache.json`, resolved against the session cwd.
 

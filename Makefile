@@ -14,15 +14,10 @@ demo-crustdata-replay:
 test:
 	PYTHONPATH=backend $(PYTHON) -m pytest
 
+# One gate, one definition. scripts/check.sh is what CI runs, so a step added
+# there reaches every reviewer without anyone remembering to edit this file too.
 check:
-	PYTHONPATH=backend $(PYTHON) -m pytest
-	$(PYTHON) scripts/ci/coverage_floors.py
-	$(PYTHON) -m ruff check backend
-	$(PYTHON) -m mypy backend
-	$(PYTHON) -m compileall -q backend
-	cd frontend && npm test
-	cd frontend && npm run typecheck
-	cd frontend && npm run build
+	PYTHON_BIN=$(PYTHON) bash scripts/check.sh
 
 authority:
 	PYTHONPATH=backend $(PYTHON) -m uvicorn writai.services.authority_api:app --port 8001 --reload

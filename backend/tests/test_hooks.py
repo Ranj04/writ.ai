@@ -986,6 +986,34 @@ def test_the_whole_hook_process_fits_inside_the_command_deadline() -> None:
     )
 
 
+def test_the_documented_timeout_ceiling_is_the_one_the_code_enforces() -> None:
+    """The operator-facing docs must not contradict the fail-open budget.
+
+    ``hooks/README.md`` once said the timeout "must be at most 30 seconds" while
+    the code clamped at 4. An operator who believed the README would set 20 to
+    ride out a slow supervisor, get 4, and conclude the hook was broken — and a
+    reader comparing the two would reasonably doubt that the fail-open budget
+    above was understood at all. Documentation that contradicts a safety
+    property is worse than no documentation, so the number is asserted rather
+    than trusted, in the same spirit as
+    ``test_every_documented_env_var_has_a_settings_field``.
+    """
+
+    ceiling = str(int(lib.MAX_TIMEOUT_SECONDS))
+    for doc in (HOOKS_DIR / "README.md", REPO_ROOT / "docs/LANE_A_INTERNAL_CONTRACT.md"):
+        text = doc.read_text(encoding="utf-8")
+        assert lib.ENV_TIMEOUT in text, f"{doc.name} no longer documents the variable"
+        clause = next(
+            (line for line in text.splitlines() if "clamped" in line.lower()),
+            None,
+        )
+        assert clause is not None, f"{doc.name} does not say the value is clamped"
+        assert ceiling in clause, (
+            f"{doc.name} states a ceiling that is not MAX_TIMEOUT_SECONDS="
+            f"{lib.MAX_TIMEOUT_SECONDS}"
+        )
+
+
 # --------------------------------------------------------------------------------------
 # INT-3 — the redirect acknowledgement, and its ordering
 # --------------------------------------------------------------------------------------

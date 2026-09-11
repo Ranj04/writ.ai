@@ -196,7 +196,8 @@ the hook runs in the developer's environment, not ours.
 
 Config comes from the environment, matching `.env.example`:
 `WRITAI_HOOK_ENDPOINT` (default `http://localhost:8002/supervisor/sessions`),
-`WRITAI_HOOK_TIMEOUT_SECONDS` (default `3`),
+`WRITAI_HOOK_TIMEOUT_SECONDS` (default `3`, clamped to 4 — it must stay below
+the 5-second command deadline or a killed process becomes a fail-open),
 `WRITAI_HOOK_CACHE_PATH` (default `.writai/hook-verdict-cache.json`).
 
 ### PreToolUse output

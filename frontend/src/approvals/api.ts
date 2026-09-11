@@ -1,3 +1,4 @@
+import { serviceBaseUrl } from "../api";
 import { hexclaveApprovalToken } from "../hexclave/client";
 import { FIXTURE_PENDING_CHANGES } from "./fixtures";
 import {
@@ -33,7 +34,7 @@ import type { ApprovalReceipt, DataSource, PendingChange } from "./model";
  * `indeterminate` and is reconciled against the workspace rather than being
  * reported as a rehearsal. See `ApprovalOutcome`.
  */
-const AGENT = import.meta.env.VITE_AGENT_URL ?? "http://localhost:8002";
+const AGENT = serviceBaseUrl(import.meta.env.VITE_AGENT_URL, "http://localhost:8002");
 
 const WORKSPACES_URL = `${AGENT}/live-workspaces`;
 

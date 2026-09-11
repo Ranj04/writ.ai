@@ -495,3 +495,52 @@ describe("subscribeToPendingChanges", () => {
     expect(close).toHaveBeenCalledTimes(2);
   });
 });
+
+/**
+ * `AGENT` is read once at module load, so these re-import after stubbing the
+ * environment. `vite.config.ts` sets `envDir: ".."`, which means a trailing
+ * slash configured in the repo-root `.env` reaches this client — and an
+ * unnormalized base would request `//live-workspaces`, 404, and fall back to
+ * the fixture on the one screen whose contract is that a replayed payload is
+ * never labelled live.
+ */
+describe("the agent base URL", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  async function firstFetchedUrl(configured: string): Promise<string> {
+    vi.stubEnv("VITE_AGENT_URL", configured);
+    vi.resetModules();
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        seen.push(url);
+        return jsonResponse({ workspaces: [] });
+      }),
+    );
+    const fresh = await import("./api");
+    await fresh.fetchPendingChanges();
+    return seen[0];
+  }
+
+  it("strips a configured trailing slash instead of requesting a double slash", async () => {
+    const url = await firstFetchedUrl("http://agent.example.com/");
+    expect(url).toBe("http://agent.example.com/live-workspaces");
+    expect(url).not.toContain("//live-workspaces");
+  });
+
+  it("strips several trailing slashes", async () => {
+    expect(await firstFetchedUrl("http://agent.example.com///")).toBe(
+      "http://agent.example.com/live-workspaces",
+    );
+  });
+
+  it("leaves a correctly configured base alone", async () => {
+    expect(await firstFetchedUrl("http://agent.example.com")).toBe(
+      "http://agent.example.com/live-workspaces",
+    );
+  });
+});
