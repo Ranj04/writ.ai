@@ -2668,6 +2668,32 @@ def test_a_json_document_under_the_sqlite_name_is_refused_with_advice(
         SqliteLiveWorkspaceRepository(path)
 
 
+@pytest.mark.parametrize(
+    "contents",
+    [b"", b"SQLite format 2\x00 but not really", b"\x00" * 100],
+    ids=["zero-length", "wrong-header", "zeroed"],
+)
+def test_a_file_that_is_not_a_sqlite_database_is_refused_and_left_as_found(
+    tmp_path: Path, contents: bytes
+) -> None:
+    """A store that holds authorization state must not come up empty because
+    the file under its name is not a database. Refuse, name the path, and leave
+    the operator's file (and any legacy document) exactly as they were."""
+
+    path = tmp_path / "live-workspaces.sqlite3"
+    path.write_bytes(contents)
+    legacy_path = tmp_path / "live-workspaces.json"
+    JsonFileLiveWorkspaceRepository(legacy_path).create(_imported_record())
+    before = legacy_path.read_bytes()
+
+    with pytest.raises(RuntimeError, match=f"not a SQLite database: {path}"):
+        SqliteLiveWorkspaceRepository(path)
+
+    assert path.read_bytes() == contents
+    assert legacy_path.read_bytes() == before
+    assert not path.with_name(f"{path.name}-wal").exists()
+
+
 def test_sqlite_store_list_orders_newest_first_and_keeps_insertion_order_on_ties(
     tmp_path: Path,
 ) -> None:

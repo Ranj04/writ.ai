@@ -143,6 +143,8 @@ def _require_same_workspace(workspace_id: str, record: LiveWorkspaceRecord) -> N
 
 
 _LEGACY_STORE_SUFFIX = ".json"
+#: The first 16 bytes of every SQLite database file (format 3).
+_SQLITE_HEADER = b"SQLite format 3\x00"
 
 
 def open_live_workspace_repository(path: str | Path) -> LiveWorkspaceRepository:
@@ -185,6 +187,7 @@ class SqliteLiveWorkspaceRepository:
 
     def _initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._require_sqlite_database()
         try:
             # Owner-only from the first byte: the mode is fixed before SQLite ever
             # opens the file, so signed grants never sit behind the process umask.
@@ -215,16 +218,42 @@ class SqliteLiveWorkspaceRepository:
             )
             connection.commit()
         except sqlite3.DatabaseError as exc:
-            # T0 moved the default path to ``.sqlite3`` before this store existed,
-            # so a JSON document can sit under the SQLite name. Say so.
-            raise RuntimeError(
-                f"Live Workspace store is not a SQLite database: {self.path}. "
-                f"If it is a JSON document, rename it to {self.path.stem}"
-                f"{_LEGACY_STORE_SUFFIX} and restart to migrate it."
-            ) from exc
+            raise self._not_a_database() from exc
         finally:
             connection.close()
             self._secure_permissions()
+
+    def _require_sqlite_database(self) -> None:
+        """Refuse an existing file that SQLite would silently treat as empty.
+
+        SQLite opens a zero-length file as a fresh database, so an interrupted
+        create, a failed write or a bad restore would come up as a clean, empty
+        store with every approved workspace gone and the JSON migration skipped.
+        The file is left exactly as found; the operator decides what it was.
+        """
+
+        if not self.path.exists():
+            return
+        try:
+            with self.path.open("rb") as handle:
+                header = handle.read(len(_SQLITE_HEADER))
+        except OSError as exc:
+            raise RuntimeError(
+                f"Live Workspace store is unreadable: {self.path}"
+            ) from exc
+        if header != _SQLITE_HEADER:
+            raise self._not_a_database()
+
+    def _not_a_database(self) -> RuntimeError:
+        # T0 moved the default path to ``.sqlite3`` before this store existed,
+        # so a JSON document can sit under the SQLite name. Say so.
+        return RuntimeError(
+            f"Live Workspace store is not a SQLite database: {self.path} "
+            f"({self.path.stat().st_size} bytes). It was not initialised as an "
+            f"empty store. If it is a JSON document, rename it to "
+            f"{self.path.stem}{_LEGACY_STORE_SUFFIX} and restart to migrate it; "
+            "otherwise move it aside and restart."
+        )
 
     def _migrate(self, legacy_path: Path, records: list[LiveWorkspaceRecord]) -> None:
         with self._lock:
@@ -250,13 +279,15 @@ class SqliteLiveWorkspaceRepository:
             self.path,
         )
 
-    def _discard_database_files(self) -> None:
-        # Only reached from the constructor, for files this constructor created.
-        for candidate in (
-            self.path,
+    def _sibling_paths(self) -> tuple[Path, Path]:
+        return (
             self.path.with_name(f"{self.path.name}-wal"),
             self.path.with_name(f"{self.path.name}-shm"),
-        ):
+        )
+
+    def _discard_database_files(self) -> None:
+        # Only reached from the constructor, for files this constructor created.
+        for candidate in (self.path, *self._sibling_paths()):
             candidate.unlink(missing_ok=True)
 
     def _connect(self) -> sqlite3.Connection:
@@ -268,13 +299,19 @@ class SqliteLiveWorkspaceRepository:
             ) from exc
 
     def _secure_permissions(self) -> None:
-        try:
-            self.path.chmod(0o600)
-        except OSError as exc:
-            if self.path.exists():
-                raise RuntimeError(
-                    f"Live Workspace store permissions could not be secured: {self.path}"
-                ) from exc
+        # The WAL carries every committed row, signed grants included, until the
+        # next checkpoint. SQLite creates both siblings owner-only when the
+        # database file is, but a sibling that was already wider stays wider
+        # unless it is re-secured here; a missing sibling is normal.
+        for candidate in (self.path, *self._sibling_paths()):
+            try:
+                candidate.chmod(0o600)
+            except OSError as exc:
+                if candidate.exists():
+                    raise RuntimeError(
+                        "Live Workspace store permissions could not be secured: "
+                        f"{candidate}"
+                    ) from exc
 
     @staticmethod
     def _decode(raw: str, workspace_id: str) -> LiveWorkspaceRecord:
