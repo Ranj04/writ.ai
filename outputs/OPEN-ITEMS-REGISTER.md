@@ -157,7 +157,7 @@ observed after `save()` returns is `0o600`. The SQLite file is `0o600` from crea
 
 | # | Item | Disposition |
 |---|---|---|
-| B2-1 | **`.env.example` documents `WRITAI_HOOK_API_KEY` (line 125) but not `WRITAI_HOOK_API_KEYS`.** The service now parses `WRITAI_HOOK_API_KEYS=developer_id:secret,developer_id:secret` (`services/supervisor_api.py` `parse_hook_credentials`) and keeps `WRITAI_HOOK_API_KEY` as the single-developer fallback mapped to developer `default`. `.env.example` is T0's and was not edited. | **FOR T1**: one documented line. |
+| B2-1 | **`.env.example` documents `WRITAI_HOOK_API_KEY` (line 125) but not `WRITAI_HOOK_API_KEYS`.** The service now parses `WRITAI_HOOK_API_KEYS=developer_id:secret,developer_id:secret` (`services/supervisor_api.py` `parse_hook_credentials`) and keeps `WRITAI_HOOK_API_KEY` as the single-developer fallback mapped to developer `default`. `.env.example` is T0's and was not edited. | **Resolved** post-integration under orchestrator authorisation: `WRITAI_HOOK_API_KEYS` documented in `.env.example` beside `WRITAI_HOOK_API_KEY`, and allow-listed in `_READ_OUTSIDE_SETTINGS` in `backend/tests/test_runtime_config.py`. No `Settings` field added. |
 | B2-2 | **`HookApiKeyVerifier` survives as an alias of `HookCredentialVerifier`.** `backend/tests/test_five_session_demo.py:438-451` constructs `HookApiKeyVerifier(expected_api_key="test-key")` and is in no track's ownership row, so the rename keeps the old name and the `expected_api_key` constructor field (`supervisor_api.py`, the comment above the alias says why). Drop the alias when that caller moves. | **SHIM, disclosed.** |
 | B2-3 | **`owner_id` defaults to `default` on the in-process enforcement API** (`ClaudeCodeSessionRegistry.register`, `ClaudeCodeSessionEnforcement.start/check/end/acknowledge`). The router always passes the id `resolve()` returned, so every HTTP call is owner-checked; the default exists because callers outside Track B's ownership drive the enforcement object directly — `test_five_session_demo.py:255,276,460` and `test_interrupt_escalation.py:565,752,977`. The default never bypasses the check: a session registered by `alice` is still refused to a caller that omits the owner. | **DESIGN CHOICE, disclosed.** |
 | B2-4 | **`GET /supervisor/sessions` gains `owner_id` on every entry** via `RegisteredSession.to_payload`. `cli_dev.py:621-623` and `scripts/ci/writai_ci_check.py` accept extra keys, so nothing renders wrong; the list is still not filtered by owner (it is an authenticated read model for `dev status`, and the plan did not ask for filtering). | **LOGGED.** |
@@ -253,7 +253,7 @@ already sorted, so the suite cannot observe it either. Own change, own test.
 
 ### Still open after integration
 
-- B2-1 (`.env.example` `WRITAI_HOOK_API_KEYS`) — see the T1 skip above.
+- B2-1 (`.env.example` `WRITAI_HOOK_API_KEYS`) — **resolved** post-integration; see the B2 table.
 - B1-2 (orchestrator read-modify-write sites), B1-3 (sibling stores named `.sqlite3`),
   B2-2 (`HookApiKeyVerifier` alias), B2-4 (session list not filtered by owner), T0-1
   (`uv.lock` consumed by nothing), T0-2 (two unread env vars), INT-2 (PR check grant

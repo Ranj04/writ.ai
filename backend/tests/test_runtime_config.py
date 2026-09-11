@@ -78,6 +78,8 @@ _READ_OUTSIDE_SETTINGS = frozenset(
     {
         # hooks/ scripts and the supervisor service read these from the environment directly
         "WRITAI_HOOK_API_KEY",
+        # supervisor_api.parse_hook_credentials reads the per-developer map, not Settings
+        "WRITAI_HOOK_API_KEYS",
         # writai doctor probes read these; they are not runtime configuration
         "COMPOSIO_SLACK_AUTH_CONFIG_ID",
         "WRITAI_SLACK_CHANNEL_ID",
