@@ -1604,6 +1604,59 @@ def test_live_workspace_service_flow_is_real_selective_and_persistent(
     _assert_no_signed_token(listed)
 
 
+def test_a_workspace_authorization_still_reports_its_own_invalidation_path(
+    live_services: tuple[TestClient, TestClient, TestClient, Path],
+) -> None:
+    """The per-workspace ``evaluate_plan`` call correlates its own engine's report.
+
+    ``DynamicAuthorityContextRegistry.authorize`` passes ``report=`` explicitly, so the
+    authorization the change-approval path records carries the provenance fields the
+    workspace's own decision change produced; an empty path here is the regression
+    this guards against.
+    """
+
+    agent, _authority, _executor, _store_path = live_services
+
+    imported = agent.post(
+        "/live-workspaces/import",
+        json=workspace_import().model_dump(mode="json"),
+    )
+    assert imported.status_code == 201
+    assert _approve_workspace_baseline(agent).status_code == 200
+
+    authorized = agent.post("/live-workspaces/refund-control/authorize", json={})
+    assert authorized.status_code == 200
+    initial = authorized.json()["initial_authorization"]
+    assert initial["verdict"] == "ALLOW"
+    # Nothing has been invalidated yet, so nothing is reported.
+    assert initial["invalidation_path"] == []
+    assert initial["invalidated_artifact_ids"] == []
+
+    proposed = agent.post(
+        "/live-workspaces/refund-control/decisions/propose",
+        json=decision_proposal_body(),
+    )
+    assert proposed.status_code == 200
+    changed = _approve_workspace_change(agent).json()
+    assert changed["status"] == "change-applied"
+
+    report = changed["invalidation_report"]
+    own_path = next(
+        path["node_ids"]
+        for path in report["paths"]
+        if path["artifact_id"] == "PLAN-REFUND-1"
+    )
+    assert own_path, "the workspace's own change must produce a provenance path"
+
+    conflict = changed["conflict_authorization"]
+    assert conflict["verdict"] == "REPLAN"
+    assert conflict["invalidation_path"] != []
+    assert conflict["invalidation_path"] == own_path
+    assert conflict["invalidated_artifact_ids"] == report["affected_artifact_ids"]
+    assert conflict["preserved_artifact_ids"] == report["preserved_artifact_ids"]
+    assert conflict["evidence_refs"] == report["evidence_refs"]
+
+
 def test_callwright_workspace_stops_the_stale_call_and_submits_only_the_correction(
     live_services: tuple[TestClient, TestClient, TestClient, Path],
     monkeypatch: pytest.MonkeyPatch,

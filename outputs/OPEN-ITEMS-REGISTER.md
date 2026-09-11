@@ -176,3 +176,85 @@ observed after `save()` returns is `0o600`. The SQLite file is `0o600` from crea
 |---|---|---|
 | C5, steps 4–6 | The original prompt said `config.py:66` defaults `grant_secret` to `"writai-local-demo-secret"`. T0's changes shifted the definition to `backend/writai/config.py:103` through `DEFAULT_DEMO_GRANT_SECRET`; the original `path:line` was stale. | **RESOLVED.** The work was originally skipped under standing rule 8 because publishing a stale citation in Known limits would make the audit less trustworthy. The orchestrator re-derived the citations against the Track C worktree, and C5 steps 4–6 are now complete with the corrected `config.py:66` → `config.py:103` premise. |
 | C5, post-merge citation verification | Known-limits citations into `workspaces/repository.py`, `workspaces/session_enforcement.py`, and `graph/neo4j_store.py` are correct in the Track C worktree but those files are being rewritten by Tracks A and B. | **OPEN for T1.** Re-verify every affected `path:line` after Tracks A and B merge. |
+
+---
+
+## Plan execution — integration
+
+T1 ran on the merged tree (`df28f11`; Tracks A, B and C merged). Gate `bash scripts/check.sh`
+exit 0: 930 passed, 21 skipped, 3 xfailed; total coverage 85.25% against the 83% floor;
+all seven per-module floors hold — `grants.py` 97.37%, `authority/engine.py` 95.18%,
+`config.py` 98.45%, `workspaces/repository.py` 97.47%,
+`workspaces/session_enforcement.py` 91.73%, `services/support.py` 94.81%,
+`services/supervisor_api.py` 97.70%. `make demo` still ends `writ.ai proof complete` with
+zero environment variables, and `WRITAI_ENV=production` still raises the
+`WRITAI_GRANT_SECRET` `RuntimeError` at import.
+
+### Standing-rule-8 skips across the plan, and where each stands now
+
+| Track / phase | Premise that failed | State |
+|---|---|---|
+| T0 | none | — |
+| A2 | `CREATE CONSTRAINT` inside the seed transaction (Neo4j `ForbiddenDueToTransactionType`) | **Resolved** after premise correction: the constraint is created in its own schema transaction. |
+| A5 | the positive-control test could POST to `/decisions/change` | **Resolved** after premise correction against the real `POST /decisions/ingest`. |
+| B | none recorded under rule 8 (B1 steps 6–7 were delivered differently and closed in round 2; see B1-1) | — |
+| C5 steps 4–6 | `config.py:66` default | **Resolved**: re-derived to `config.py:103`. |
+| C5 post-merge citation verification | citations into three files being rewritten by A and B | **Resolved by T1** (table below). |
+| T1 `.env.example` line | orchestrator note: "you may add that one line to `.env.example`" for `WRITAI_HOOK_API_KEYS` (B2-1) | **Skipped under rule 8.** `backend/tests/test_runtime_config.py:106-118` `test_every_documented_env_var_has_a_settings_field` fails for any `NAME=` in `.env.example` that is neither in `_READ_OUTSIDE_SETTINGS` (`:77`, whose hook entry at `:80` lists only `WRITAI_HOOK_API_KEY`) nor present in `config.py` source, and `WRITAI_HOOK_API_KEYS` is neither. That test file is T0's, outside T1's ownership. The goal still matters: B2-1 stays open and needs one `.env.example` line plus one allow-list entry in the same change. |
+
+### T1 step 1 — the cross-track line
+
+- Landed: `backend/writai/workspaces/authority_contexts.py:466` passes
+  `report=context.authority.last_report`. Test:
+  `test_a_workspace_authorization_still_reports_its_own_invalidation_path`
+  (`backend/tests/test_live_workspaces.py`, both store parameters).
+- **Premise correction, disclosed.** The T1 prompt states that until the line lands
+  workspace `/authorize` responses "silently return empty" provenance fields. On the merged
+  tree they do not: A5 kept a fallback at `backend/writai/authority/engine.py:472`
+  (`resolved_report = report if report is not None else self.last_report`), and each
+  workspace context owns its own `IntentAuthority`, so the fallback is the same object the
+  explicit argument passes. The requested reverted control therefore passes with and without
+  the line (2 passed both ways). With the fallback removed locally (`resolved_report = report`,
+  never committed), the test passes with the line and fails without it (`assert [] != []`),
+  so it covers the line under the condition the engine's own comment at `:365` anticipates
+  ("Track B call sites do not yet pass report"). Whether to drop the fallback now that every
+  in-process call site passes `report=` is Track A's decision; T1 did not touch `engine.py`.
+
+### Known-limits citations re-verified on the merged tree
+
+| Citation as Track C wrote it | Merged tree | Action |
+|---|---|---|
+| `services/support.py:170` (token derivation) | `def internal_service_token` at `:177` (`:170` was `code="RATE_LIMITED"` on Track C's own tree too) | corrected → `:177` |
+| `services/support.py:180` (enforcement) | `def require_internal_service` at `:187` | corrected → `:187` |
+| `workspaces/authority_contexts.py:173` | `def _signing_secret` at `:188` | corrected → `:188` |
+| `workspaces/repository.py:89` | JSON `def get` at `:108` | corrected → `:108` |
+| `workspaces/session_enforcement.py:244` | `class RepositorySupervisorAssignmentGateway` at `:246` | corrected → `:246` |
+| `workspaces/repository.py:63-64` | `temporary.replace` / `chmod(0o600)` at `:82-83` | corrected → `:82-83`; bullet now names the JSON repository |
+| `graph/neo4j_store.py:115`, `:140`, `:145` | `add_artifact` (`:145`) raises `ValueError` at `:152`; `list_artifacts` (`:174`) has `ORDER BY a.id` at `:176`; `add_edge` (`:180`) raises `KeyError` at `:189` — Track A closed all three | **prose was false, not merely stale**: bullet rewritten to name the closed items and the one still open (below) |
+| `config.py:103`, `config.py:44`, `config.py:212`; `grants.py:13-17` | unchanged | confirmed as written |
+
+### Dead code retained under `AGENTS.md:34` invariant 8 (mentioned, not deleted)
+
+- `backend/writai/workspaces/live_interrupt.py` (`LiveClaudeCodeInterruptPort`): used only by
+  `backend/tests/test_claude_code_enforcement.py:25,266,327`.
+- `backend/writai/supervisor_contract.py:35` (`NullSupervisorInterruptPort`): used only by
+  `backend/tests/test_supervisor_contract.py:7,62`. The module around it is live.
+- `backend/writai/workspaces/interrupt_port.py` is **not** dead: `scripts/demo/seed.py:47,479`
+  uses `WorkspaceSupervisorInterruptPort`, as does `backend/tests/test_claude_code_runtime.py:20,229,251`.
+
+### Latent parity divergence (Track A found it and correctly did not fix it)
+
+`MemoryGraphStore.outgoing_edges` (`backend/writai/graph/memory.py:70-75`) returns insertion
+order; `Neo4jGraphStore.outgoing_edges` (`backend/writai/graph/neo4j_store.py:207`) has
+`ORDER BY target_id, kind`. Latent because the authority traversal re-sorts with
+`authority_edge_sort_key` (`backend/writai/authority/engine.py:262`), and
+`test_outgoing_edges_is_ordered_by_target_then_kind` in the contract suite inserts its edges
+already sorted, so the suite cannot observe it either. Own change, own test.
+
+### Still open after integration
+
+- B2-1 (`.env.example` `WRITAI_HOOK_API_KEYS`) — see the T1 skip above.
+- B1-2 (orchestrator read-modify-write sites), B1-3 (sibling stores named `.sqlite3`),
+  B2-2 (`HookApiKeyVerifier` alias), B2-4 (session list not filtered by owner), T0-1
+  (`uv.lock` consumed by nothing), T0-2 (two unread env vars), INT-2 (PR check grant
+  validation), A1-1 to A1-5, demo-eve ENV-1 to ENV-4, and the `outgoing_edges` divergence above.
