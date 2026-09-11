@@ -126,6 +126,44 @@ def test_upstream_chain_is_one_real_path_when_the_graph_branches() -> None:
     assert "TASK-B" in result.report.invalidated_task_ids
 
 
+class _CountingMemoryGraphStore(MemoryGraphStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.downstream_subgraph_calls = 0
+        self.outgoing_edges_calls = 0
+        self.get_artifact_calls = 0
+
+    def downstream_subgraph(
+        self, root_id: str, kinds: set[EdgeKind]
+    ) -> tuple[list[Artifact], list[Edge]]:
+        self.downstream_subgraph_calls += 1
+        return super().downstream_subgraph(root_id, kinds)
+
+    def outgoing_edges(
+        self, artifact_id: str, kinds: set[EdgeKind] | None = None
+    ) -> list[Edge]:
+        self.outgoing_edges_calls += 1
+        return super().outgoing_edges(artifact_id, kinds)
+
+    def get_artifact(self, artifact_id: str) -> Artifact:
+        self.get_artifact_calls += 1
+        return super().get_artifact(artifact_id)
+
+
+def test_the_invalidation_traversal_reads_the_graph_once() -> None:
+    """Traversal batches once; 21 point reads remain for validation, reporting, and batching."""
+    version, artifacts, edges, _ = load_graph_fixture()
+    graph = _CountingMemoryGraphStore()
+    graph.reset(version=version, artifacts=artifacts, edges=edges)
+    authority = IntentAuthority(graph=graph, signer=GrantSigner("counting-test-secret"))
+
+    authority.apply_decision_change(load_decision_v18())
+
+    assert graph.downstream_subgraph_calls == 1
+    assert graph.outgoing_edges_calls == 0
+    assert graph.get_artifact_calls == 21
+
+
 def test_equal_depth_primary_path_is_stable_when_edge_order_changes() -> None:
     def run_with_edge_order(*, reverse: bool):
         version, artifacts, edges, _ = load_graph_fixture()

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import pytest
+from fastapi.testclient import TestClient
 from writai.authority.engine import IntentAuthority
-from writai.domain import Verdict
+from writai.domain import AgentPlan, Verdict
 from writai.fixtures import load_decision_v18, load_graph_fixture
 from writai.grants import GrantSigner
 from writai.graph.memory import MemoryGraphStore
+from writai.loop.workflow import AgentLoopController
+from writai.services import authority_api
 
 
 def make_authority() -> IntentAuthority:
@@ -13,6 +16,15 @@ def make_authority() -> IntentAuthority:
     graph = MemoryGraphStore()
     graph.reset(version=version, artifacts=artifacts, edges=edges)
     return IntentAuthority(graph=graph, signer=GrantSigner("test-secret"))
+
+
+def unrelated_valid_plan() -> AgentPlan:
+    _, _, _, run = load_graph_fixture()
+    plan = run.plan.model_copy(deep=True)
+    plan.id = "PLAN-UNRELATED"
+    plan.ticket_id = "TASK-101"
+    plan.actions = [action for action in plan.actions if action.scopes == {"export.generation"}]
+    return plan
 
 
 def test_empty_affected_scopes_do_not_mutate_or_version_the_graph() -> None:
@@ -40,9 +52,7 @@ def test_scopes_outside_the_declared_change_are_rejected(mismatch_source: str) -
     elif mismatch_source == "decision_missing":
         mutation.decision.scopes.clear()
     else:
-        mutation.decision.attributes["requirements"]["export.generation"] = {
-            "format": "pdf"
-        }
+        mutation.decision.attributes["requirements"]["export.generation"] = {"format": "pdf"}
 
     result = authority.apply_decision_change(mutation)
 
@@ -94,9 +104,7 @@ def test_duplicate_decision_is_idempotently_rejected_without_a_version_bump() ->
     assert second.verdict is Verdict.HUMAN_REVIEW
     assert authority.graph.version_label == "graph-v18"
     assert [item.id for item in authority.graph.list_artifacts()].count("DEC-018") == 1
-    assert len(
-        [edge for edge in authority.graph.list_edges() if edge.source_id == "DEC-018"]
-    ) == 1
+    assert len([edge for edge in authority.graph.list_edges() if edge.source_id == "DEC-018"]) == 1
 
 
 def test_omitting_a_required_task_scope_cannot_receive_a_grant() -> None:
@@ -104,9 +112,7 @@ def test_omitting_a_required_task_scope_cannot_receive_a_grant() -> None:
     _, _, _, run = load_graph_fixture()
     incomplete_plan = run.plan.model_copy(deep=True)
     incomplete_plan.actions = [
-        action
-        for action in incomplete_plan.actions
-        if "export.authorization" not in action.scopes
+        action for action in incomplete_plan.actions if "export.authorization" not in action.scopes
     ]
 
     result = authority.evaluate_plan(
@@ -142,3 +148,68 @@ def test_unknown_task_and_mismatched_ticket_are_blocked() -> None:
     assert unknown.grant is None
     assert mismatched.verdict is Verdict.BLOCK
     assert mismatched.grant is None
+
+
+def test_authorize_does_not_inherit_another_requests_invalidation_report() -> None:
+    client = TestClient(authority_api.app)
+    assert client.post("/demo/reset").status_code == 200
+    mutation = client.post(
+        "/decisions/ingest",
+        json=load_decision_v18().model_dump(mode="json"),
+    )
+    assert mutation.status_code == 200
+
+    response = client.post(
+        "/authorize",
+        json={
+            "run_id": "RUN-UNRELATED",
+            "task_id": "TASK-101",
+            "plan": unrelated_valid_plan().model_dump(mode="json"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["invalidated_artifact_ids"] == []
+    assert response.json()["preserved_artifact_ids"] == []
+    assert response.json()["invalidation_path"] == []
+
+
+def test_the_in_process_loop_still_reports_its_own_invalidation_path() -> None:
+    authority = make_authority()
+    _, _, _, run = load_graph_fixture()
+    run.ticket_id = "TASK-102"
+    run.plan.id = "TASK-102"
+    run.plan.ticket_id = "TASK-102"
+    run.plan.actions = [
+        action for action in run.plan.actions if action.scopes == {"export.authorization"}
+    ]
+    controller = AgentLoopController(authority=authority, run=run)
+    controller.start()
+    authority.apply_decision_change(load_decision_v18())
+
+    result = controller.recheck()
+
+    assert result.invalidation_path == [
+        "DEC-018",
+        "DEC-004",
+        "SPEC-009",
+        "TICKET-100",
+        "TASK-102",
+    ]
+
+
+def test_evaluate_plan_without_a_report_returns_empty_provenance_fields() -> None:
+    authority = make_authority()
+    authority.apply_decision_change(load_decision_v18())
+
+    result = authority.evaluate_plan(
+        run_id="RUN-UNRELATED",
+        task_id="TASK-101",
+        plan=unrelated_valid_plan(),
+        report=None,
+    )
+
+    assert result.invalidated_artifact_ids == []
+    assert result.preserved_artifact_ids == []
+    assert result.evidence_refs == []
+    assert result.invalidation_path == []

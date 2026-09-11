@@ -86,8 +86,7 @@ class IntentAuthority:
             return MutationResult(
                 applied=False,
                 reason=(
-                    f"Decision status is {decision.approval_status}; "
-                    "only approved decisions apply."
+                    f"Decision status is {decision.approval_status}; only approved decisions apply."
                 ),
                 graph_version=self.graph.version_label,
                 verdict=Verdict.HUMAN_REVIEW,
@@ -178,22 +177,23 @@ class IntentAuthority:
                 verdict=Verdict.HUMAN_REVIEW,
             )
 
-        self.graph.add_artifact(decision)
-        self.graph.add_edge(
-            Edge(
-                source_id=decision.id,
-                target_id=mutation.supersedes_id,
-                kind=EdgeKind.SUPERSEDES,
-                scopes=mutation.affected_scopes,
-                evidence_ref=decision.source_ref,
+        with self.graph.transaction():
+            self.graph.add_artifact(decision)
+            self.graph.add_edge(
+                Edge(
+                    source_id=decision.id,
+                    target_id=mutation.supersedes_id,
+                    kind=EdgeKind.SUPERSEDES,
+                    scopes=mutation.affected_scopes,
+                    evidence_ref=decision.source_ref,
+                )
             )
-        )
-        graph_version = self.graph.increment_version()
-        report = self._propagate_invalidation(
-            changed_decision=decision,
-            superseded_id=mutation.supersedes_id,
-            affected_scopes=mutation.affected_scopes,
-        )
+            graph_version = self.graph.increment_version()
+            report = self._propagate_invalidation(
+                changed_decision=decision,
+                superseded_id=mutation.supersedes_id,
+                affected_scopes=mutation.affected_scopes,
+            )
         report.graph_version = graph_version
         self.last_report = report
         return MutationResult(
@@ -247,15 +247,22 @@ class IntentAuthority:
             [(superseded.id, [changed_decision.id, superseded.id])]
         )
         visited: set[str] = {superseded.id}
+        subgraph_artifacts, subgraph_edges = self.graph.downstream_subgraph(
+            superseded.id, DOWNSTREAM_EDGES
+        )
+        artifacts_by_id = {artifact.id: artifact for artifact in subgraph_artifacts}
+        edges_by_source: dict[str, list[Edge]] = {}
+        for edge in subgraph_edges:
+            edges_by_source.setdefault(edge.source_id, []).append(edge)
 
         while queue:
             current_id, current_path = queue.popleft()
             outgoing = sorted(
-                self.graph.outgoing_edges(current_id, DOWNSTREAM_EDGES),
+                edges_by_source.get(current_id, []),
                 key=authority_edge_sort_key,
             )
             for edge in outgoing:
-                child = self.graph.get_artifact(edge.target_id)
+                child = artifacts_by_id[edge.target_id]
                 record_evidence(edge.evidence_ref)
                 record_evidence(child.source_ref)
                 intersection = child.scopes & affected_scopes
@@ -286,9 +293,7 @@ class IntentAuthority:
             if artifact.kind in UPSTREAM_ARTIFACT_KINDS:
                 upstream_chain.append(artifact.id)
         stopped_work = [
-            artifact.id
-            for artifact in affected_artifacts
-            if artifact.kind in STOPPABLE_WORK_KINDS
+            artifact.id for artifact in affected_artifacts if artifact.kind in STOPPABLE_WORK_KINDS
         ]
         preserved_task_ids = [
             artifact_id
@@ -351,7 +356,15 @@ class IntentAuthority:
             result[scope] = deepcopy(requirement)
         return result
 
-    def evaluate_plan(self, *, run_id: str, task_id: str, plan: AgentPlan) -> AuthorizationResult:
+    def evaluate_plan(
+        self,
+        *,
+        run_id: str,
+        task_id: str,
+        plan: AgentPlan,
+        # The None default is required because Track B call sites do not yet pass report.
+        report: InvalidationReport | None = None,
+    ) -> AuthorizationResult:
         requirements = self.current_requirements()
         mismatches: list[PlanMismatch] = []
         affected_scopes: set[str] = set()
@@ -398,9 +411,8 @@ class IntentAuthority:
                         referenced_task = self.graph.get_artifact(referenced_task_id)
                     except KeyError:
                         pass
-                reference_scopes = (
-                    action.scopes
-                    | (referenced_task.invalidated_scopes if referenced_task else set())
+                reference_scopes = action.scopes | (
+                    referenced_task.invalidated_scopes if referenced_task else set()
                 )
                 reference_scope = (
                     sorted(reference_scopes)[0] if reference_scopes else "task.reference"
@@ -455,13 +467,11 @@ class IntentAuthority:
         preserved_ids: list[str] = []
         evidence_refs: list[str] = []
         path: list[str] = []
-        if self.last_report is not None:
-            invalidated_ids = list(self.last_report.affected_artifact_ids)
-            preserved_ids = list(self.last_report.preserved_artifact_ids)
-            evidence_refs = list(self.last_report.evidence_refs)
-            plan_paths = [
-                item.node_ids for item in self.last_report.paths if item.artifact_id == plan.id
-            ]
+        if report is not None:
+            invalidated_ids = list(report.affected_artifact_ids)
+            preserved_ids = list(report.preserved_artifact_ids)
+            evidence_refs = list(report.evidence_refs)
+            plan_paths = [item.node_ids for item in report.paths if item.artifact_id == plan.id]
             if plan_paths:
                 path = plan_paths[0]
 
@@ -560,7 +570,12 @@ class IntentAuthority:
                 payload=payload,
             )
 
-        fresh = self.evaluate_plan(run_id=run_id, task_id=task_id, plan=plan)
+        fresh = self.evaluate_plan(
+            run_id=run_id,
+            task_id=task_id,
+            plan=plan,
+            report=self.last_report,
+        )
         if fresh.verdict is not Verdict.ALLOW:
             return GrantVerificationResult(
                 valid=False,

@@ -37,6 +37,7 @@ def _edge_payload(edge: Edge) -> dict[str, Any]:
     return payload
 
 
+# Deliberately sorted for content parity; ordering/error parity: test_graph_store_contract.py.
 def _canonical_graph(store: GraphStore) -> dict[str, object]:
     artifacts = sorted(
         (_artifact_payload(artifact) for artifact in store.list_artifacts()),

@@ -7,9 +7,7 @@ from writai.authority.engine import IntentAuthority
 from writai.domain import AgentPlan, AgentRun, AuthorizationResult, LoopState, Verdict
 
 
-def replan_for_requirements(
-    plan: AgentPlan, requirements: dict[str, dict[str, Any]]
-) -> AgentPlan:
+def replan_for_requirements(plan: AgentPlan, requirements: dict[str, dict[str, Any]]) -> AgentPlan:
     corrected = plan.model_copy(deep=True)
     corrected.id = "PLAN-028"
     for action in corrected.actions:
@@ -50,6 +48,7 @@ class AgentLoopController:
             run_id=self.run.run_id,
             task_id=self.run.ticket_id,
             plan=self.run.plan,
+            report=self.authority.last_report,
         )
         self._apply_result(result)
         self.run.history.append(f"Initial verification: {result.verdict.value}")
@@ -66,6 +65,7 @@ class AgentLoopController:
             run_id=self.run.run_id,
             task_id=self.run.ticket_id,
             plan=self.run.plan,
+            report=self.authority.last_report,
         )
         self._apply_result(result)
         self.run.history.append(f"Reauthorization: {result.verdict.value}")
@@ -79,6 +79,7 @@ class AgentLoopController:
             run_id=self.run.run_id,
             task_id=self.run.ticket_id,
             plan=self.run.plan,
+            report=self.authority.last_report,
         )
         self._apply_result(result)
         self.run.history.append(f"Corrected plan verification: {result.verdict.value}")
@@ -109,7 +110,10 @@ def build_langgraph_workflow(authority: IntentAuthority):
     def verify_node(state: WorkflowState) -> WorkflowState:
         run = state["run"]
         authorization = authority.evaluate_plan(
-            run_id=run.run_id, task_id=run.ticket_id, plan=run.plan
+            run_id=run.run_id,
+            task_id=run.ticket_id,
+            plan=run.plan,
+            report=authority.last_report,
         )
         return {**state, "authorization": authorization}
 
