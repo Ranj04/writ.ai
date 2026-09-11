@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import logging
+import sqlite3
+import stat
+import statistics
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event, Thread
-from typing import cast
+from typing import Any, TypeAlias, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -50,7 +55,15 @@ from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
 from writai.workspaces.repository import (
     JsonFileLiveWorkspaceRepository,
     LiveWorkspaceConflict,
+    LiveWorkspaceNotFound,
+    SqliteLiveWorkspaceRepository,
+    _WorkspaceStoreDocument,
+    open_live_workspace_repository,
 )
+
+#: Both durable stores. Every service-level test below runs against each, so a
+#: workspace flow that passes on the JSON document also passes on SQLite.
+STORE_SUFFIXES = ("json", "sqlite3")
 
 
 def workspace_import() -> LiveWorkspaceImportRequest:
@@ -589,7 +602,7 @@ def test_workspace_slack_binding_round_trips_and_reaches_authority_context(
     assert imported.json()["slack_binding"]["hexclave_team_id"] == (
         "hex-team-refunds"
     )
-    stored = JsonFileLiveWorkspaceRepository(store_path).get("refund-control")
+    stored = open_live_workspace_repository(store_path).get("refund-control")
     assert stored.definition.slack_binding == definition.slack_binding
 
     assert _approve_workspace_baseline(agent).status_code == 200
@@ -606,15 +619,16 @@ def test_workspace_slack_binding_round_trips_and_reaches_authority_context(
     assert context["slack_binding"] == slack_binding.model_dump(mode="json")
 
 
-@pytest.fixture
+@pytest.fixture(params=STORE_SUFFIXES)
 def live_services(
+    request: pytest.FixtureRequest,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[TestClient, TestClient, TestClient, Path]:
     authority = TestClient(authority_api.app)
     agent = TestClient(agent_api.app)
     executor = TestClient(executor_api.app)
-    store_path = tmp_path / "live-workspaces.json"
+    store_path = tmp_path / f"live-workspaces.{request.param}"
 
     monkeypatch.setattr(
         authority_api,
@@ -629,7 +643,7 @@ def live_services(
         agent_api,
         "workspace_orchestrator",
         LiveWorkspaceOrchestrator(
-            repository=JsonFileLiveWorkspaceRepository(store_path)
+            repository=open_live_workspace_repository(store_path)
         ),
     )
 
@@ -880,9 +894,7 @@ def test_missing_baseline_confirmation_is_audited_before_permission_lookup(
     assert event["data"]["disposition"] == "MISSING_CONFIRMATION"
     assert event["data"]["permission_id"] == "finance-admin"
     assert event["data"]["confirmed_proposal_fingerprint"] is None
-    assert "test-user:finance-admin" not in store_path.read_text(
-        encoding="utf-8"
-    )
+    assert b"test-user:finance-admin" not in store_path.read_bytes()
 
 
 def test_baseline_approval_binds_current_proposal_and_persists_evidence(
@@ -989,7 +1001,7 @@ def test_baseline_approval_binds_current_proposal_and_persists_evidence(
     )
     assert permission_calls == [("finance-admin", "finance-admin")]
 
-    stored = JsonFileLiveWorkspaceRepository(store_path).get(
+    stored = open_live_workspace_repository(store_path).get(
         "refund-control"
     )
     assert stored.baseline_approval_evidence is not None
@@ -1137,9 +1149,7 @@ def test_missing_decision_confirmation_is_audited_without_permission_lookup(
     assert event["data"]["proposal_instance_id"] == (
         proposed["pending_proposal_instance_id"]
     )
-    assert "test-user:finance-admin" not in store_path.read_text(
-        encoding="utf-8"
-    )
+    assert b"test-user:finance-admin" not in store_path.read_bytes()
 
 
 @pytest.mark.parametrize(
@@ -1195,9 +1205,7 @@ def test_decision_permission_rejections_are_durable_and_non_mutating(
     assert event["data"]["disposition"] == disposition
     assert event["data"]["approver_user_id"] == "finance-admin"
     assert event["data"]["permission_id"] == "finance-admin"
-    assert "test-user:finance-admin" not in store_path.read_text(
-        encoding="utf-8"
-    )
+    assert b"test-user:finance-admin" not in store_path.read_bytes()
 
 
 def test_caller_cannot_impersonate_a_hexclave_user_in_approval_body(
@@ -1458,7 +1466,7 @@ def test_approval_evidence_is_persisted_with_history_and_survives_reload(
     ) == 1
 
     reloaded = LiveWorkspaceView.from_record(
-        JsonFileLiveWorkspaceRepository(store_path).get("refund-control")
+        open_live_workspace_repository(store_path).get("refund-control")
     ).model_dump(mode="json")
     assert reloaded["approved_mutations"][0]["approval_evidence"] == evidence
 
@@ -1584,7 +1592,7 @@ def test_live_workspace_service_flow_is_real_selective_and_persistent(
     assert rejection["data"]["permission_id"] == "finance-admin"
     _assert_no_signed_token(complete)
 
-    persisted = JsonFileLiveWorkspaceRepository(store_path).get("refund-control")
+    persisted = open_live_workspace_repository(store_path).get("refund-control")
     assert persisted.status is LiveWorkspaceStatus.COMPLETE
     assert persisted.initial_authorization is not None
     assert persisted.initial_authorization.grant is not None
@@ -1917,7 +1925,7 @@ def test_legacy_workspace_record_without_supervisor_loads_safely(
         encoding="utf-8",
     )
 
-    loaded = JsonFileLiveWorkspaceRepository(store_path).get("refund-control")
+    loaded = open_live_workspace_repository(store_path).get("refund-control")
 
     assert loaded.supervisor is None
     assert LiveWorkspaceView.from_record(loaded).supervisor is None
@@ -1954,7 +1962,7 @@ def test_restart_rehydrates_authority_by_replaying_approved_changes(
         agent_api,
         "workspace_orchestrator",
         LiveWorkspaceOrchestrator(
-            repository=JsonFileLiveWorkspaceRepository(store_path)
+            repository=open_live_workspace_repository(store_path)
         ),
     )
 
@@ -2042,7 +2050,7 @@ def test_completion_rechecks_persisted_stale_snapshot_proof(
     )
     assert reauthorized.json()["status"] == "reauthorized"
 
-    repository = JsonFileLiveWorkspaceRepository(store_path)
+    repository = open_live_workspace_repository(store_path)
     record = repository.get("refund-control")
     record.initial_verification = WorkspaceExecutionResult(
         applied=False,
@@ -2427,3 +2435,398 @@ def test_existing_context_with_wrong_lineage_is_rebuilt_before_mutation(
         if artifact["id"] == "DEC-REFUND-1"
     )
     assert baseline["text"] == workspace_import().baseline_decision.text
+
+
+# --- Store properties: cost, permissions, migration ---------------------------
+
+_Store: TypeAlias = JsonFileLiveWorkspaceRepository | SqliteLiveWorkspaceRepository
+StoreFactory = Callable[[Path], _Store]
+
+#: The JSON parameters below are ``xfail(strict=True)`` on purpose: the document
+#: store's O(n) ``get()`` and its world-readable write window are documented
+#: properties of a compatibility store, and a strict xfail is how this suite
+#: proves the SQLite store fixed them rather than that a test was deleted.
+JSON_STORE_REPARSES = pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "the JSON store reparses on every get(); this is a documented property, "
+        "not a bug to hide"
+    ),
+)
+JSON_STORE_WRITE_WINDOW = pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "the JSON store renames a umask-mode temp file over the target and only "
+        "then chmods it; the window is a documented property of the legacy store"
+    ),
+)
+
+
+def _imported_record(workspace_id: str = "refund-control") -> LiveWorkspaceRecord:
+    definition = workspace_import()
+    definition.id = workspace_id
+    return LiveWorkspaceRecord(
+        definition=definition,
+        context_id=f"live-{workspace_id}",
+        graph_version="graph-v17",
+        current_plan=definition.plan,
+    )
+
+
+def _populated_store(path: Path, factory: StoreFactory, count: int) -> tuple[_Store, str]:
+    """``count`` deep copies of one imported record, ids ``ws-00000``..."""
+
+    base = _imported_record()
+    records = []
+    for index in range(count):
+        record = base.model_copy(deep=True)
+        record.definition.id = f"ws-{index:05d}"
+        records.append(record)
+    if factory is JsonFileLiveWorkspaceRepository:
+        json_repository = JsonFileLiveWorkspaceRepository(path)
+        json_repository._write(_WorkspaceStoreDocument(workspaces=records))
+        return json_repository, records[-1].definition.id
+    repository = factory(path)
+    for record in records:
+        repository.create(record)
+    return repository, records[-1].definition.id
+
+
+def _median_get_ms(repository: _Store, workspace_id: str) -> float:
+    samples = []
+    for _ in range(20):
+        started = time.perf_counter()
+        repository.get(workspace_id)
+        samples.append((time.perf_counter() - started) * 1000)
+    return statistics.median(samples)
+
+
+@pytest.mark.parametrize(
+    ("factory", "suffix"),
+    [
+        pytest.param(JsonFileLiveWorkspaceRepository, "json", marks=JSON_STORE_REPARSES),
+        pytest.param(SqliteLiveWorkspaceRepository, "sqlite3"),
+    ],
+    ids=["json", "sqlite"],
+)
+def test_workspace_get_cost_does_not_grow_with_unrelated_workspaces(
+    tmp_path: Path, factory: StoreFactory, suffix: str
+) -> None:
+    """``get()`` is what every ``PreToolUse`` hook pays for; it must not scale
+    with the number of unrelated workspaces in the store.
+
+    B1 step 1 measured the JSON store at 0.24 ms (N=1), 3.79 ms (N=50) and
+    17.05 ms (N=200): a t200/t1 ratio of 72.5. SQLite measured 0.30 / 0.35 /
+    0.26 ms for the same sizes. The ratio, not the wall clock, is asserted so
+    the test means the same thing on a slow CI runner.
+    """
+
+    timings: dict[int, float] = {}
+    for count in (1, 200):
+        repository, last_id = _populated_store(
+            tmp_path / f"store-{count}.{suffix}", factory, count
+        )
+        timings[count] = _median_get_ms(repository, last_id)
+    assert timings[200] / timings[1] < 20, timings
+
+
+@pytest.mark.parametrize(
+    ("factory", "suffix"),
+    [
+        pytest.param(JsonFileLiveWorkspaceRepository, "json", marks=JSON_STORE_WRITE_WINDOW),
+        pytest.param(SqliteLiveWorkspaceRepository, "sqlite3"),
+    ],
+    ids=["json", "sqlite"],
+)
+def test_workspace_store_is_never_group_or_world_readable_during_a_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    factory: StoreFactory,
+    suffix: str,
+) -> None:
+    """The store serialises signed grants. No write may leave it readable by
+    anyone but the owner, not even between a rename and the chmod after it."""
+
+    path = tmp_path / f"live-workspaces.{suffix}"
+    repository, workspace_id = _populated_store(path, factory, 1)
+    observed: list[str] = []
+
+    original_replace = Path.replace
+
+    def spying_replace(self: Path, target: str | Path) -> Path:
+        result = original_replace(self, target)
+        observed.append(oct(stat.S_IMODE(Path(target).stat().st_mode)))
+        return result
+
+    monkeypatch.setattr(Path, "replace", spying_replace)
+    record = repository.get(workspace_id)
+    record.graph_version = "graph-v18"
+    repository.save(record)
+    if factory is SqliteLiveWorkspaceRepository:
+        # No rename happens on this store: sample the mode at every connection
+        # the write opens instead, plus any WAL sidecar SQLite left behind.
+        assert observed == []
+        _spy_on_sqlite_connect(monkeypatch, observed)
+        record.graph_version = "graph-v19"
+        repository.save(record)
+        for candidate in (path, path.with_name(f"{path.name}-wal")):
+            if candidate.exists():
+                observed.append(oct(stat.S_IMODE(candidate.stat().st_mode)))
+    assert observed, "the write was not observed"
+    assert set(observed) == {"0o600"}, observed
+
+
+def _spy_on_sqlite_connect(
+    monkeypatch: pytest.MonkeyPatch, observed: list[str]
+) -> None:
+    """Record the store file's mode at the instant SQLite opens it.
+
+    The belt-and-braces ``chmod`` after every connection would hide a
+    umask-mode creation from any check that runs after construction returns,
+    so the mode is sampled *before* each ``connect`` instead.
+    """
+
+    real_connect = sqlite3.connect
+
+    def spying_connect(
+        database: str | Path, *args: Any, **kwargs: Any
+    ) -> sqlite3.Connection:
+        target = Path(database)
+        observed.append(
+            oct(stat.S_IMODE(target.stat().st_mode)) if target.exists() else "absent"
+        )
+        return real_connect(database, *args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", spying_connect)
+
+
+def test_sqlite_store_file_is_created_owner_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "live-workspaces.sqlite3"
+    observed: list[str] = []
+    _spy_on_sqlite_connect(monkeypatch, observed)
+
+    SqliteLiveWorkspaceRepository(path)
+
+    # Owner-only before SQLite ever touched it, and still owner-only afterwards.
+    assert observed and set(observed) == {"0o600"}, observed
+    assert oct(stat.S_IMODE(path.stat().st_mode)) == "0o600"
+
+
+def test_json_store_is_migrated_into_sqlite_on_first_start(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    legacy_path = tmp_path / "live-workspaces.json"
+    legacy = JsonFileLiveWorkspaceRepository(legacy_path)
+    first = _imported_record("ws-first")
+    second = _imported_record("ws-second")
+    second.graph_version = "graph-v18"
+    legacy.create(first)
+    legacy.create(second)
+
+    with caplog.at_level(logging.INFO, logger="writai.workspaces.repository"):
+        repository = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+
+    assert repository.get("ws-first") == first
+    assert repository.get("ws-second") == second
+    assert legacy_path.exists(), "the JSON store must be left in place"
+    assert legacy.list() == [second, first]
+    migration_logs = [
+        message for message in caplog.messages if "Migrated 2 Live Workspace" in message
+    ]
+    assert len(migration_logs) == 1
+    assert str(legacy_path) in migration_logs[0]
+    assert str(tmp_path / "live-workspaces.sqlite3") in migration_logs[0]
+
+    # A second start finds the SQLite file and does not migrate again.
+    with caplog.at_level(logging.INFO, logger="writai.workspaces.repository"):
+        caplog.clear()
+        SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    assert not [m for m in caplog.messages if "Migrated" in m]
+
+
+def test_an_unreadable_json_store_leaves_no_sqlite_file_behind(tmp_path: Path) -> None:
+    """If migration cannot read the legacy document, nothing is created, so the
+    next start still tries to migrate instead of silently starting empty."""
+
+    (tmp_path / "live-workspaces.json").write_text("{not json", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="unreadable"):
+        SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    assert not (tmp_path / "live-workspaces.sqlite3").exists()
+
+
+def test_a_json_document_under_the_sqlite_name_is_refused_with_advice(
+    tmp_path: Path,
+) -> None:
+    """T0 moved the default path to ``.sqlite3`` before this store existed, so a
+    developer's tree can hold a JSON document under that name."""
+
+    path = tmp_path / "live-workspaces.sqlite3"
+    JsonFileLiveWorkspaceRepository(path).create(_imported_record())
+    with pytest.raises(RuntimeError, match="rename it to live-workspaces.json"):
+        SqliteLiveWorkspaceRepository(path)
+
+
+def test_sqlite_store_list_orders_newest_first_and_keeps_insertion_order_on_ties(
+    tmp_path: Path,
+) -> None:
+    repository = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    older = _imported_record("ws-older")
+    older.updated_at = datetime(2026, 1, 1, tzinfo=UTC)
+    tie_a = _imported_record("ws-tie-a")
+    tie_b = _imported_record("ws-tie-b")
+    tie_b.updated_at = tie_a.updated_at
+    for record in (tie_a, older, tie_b):
+        repository.create(record)
+    assert [record.definition.id for record in repository.list()] == [
+        "ws-tie-a",
+        "ws-tie-b",
+        "ws-older",
+    ]
+
+
+@pytest.mark.parametrize(
+    "factory", [JsonFileLiveWorkspaceRepository, SqliteLiveWorkspaceRepository],
+    ids=["json", "sqlite"],
+)
+def test_mutate_applies_atomically_and_rejects_unknown_or_renamed_workspaces(
+    tmp_path: Path, factory: StoreFactory
+) -> None:
+    repository = factory(tmp_path / "live-workspaces.store")
+    repository.create(_imported_record())
+
+    def advance(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+        record.graph_version = "graph-v18"
+        return record
+
+    returned = repository.mutate("refund-control", advance)
+    assert returned.graph_version == "graph-v18"
+    assert repository.get("refund-control").graph_version == "graph-v18"
+
+    with pytest.raises(LiveWorkspaceNotFound):
+        repository.mutate("missing", advance)
+
+    def rename(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+        record.definition.id = "someone-else"
+        return record
+
+    with pytest.raises(LiveWorkspaceConflict, match="may not change the workspace id"):
+        repository.mutate("refund-control", rename)
+    assert repository.get("refund-control").definition.id == "refund-control"
+
+    def explode(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+        record.graph_version = "graph-v99"
+        raise ValueError("authority rejected the change")
+
+    with pytest.raises(ValueError, match="authority rejected"):
+        repository.mutate("refund-control", explode)
+    assert repository.get("refund-control").graph_version == "graph-v18"
+
+
+@pytest.mark.parametrize(
+    "factory", [JsonFileLiveWorkspaceRepository, SqliteLiveWorkspaceRepository],
+    ids=["json", "sqlite"],
+)
+def test_store_save_or_get_of_an_unknown_workspace_is_not_found(
+    tmp_path: Path, factory: StoreFactory
+) -> None:
+    repository = factory(tmp_path / "live-workspaces.store")
+    with pytest.raises(LiveWorkspaceNotFound):
+        repository.save(_imported_record())
+    with pytest.raises(LiveWorkspaceNotFound):
+        repository.get("refund-control")
+    assert repository.list() == []
+
+
+def test_a_failed_migration_leaves_no_sqlite_file_behind(tmp_path: Path) -> None:
+    """A legacy document that cannot be inserted (here: a duplicated id) must
+    not leave an empty SQLite file that would silently skip the migration on
+    the next start."""
+
+    legacy_path = tmp_path / "live-workspaces.json"
+    duplicated = [_imported_record("ws-twice"), _imported_record("ws-twice")]
+    JsonFileLiveWorkspaceRepository(legacy_path)._write(
+        _WorkspaceStoreDocument(workspaces=duplicated)
+    )
+    path = tmp_path / "live-workspaces.sqlite3"
+
+    with pytest.raises(LiveWorkspaceConflict, match="ws-twice"):
+        SqliteLiveWorkspaceRepository(path)
+
+    assert not path.exists()
+    assert not path.with_name(f"{path.name}-wal").exists()
+    assert legacy_path.exists()
+
+
+def test_sqlite_store_reports_an_unavailable_database_on_every_operation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "live-workspaces.sqlite3"
+    repository = SqliteLiveWorkspaceRepository(path)
+    repository.create(_imported_record())
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP TABLE live_workspaces")
+
+    record = _imported_record("ws-other")
+    for operation in (
+        lambda: repository.get("refund-control"),
+        lambda: repository.list(),
+        lambda: repository.create(record),
+        lambda: repository.save(record),
+        lambda: repository.mutate("refund-control", lambda current: current),
+    ):
+        with pytest.raises(RuntimeError, match="unavailable"):
+            operation()
+
+
+def test_sqlite_store_reports_a_connection_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*_args: Any, **_kwargs: Any) -> sqlite3.Connection:
+        raise sqlite3.OperationalError("unable to open database file")
+
+    monkeypatch.setattr(sqlite3, "connect", refuse)
+    with pytest.raises(RuntimeError, match="unavailable"):
+        SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+
+
+def test_sqlite_store_refuses_to_run_with_insecure_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "live-workspaces.sqlite3"
+
+    def cannot_chmod(self: Path, mode: int, *args: Any, **kwargs: Any) -> None:
+        raise PermissionError(f"chmod refused: {self}")
+
+    monkeypatch.setattr(Path, "chmod", cannot_chmod)
+    with pytest.raises(RuntimeError, match="permissions could not be secured"):
+        SqliteLiveWorkspaceRepository(path)
+
+
+def test_sqlite_store_reports_a_corrupt_row_instead_of_a_validation_trace(
+    tmp_path: Path,
+) -> None:
+    import sqlite3
+
+    path = tmp_path / "live-workspaces.sqlite3"
+    repository = SqliteLiveWorkspaceRepository(path)
+    repository.create(_imported_record())
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "UPDATE live_workspaces SET record_json = '{\"definition\": 1}'"
+        )
+    with pytest.raises(RuntimeError, match="unreadable record: refund-control"):
+        repository.get("refund-control")
+
+
+def test_store_routing_follows_the_configured_suffix(tmp_path: Path) -> None:
+    assert isinstance(
+        open_live_workspace_repository(tmp_path / "live-workspaces.json"),
+        JsonFileLiveWorkspaceRepository,
+    )
+    for suffix in ("sqlite3", "db"):
+        assert isinstance(
+            open_live_workspace_repository(tmp_path / f"live-workspaces.{suffix}"),
+            SqliteLiveWorkspaceRepository,
+        )

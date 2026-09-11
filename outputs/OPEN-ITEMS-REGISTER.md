@@ -108,3 +108,35 @@ separate change:
 | T0-2 | **Two documented variables are read by nothing in the tree:** `WRITAI_PUBLIC_WEBHOOK_URL` and `HEXCLAVE_PUBLISHABLE_CLIENT_KEY` in `.env.example`. `test_every_documented_env_var_has_a_settings_field` allow-lists them literally with that note rather than deleting operator documentation. | **LOGGED.** Track C owns the docs; decide whether to wire or drop them. |
 | T0-3 | **`workspace_store` now defaults to `.writai/live-workspaces.sqlite3` before the SQLite store exists.** Until Track B's B1 lands, `agent_api.py` still constructs `JsonFileLiveWorkspaceRepository` against that path (a JSON document under a `.sqlite3` name), and the sibling stores derived in `authority_api.py:730` and `agent_api.py:680` inherit the suffix. Gate is green; nothing asserts on the literal default. | **HANDED TO TRACK B** (B1 suffix routing and migration). |
 | T0-4 | **The `neo4j` CI job passes `--no-cov`.** With `fail_under = 83` in `pyproject.toml`, a marker-selected run of two tests measures 35.8% and would fail for no reason. The full-suite floor is enforced by the `check` job. | **BY DESIGN**, disclosed here because the plan text omitted the flag. |
+
+---
+
+## Plan execution — Track B
+
+### B1 — SQLite behind `LiveWorkspaceRepository`
+
+Measured on this tree (Linux/WSL2, Python 3.11.2, umask `0o022`, median of 20
+`get()` calls on the **last** id in a store of N deep copies of one imported record):
+
+| N workspaces | JSON `get()` | SQLite `get()` |
+|---|---|---|
+| 1 | 0.24 ms | 0.30 ms |
+| 50 | 3.79 ms | 0.35 ms |
+| 200 | 17.05 ms | 0.26 ms |
+
+JSON `t200 / t1` = **72.5** (a second run gave 0.26 / 4.00 / 16.88 ms, ratio 64.0).
+SQLite `t200 / t1` ≈ 0.9. The source plan's 0.84 / 19.6 / 97.8 ms were **not**
+reproduced on this machine; the shape (linear in store size) was.
+
+Observed file mode **immediately after `temporary.replace()` inside the JSON store's
+`save()`**: `0o644`. The `chmod(0o600)` that follows closes the window, so the mode
+observed after `save()` returns is `0o600`. The SQLite file is `0o600` from creation
+(`os.open(..., 0o600)` before the first `sqlite3.connect`), sampled at every connect.
+
+| # | Item | Disposition |
+|---|---|---|
+| B1-1 | **`mutate()` is not on the `LiveWorkspaceRepository` Protocol and the three authorization-bearing call sites are not migrated.** Premise (B1 steps 6–7): *"Add one method to the Protocol … Implement on both repositories … Migrate exactly three call sites."* Reality: the Protocol is implemented structurally by `FailFinalSaveRepository` at `backend/tests/test_workspace_approval_recovery.py:185-206`, passed as a `LiveWorkspaceRepository` at `:530` and `:535` and driving `approve_decision` at `:539` — and that file is in **no** track's ownership row. With `mutate` on the Protocol, `python -m mypy backend` reports 30 errors in three files: 28 in Track B's own `test_claude_code_runtime.py` and `test_claude_code_enforcement.py` (fixable), 2 at the lines above (not). Migrating `approve_decision` would also raise `AttributeError: 'FailFinalSaveRepository' object has no attribute 'mutate'` in `test_final_repository_save_failure_reuses_durable_authorization`. **Delivered instead:** `mutate()` on both concrete stores (`workspaces/repository.py`), atomic under one `BEGIN IMMEDIATE` / one `RLock`, proven by the two-process test in `test_service_concurrency.py`. **To unblock:** a four-line delegating `mutate` on `FailFinalSaveRepository`, then add `mutate` to the Protocol and migrate `session_enforcement.py:324` `mark_redirect_delivered`, `orchestrator.py:816` `approve_baseline` (its `save` at `:870`) and `orchestrator.py:1116` `approve_decision` (its first `save` at `:1169`). The goal still matters: those three are the sites where a lost update loses an *authorization decision*. | **ESCALATED — ownership gap.** |
+| B1-2 | **Orchestrator read-modify-write sites left on `get()` → mutate → `save()`, by instruction** (`AGENTS.md:34` invariant 8; each loses display state, not an authorization decision). `orchestrator.py` — `preview_decision` get `:717`; `authorize` get `:875` / save `:904`; `propose_decision` `:913` / `:961`; `cancel_pending_decision` `:966` / `:989`; `record_approval_rejection` `:1009` / `:1097`; `approve_decision`'s later saves `:1191`, `:1198`, `:1215`, `:1240`, `:1280`; `verify_initial_grant` `:1285` / `:1328`; `update_plan` `:1337` / `:1362`; `reauthorize` `:1367` / `:1405`; `verify_replacement_grant` `:1410` / `:1450`. Plus the two B1-1 sites once unblocked. | **FOLLOW-UP**, own change with own tests. |
+| B1-3 | **Sibling stores inherit the `.sqlite3` suffix but stay JSON documents.** `services/authority_api.py:731` `_workspace_store_sibling` and `services/agent_api.py:680` `_crustdata_replay_store` derive `live-workspaces-<label>.sqlite3` names for `JsonCrustDataDeliveryReplayStore` and the Slack approval-thread / delivery stores. Functional; misleadingly named. T0-3 predicted this. Not changed in B1 — it is not the enforcement hot path and it is not a `LiveWorkspaceRepository`. | **LOGGED.** |
+| B1-4 | **A JSON document sitting under the `.sqlite3` name** (any tree that ran between T0.3 and B1) is refused at startup with `RuntimeError: Live Workspace store is not a SQLite database: … rename it to live-workspaces.json and restart to migrate it.` Nothing is renamed or deleted automatically; the migration only reads a sibling `.json` and leaves it in place. | **BY DESIGN**, disclosed. |
+| B1-5 | **`live_services` in `test_live_workspaces.py` now runs every service-level workspace test against both stores** (fixture `params=("json", "sqlite3")`), so the existing flows are proven on SQLite rather than assumed. Three assertions that scanned the store as UTF-8 text now scan bytes, because the SQLite file is binary. Test count in that file: 74 → 88 (+2 xfailed). | **DISCLOSED.** |
