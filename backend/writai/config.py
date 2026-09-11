@@ -86,11 +86,21 @@ class Settings:
         "WRITAI_EXECUTOR_URL", "http://localhost:8003"
     ).rstrip("/")
     service_timeout_seconds: float = float(os.getenv("WRITAI_SERVICE_TIMEOUT_SECONDS", "5"))
+    log_level: str = os.getenv("WRITAI_LOG_LEVEL", "INFO")
+    # The public intake limiter is per uvicorn worker: N workers allow N x this value.
+    rate_limit_enabled: bool = _env_flag("WRITAI_RATE_LIMIT_ENABLED", True)
+    public_intake_rate_limit_per_minute: int = int(
+        os.getenv("WRITAI_PUBLIC_INTAKE_RATE_LIMIT_PER_MINUTE", "60")
+    )
     execution_provider: str = os.getenv("WRITAI_EXECUTION_PROVIDER", "fixture").strip().lower()
+    # A .json suffix selects the legacy JsonFileLiveWorkspaceRepository; any other suffix
+    # selects the SQLite store, which migrates an existing sibling .json store on first start.
     workspace_store: str = os.getenv(
         "WRITAI_WORKSPACE_STORE",
-        ".writai/live-workspaces.json",
+        ".writai/live-workspaces.sqlite3",
     )
+    # Upper bound on live per-workspace authority contexts held in memory at once.
+    max_authority_contexts: int = int(os.getenv("WRITAI_MAX_AUTHORITY_CONTEXTS", "256"))
     neo4j_uri: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     neo4j_username: str = os.getenv("NEO4J_USERNAME", "neo4j")
     neo4j_password: str = os.getenv("NEO4J_PASSWORD", "writai-demo")
@@ -99,6 +109,7 @@ class Settings:
     gemini_model: str = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
     gemini_base_url: str = os.getenv("GEMINI_BASE_URL", DEFAULT_GEMINI_BASE_URL).rstrip("/")
     gemini_timeout_seconds: float = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "30"))
+    gemini_max_output_tokens: int = int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "2048"))
     # Extraction provider: fixture | gemini | venice. Venice speaks the OpenAI-compatible
     # API, so LLM_MODEL/LLM_BACKUP_MODEL are Venice model slugs. LLM_TIMEOUT_MS is in
     # milliseconds to match the vendor's own naming; it is normalised to seconds here.

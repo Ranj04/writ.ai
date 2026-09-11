@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pathlib
+import re
 import secrets
 from dataclasses import replace
 
@@ -65,6 +67,52 @@ def test_explicit_reset_flag_can_opt_in(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("WRITAI_DEMO_RESET_ENABLED", "true")
 
     assert config._env_flag("WRITAI_DEMO_RESET_ENABLED", False) is True
+
+
+#: Variables .env.example documents that are read somewhere other than ``Settings``.
+#: Enumerated literally so a new one has to be justified here, not pattern-matched away.
+_READ_OUTSIDE_SETTINGS = frozenset(
+    {
+        # hooks/ scripts and the supervisor service read these from the environment directly
+        "WRITAI_HOOK_API_KEY",
+        # writai doctor probes read these; they are not runtime configuration
+        "COMPOSIO_SLACK_AUTH_CONFIG_ID",
+        "WRITAI_SLACK_CHANNEL_ID",
+        # writai approve reads the human approver's private key itself
+        "HEXCLAVE_APPROVER_USER_API_KEY",
+        # scripts/demo/lib.sh, demo infrastructure only
+        "SUPERSET_API_KEY",
+        # documented for operators, consumed by nothing in this tree today
+        "WRITAI_PUBLIC_WEBHOOK_URL",
+        "HEXCLAVE_PUBLISHABLE_CLIENT_KEY",
+        # the frontend build reads VITE_* through vite, never through Settings
+        "VITE_AUTHORITY_URL",
+        "VITE_AGENT_URL",
+        "VITE_EXECUTOR_URL",
+        "VITE_HEXCLAVE_PROJECT_ID",
+        "VITE_WRITAI_HEXCLAVE_SIGN_IN",
+        # the Neo4j driver set, also consumed by docker-compose and the neo4j CI job
+        "NEO4J_URI",
+        "NEO4J_USERNAME",
+        "NEO4J_PASSWORD",
+        "NEO4J_DATABASE",
+    }
+)
+
+
+def test_every_documented_env_var_has_a_settings_field() -> None:
+    """config.py is frozen after T0.3: a variable documented without a field is a drift."""
+
+    example = pathlib.Path(".env.example").read_text()
+    names = re.findall(r"^([A-Z][A-Z0-9_]*)=", example, flags=re.MULTILINE)
+    assert len(names) >= 30, "the .env.example regex stopped matching; the test is vacuous"
+
+    source = pathlib.Path("backend/writai/config.py").read_text()
+    undocumented_in_settings = [
+        name for name in names if name not in _READ_OUTSIDE_SETTINGS and name not in source
+    ]
+
+    assert undocumented_in_settings == []
 
 
 def test_production_refuses_to_start_on_the_demo_signing_secret() -> None:
