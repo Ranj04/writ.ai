@@ -32,7 +32,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from writai.config import Settings
+from writai.config import (
+    DEFAULT_DEMO_GRANT_SECRET,
+    DEMO_ENVIRONMENTS,
+    MIN_GRANT_SECRET_LENGTH,
+    Settings,
+)
 from writai.config import settings as default_settings
 
 PROBE_TIMEOUT_SECONDS = 8.0
@@ -560,6 +565,45 @@ def _probe_superset(settings: Settings) -> ProbeResult:
     )
 
 
+def _probe_signing(settings: Settings) -> ProbeResult:
+    """Not a sponsor: the one secret every grant, capability and context key derives from.
+
+    No call is made. The question is purely whether the process is about to serve on
+    the value printed in this public repository, so the answer depends on the
+    environment the same way `require_production_secrets` does.
+    """
+
+    probe = PROBES["signing"]
+    on_demo_machine = settings.env.strip().lower() in DEMO_ENVIRONMENTS
+    if settings.grant_secret == DEFAULT_DEMO_GRANT_SECRET:
+        if on_demo_machine:
+            return _result(
+                probe,
+                ProbeStatus.ABSENT,
+                f"WRITAI_GRANT_SECRET is unset; WRITAI_ENV={settings.env!r} runs on the "
+                "public demo default.",
+            )
+        return _result(
+            probe,
+            ProbeStatus.INVALID,
+            f"WRITAI_ENV={settings.env!r} is running on the public demo default. "
+            "Every service refuses to import until WRITAI_GRANT_SECRET is set.",
+        )
+    if len(settings.grant_secret) < MIN_GRANT_SECRET_LENGTH:
+        detail = (
+            f"WRITAI_GRANT_SECRET is set but only {len(settings.grant_secret)} characters; "
+            f"{MIN_GRANT_SECRET_LENGTH} is the minimum outside a demo environment."
+        )
+        if on_demo_machine:
+            return _result(probe, ProbeStatus.UNVERIFIED, detail)
+        return _result(probe, ProbeStatus.INVALID, detail)
+    return _result(
+        probe,
+        ProbeStatus.LIVE,
+        f"private secret set ({len(settings.grant_secret)} characters).",
+    )
+
+
 PROBES: dict[str, _Probe] = {
     "gemini": _Probe(
         name="Gemini",
@@ -675,6 +719,25 @@ PROBES: dict[str, _Probe] = {
             "session-N`. That line is the clean fallback, not a failure."
         ),
         run=_probe_superset,
+    ),
+    "signing": _Probe(
+        name="Grant signing secret",
+        variables=("WRITAI_GRANT_SECRET", "WRITAI_ENV"),
+        degrades_to=(
+            "Every signed grant, the internal-service capability and every "
+            "per-workspace context secret derive from a value printed in this "
+            "public repository, so anyone who has read it can mint a grant and "
+            "call an authority write route. Outside a demo environment no "
+            "service will start."
+        ),
+        fallback=(
+            "set a private value before serving anywhere shared — "
+            'WRITAI_GRANT_SECRET=$(python3 -c "import secrets;'
+            'print(secrets.token_urlsafe(48))"). On a development machine '
+            "nothing to do: make demo, make check and make stack run on the "
+            "default by design."
+        ),
+        run=_probe_signing,
     ),
 }
 

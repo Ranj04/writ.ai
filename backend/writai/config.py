@@ -37,6 +37,14 @@ DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 DEFAULT_VENICE_BASE_URL = "https://api.venice.ai/api/v1"
 DEFAULT_VENICE_MODEL = "openai-gpt-4o-mini-2024-07-18"
 DEFAULT_HEXCLAVE_API_URL = "https://api.hexclave.com/api/v1"
+# The zero-config signing secret. Fine on a demo machine; refused everywhere else by
+# `require_production_secrets`, because anyone who has read this file can mint a grant
+# with it.
+DEFAULT_DEMO_GRANT_SECRET = "writai-local-demo-secret"
+# The one definition of "this is a demo machine". Shared by the demo-reset default and
+# the production secret guard so the two can never disagree.
+DEMO_ENVIRONMENTS = frozenset({"development", "demo", "local", "test"})
+MIN_GRANT_SECRET_LENGTH = 32
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -51,7 +59,7 @@ def _default_demo_reset_enabled(environment: str, graph_backend: str) -> bool:
 
     return (
         graph_backend.strip().lower() == "memory"
-        and environment.strip().lower() in {"development", "demo", "local", "test"}
+        and environment.strip().lower() in DEMO_ENVIRONMENTS
     )
 
 
@@ -63,7 +71,7 @@ class Settings:
         _default_demo_reset_enabled(_ENVIRONMENT, _GRAPH_BACKEND),
     )
     graph_backend: str = _GRAPH_BACKEND
-    grant_secret: str = os.getenv("WRITAI_GRANT_SECRET", "writai-local-demo-secret")
+    grant_secret: str = os.getenv("WRITAI_GRANT_SECRET", DEFAULT_DEMO_GRANT_SECRET)
     grant_ttl_seconds: int = int(os.getenv("WRITAI_GRANT_TTL_SECONDS", "3600"))
     authority_threshold: float = float(
         os.getenv("WRITAI_AUTHORITY_THRESHOLD", str(DEFAULT_AUTHORITY_THRESHOLD))
@@ -220,3 +228,30 @@ class Settings:
 
 
 settings = Settings()
+
+
+def require_production_secrets(config: Settings | None = None) -> None:
+    """Refuse to serve outside a demo environment on the public default signing secret.
+
+    ``grant_secret`` is the HMAC key for every signed grant, the derivation key for
+    the internal-service capability, and the seed for every per-workspace context
+    secret. On a demo machine the default is what makes a fresh clone run with zero
+    configuration; anywhere else it means anyone who has read this repository can mint
+    a valid grant. Called at module scope by every service so the process never binds
+    a port on the default. A set-but-trivial secret is refused for the same reason.
+    """
+
+    active = settings if config is None else config
+    if active.env.strip().lower() in DEMO_ENVIRONMENTS:
+        return
+    generate = 'python3 -c "import secrets;print(secrets.token_urlsafe(48))"'
+    if active.grant_secret == DEFAULT_DEMO_GRANT_SECRET:
+        raise RuntimeError(
+            f"WRITAI_ENV={active.env!r} is running on the public default signing secret. "
+            f"Set WRITAI_GRANT_SECRET to a private value, for example: {generate}"
+        )
+    if len(active.grant_secret) < MIN_GRANT_SECRET_LENGTH:
+        raise RuntimeError(
+            f"WRITAI_ENV={active.env!r} has a WRITAI_GRANT_SECRET shorter than "
+            f"{MIN_GRANT_SECRET_LENGTH} characters. Generate one with: {generate}"
+        )

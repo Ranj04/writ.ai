@@ -254,10 +254,44 @@ def test_every_integration_names_its_variables_and_its_loss() -> None:
         "callwright",
         "crustdata",
         "superset",
+        "signing",
     }
     for key, probe in doctor.PROBES.items():
         assert probe.variables, key
         assert len(probe.degrades_to) > 40, key
+
+
+def test_signing_probe_is_invalid_on_the_default_secret_in_production(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A production machine on the public default must fail preflight, loudly."""
+
+    monkeypatch.setattr(
+        doctor,
+        "default_settings",
+        _settings(env="production", grant_secret=config.DEFAULT_DEMO_GRANT_SECRET),
+    )
+
+    results = run_probes(only=["signing"])
+
+    assert results[0].status is ProbeStatus.INVALID
+    assert "WRITAI_GRANT_SECRET" in render(results)
+    assert doctor.main(["signing"]) == 1
+
+
+def test_signing_probe_is_absent_on_a_demo_machine_and_live_on_a_real_secret() -> None:
+    (absent,) = run_probes(
+        _settings(env="development", grant_secret=config.DEFAULT_DEMO_GRANT_SECRET),
+        only=["signing"],
+    )
+    (short,) = run_probes(_settings(env="production", grant_secret="short"), only=["signing"])
+    (live,) = run_probes(
+        _settings(env="production", grant_secret="x" * 48), only=["signing"]
+    )
+
+    assert absent.status is ProbeStatus.ABSENT
+    assert short.status is ProbeStatus.INVALID
+    assert live.status is ProbeStatus.LIVE
 
 
 # --------------------------------------------------------------------------------------

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import secrets
 from dataclasses import replace
 
 import pytest
 from writai import config
 from writai import runtime as runtime_module
+from writai.config import Settings
 from writai.domain import Artifact, Edge
 from writai.graph.memory import MemoryGraphStore
 from writai.services import agent_api
@@ -63,6 +65,44 @@ def test_explicit_reset_flag_can_opt_in(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("WRITAI_DEMO_RESET_ENABLED", "true")
 
     assert config._env_flag("WRITAI_DEMO_RESET_ENABLED", False) is True
+
+
+def test_production_refuses_to_start_on_the_demo_signing_secret() -> None:
+    production = replace(
+        Settings(), env="production", grant_secret=config.DEFAULT_DEMO_GRANT_SECRET
+    )
+
+    with pytest.raises(RuntimeError, match="WRITAI_GRANT_SECRET"):
+        config.require_production_secrets(production)
+
+
+def test_production_refuses_a_short_signing_secret() -> None:
+    production = replace(Settings(), env="production", grant_secret="short")
+
+    with pytest.raises(RuntimeError, match="WRITAI_GRANT_SECRET"):
+        config.require_production_secrets(production)
+
+
+def test_development_keeps_the_zero_config_demo_secret() -> None:
+    accepted: list[str] = []
+    for environment in ("development", "demo", "local", "test"):
+        demo = replace(
+            Settings(), env=environment, grant_secret=config.DEFAULT_DEMO_GRANT_SECRET
+        )
+        config.require_production_secrets(demo)
+        accepted.append(environment)
+
+    assert accepted == ["development", "demo", "local", "test"]
+
+
+def test_production_accepts_a_real_signing_secret() -> None:
+    production = replace(
+        Settings(), env="production", grant_secret=secrets.token_urlsafe(48)
+    )
+
+    config.require_production_secrets(production)
+
+    assert production.grant_secret != config.DEFAULT_DEMO_GRANT_SECRET
 
 
 @pytest.mark.parametrize(

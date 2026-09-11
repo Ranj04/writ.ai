@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from writai.config import settings
+from writai.config import require_production_secrets, settings
 from writai.domain import AgentPlan, GrantVerificationRequest, GrantVerificationResult
 from writai.integrations.callwright import (
     FIXTURE_PHONE_NUMBER,
@@ -54,6 +54,7 @@ app.add_middleware(
     expose_headers=[CORRELATION_ID_HEADER],
 )
 install_api_support(app)
+require_production_secrets()
 
 
 def _create_callwright_client() -> CallwrightClient:
