@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Iterator
+from contextlib import contextmanager
 from copy import deepcopy
 
 from writai.domain import Artifact, Edge, EdgeKind
@@ -28,6 +31,15 @@ class MemoryGraphStore:
         self._version += 1
         return self.version_label
 
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        snapshot = deepcopy((self._version, self._artifacts, self._edges))
+        try:
+            yield
+        except BaseException:
+            self._version, self._artifacts, self._edges = snapshot
+            raise
+
     def add_artifact(self, artifact: Artifact) -> None:
         if artifact.id in self._artifacts:
             raise ValueError(f"Artifact already exists: {artifact.id}")
@@ -45,7 +57,7 @@ class MemoryGraphStore:
             raise KeyError(f"Unknown artifact: {artifact_id}") from exc
 
     def list_artifacts(self) -> list[Artifact]:
-        return [deepcopy(item) for item in self._artifacts.values()]
+        return [deepcopy(item) for item in sorted(self._artifacts.values(), key=lambda a: a.id)]
 
     def add_edge(self, edge: Edge) -> None:
         if edge.source_id not in self._artifacts or edge.target_id not in self._artifacts:
@@ -55,14 +67,36 @@ class MemoryGraphStore:
     def list_edges(self) -> list[Edge]:
         return [deepcopy(edge) for edge in self._edges]
 
-    def outgoing_edges(
-        self, artifact_id: str, kinds: set[EdgeKind] | None = None
-    ) -> list[Edge]:
+    def outgoing_edges(self, artifact_id: str, kinds: set[EdgeKind] | None = None) -> list[Edge]:
         return [
             deepcopy(edge)
             for edge in self._edges
             if edge.source_id == artifact_id and (kinds is None or edge.kind in kinds)
         ]
+
+    def downstream_subgraph(
+        self, root_id: str, kinds: set[EdgeKind]
+    ) -> tuple[list[Artifact], list[Edge]]:
+        root = self.get_artifact(root_id)
+        artifacts = {root.id: root}
+        edges: list[Edge] = []
+        queue = deque([root.id])
+        visited = {root.id}
+        while queue:
+            source_id = queue.popleft()
+            for edge in self._edges:
+                if edge.source_id != source_id or edge.kind not in kinds:
+                    continue
+                edges.append(deepcopy(edge))
+                child = self.get_artifact(edge.target_id)
+                artifacts[child.id] = child
+                if child.id not in visited:
+                    visited.add(child.id)
+                    queue.append(child.id)
+        return (
+            sorted(artifacts.values(), key=lambda artifact: artifact.id),
+            sorted(edges, key=lambda edge: (edge.source_id, edge.kind, edge.target_id)),
+        )
 
     def snapshot(self) -> dict[str, object]:
         return {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from typing import Protocol
 
 from writai.domain import Artifact, Edge, EdgeKind
@@ -16,6 +17,10 @@ class GraphStore(Protocol):
 
     def increment_version(self) -> str: ...
 
+    def transaction(self) -> AbstractContextManager[None]:
+        """Commit everything inside together, or commit none of it."""
+        ...
+
     def add_artifact(self, artifact: Artifact) -> None: ...
 
     def update_artifact(self, artifact: Artifact) -> None: ...
@@ -31,5 +36,11 @@ class GraphStore(Protocol):
     def outgoing_edges(
         self, artifact_id: str, kinds: set[EdgeKind] | None = None
     ) -> list[Edge]: ...
+
+    def downstream_subgraph(
+        self, root_id: str, kinds: set[EdgeKind]
+    ) -> tuple[list[Artifact], list[Edge]]:
+        """Return reachable artifacts by id and edges by source, kind, then target."""
+        ...
 
     def snapshot(self) -> dict[str, object]: ...

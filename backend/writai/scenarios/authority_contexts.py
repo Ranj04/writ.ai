@@ -203,6 +203,7 @@ class ScenarioAuthorityContextRegistry:
                 run_id=request.run_id,
                 task_id=request.task_id,
                 plan=request.plan,
+                report=context.authority.last_report,
             )
 
     def verify_grant(
