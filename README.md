@@ -448,7 +448,9 @@ credentials.
 The three services expose 49 mutating routes. 26 are authenticated and 23 are open. The
 inventory that produces those numbers is `backend/tests/test_route_authentication.py`; it walks
 every registered route, refuses any mutating route that has not been assigned a tier, and reads
-this section back, so the counts here cannot go stale without that test going red.
+this section back, so the counts here cannot go stale without that test going red. Five of the
+26 are guarded by a configuration flag rather than an identity, and one of those five creates
+authority; the second bullet below is about them.
 
 - **What is authenticated.** Five mechanisms are in use, each enforced inside a route handler.
   Service-to-service hops carry an HMAC capability derived from the grant secret
@@ -470,10 +472,26 @@ this section back, so the counts here cannot go stale without that test going re
   single-use link (`backend/writai/services/authority_api.py:1264-1266`). The CrustData intakes
   require a bearer, and capture and replay must use different ones
   (`backend/writai/services/agent_api.py:905-907` and
-  `backend/writai/services/agent_api.py:951-953`). Five more routes sit behind a configuration
-  gate rather than an identity: they refuse unless demo reset is enabled
-  (`backend/writai/services/authority_api.py:202` and
-  `backend/writai/services/authority_api.py:250`; `backend/writai/services/agent_api.py:704`).
+  `backend/writai/services/agent_api.py:951-953`).
+- **What sits behind the demo gate, and why it is not a lesser tier.** Five more routes are
+  guarded by a configuration flag rather than an identity: the four reset routes
+  (`backend/writai/services/authority_api.py:202`; `backend/writai/services/agent_api.py:704`)
+  and `POST /decisions/ingest` on the authority service
+  (`backend/writai/services/authority_api.py:250`). Each refuses with `403` unless
+  `demo_reset_enabled` is true, and none checks who is calling. The ingest route is
+  authority-creating: it accepts a caller-asserted **approved** `DecisionMutation` and applies it
+  to the shared authority runtime (`backend/writai/services/authority_api.py:258`), the same
+  runtime the open `/authorize` route evaluates plans against
+  (`backend/writai/services/authority_api.py:1696`). The gate is open by default in development:
+  the flag defaults to on whenever `WRITAI_ENV` is one of the demo environments and the graph
+  backend is `memory` (`backend/writai/config.py:83` and `backend/writai/config.py:95`), and
+  `WRITAI_ENV` itself defaults to `development` (`backend/writai/config.py:33`). So on a fresh
+  clone, anyone who can reach the authority port can ingest an approved decision nobody approved.
+  What closes it: `WRITAI_ENV=production`, or any value outside the demo set
+  (`backend/writai/config.py:51`), makes the route answer `403 FIXTURE_INGEST_DISABLED`, and
+  `require_production_secrets` (`backend/writai/config.py:273`) refuses to boot such a
+  deployment on a published placeholder signing secret, so the closed gate cannot be paired with
+  the public key. `backend/tests/review/test_pr2_trust_boundary.py` pins both states of the gate.
 - **What is deliberately open, and why.** 23 routes carry no guard: 7 on the authority service
   (the shared-runtime `/authorize` and `/grants/verify`, and the five Scenario Lab context
   routes) and 16 on the agent service (the four `/demo/*` steps, the Scenario Lab run routes,
@@ -489,8 +507,8 @@ this section back, so the counts here cannot go stale without that test going re
   separate `make authority`, `make agent` and `make executor` targets pass no `--host` and
   inherit uvicorn's loopback default (`Makefile:23`, `Makefile:26`, `Makefile:29`), and CORS is
   pinned to the Vite dev origin (`backend/writai/services/support.py:27-30`).
-- **What the open routes cannot do.** They cannot create authority. A workspace context returns
-  `HUMAN_REVIEW` and no grant until its baseline Decision has been approved
+- **What the open routes cannot do.** On their own they cannot create authority. A workspace
+  context returns `HUMAN_REVIEW` and no grant until its baseline Decision has been approved
   (`backend/writai/workspaces/authority_contexts.py:452-458`), and baseline approval reaches the
   authority only through the guarded route above. `evaluate_plan`
   (`backend/writai/authority/engine.py:359`) derives its requirements from approved Decisions
@@ -504,7 +522,14 @@ this section back, so the counts here cannot go stale without that test going re
   allowlist with one entry (`backend/writai/services/executor_api.py:189`,
   `backend/writai/integrations/callwright.py:525-527`). The residual exposure, stated plainly:
   anyone who can reach these ports can re-trigger an already-approved action and can reset or
-  corrupt demo state; they cannot create authority a human did not grant.
+  corrupt demo state. On a deployment where demo reset is disabled they cannot create authority
+  a human did not grant. On the default development configuration they can: `POST
+  /decisions/ingest` accepts a caller-asserted approved decision, so an anonymous caller who can
+  reach the authority port can ingest a decision whose requirement they chose and then `POST
+  /authorize` a plan that satisfies it, and the answer is `ALLOW` with a signed grant. A plan
+  that does not match the ingested requirement still gets `REPLAN` and no grant, which is why a
+  casual probe misses this. `backend/tests/review/test_pr2_trust_boundary.py` runs that two-step
+  chain both ways: refused at step 1 with the gate closed, and a grant returned with it open.
 
 ## Known limits
 
