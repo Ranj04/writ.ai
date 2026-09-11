@@ -270,6 +270,7 @@ class HttpLiveWorkspaceTransport:
             upstream_name="Intent authority",
             upstream_code="AUTHORITY",
             timeout_seconds=self._settings.service_timeout_seconds,
+            internal_secret=self._settings.grant_secret,
         )
 
     def execute(
@@ -294,4 +295,5 @@ class HttpLiveWorkspaceTransport:
             upstream_name="Executor",
             upstream_code="EXECUTOR",
             timeout_seconds=self._settings.service_timeout_seconds,
+            internal_secret=self._settings.grant_secret,
         )

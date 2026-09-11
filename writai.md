@@ -348,7 +348,8 @@ Only two external services are required for the hackathon build:
 - production webhooks,
 - real repository modification,
 - real pull-request creation or merge,
-- authentication and multitenancy,
+- multitenancy (route authentication is not simulated: it is real on the guarded routes and
+  absent on the browser-facing ones; see *Where the trust boundary is* in `README.md`),
 - production key management,
 - and a multi-hour autonomous coding run.
 

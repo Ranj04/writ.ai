@@ -31,6 +31,11 @@ def test_three_service_demo_rejects_old_grant_and_accepts_corrected_grant(
         )
 
     monkeypatch.setattr(support.httpx, "post", route_post)
+    executor_headers = {
+        support.INTERNAL_SERVICE_AUTH_HEADER: support.internal_service_token(
+            executor_api.settings.grant_secret
+        )
+    }
 
     reset = agent.post("/demo/reset-all")
     assert reset.status_code == 200
@@ -57,6 +62,7 @@ def test_three_service_demo_rejects_old_grant_and_accepts_corrected_grant(
             "task_id": initial["run"]["ticket_id"],
             "plan": initial["initial_plan"],
         },
+        headers=executor_headers,
     )
     assert old_execution.status_code == 200
     assert old_execution.json()["applied"] is False
@@ -81,6 +87,7 @@ def test_three_service_demo_rejects_old_grant_and_accepts_corrected_grant(
             "task_id": corrected_body["run"]["ticket_id"],
             "plan": corrected_body["run"]["plan"],
         },
+        headers=executor_headers,
     )
     assert new_execution.status_code == 200
     assert new_execution.json()["applied"] is True

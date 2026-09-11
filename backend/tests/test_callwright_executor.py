@@ -35,6 +35,7 @@ from writai.integrations.callwright import (
     build_call_request,
 )
 from writai.services import executor_api
+from writai.services.support import INTERNAL_SERVICE_AUTH_HEADER, internal_service_token
 
 
 class SpyCallwrightClient:
@@ -136,6 +137,15 @@ def execute_payload(plan: AgentPlan) -> dict[str, object]:
     }
 
 
+def execute_headers() -> dict[str, str]:
+    # Read at call time: several tests replace ``executor_api.settings`` first.
+    return {
+        INTERNAL_SERVICE_AUTH_HEADER: internal_service_token(
+            executor_api.settings.grant_secret
+        )
+    }
+
+
 def make_live_request(
     *,
     plan: AgentPlan | None = None,
@@ -170,7 +180,9 @@ def test_rejected_grants_never_invoke_callwright(
         lambda **_kwargs: verification(plan=plan, valid=False, code=code),
     )
 
-    response = TestClient(executor_api.app).post("/execute", json=execute_payload(plan))
+    response = TestClient(executor_api.app).post(
+        "/execute", json=execute_payload(plan), headers=execute_headers()
+    )
 
     assert response.status_code == 200
     assert response.json()["applied"] is False
@@ -198,7 +210,9 @@ def test_valid_grant_builds_call_from_verified_payload_and_submits_once(
     )
     monkeypatch.setattr(executor_api, "post_model", lambda **_kwargs: verified)
 
-    response = TestClient(executor_api.app).post("/execute", json=execute_payload(plan))
+    response = TestClient(executor_api.app).post(
+        "/execute", json=execute_payload(plan), headers=execute_headers()
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -309,7 +323,9 @@ def test_callwright_failure_does_not_change_the_valid_authority_result(
         ),
     )
 
-    response = TestClient(executor_api.app).post("/execute", json=execute_payload(plan))
+    response = TestClient(executor_api.app).post(
+        "/execute", json=execute_payload(plan), headers=execute_headers()
+    )
 
     assert response.status_code == 200
     assert response.json()["applied"] is False
@@ -345,7 +361,9 @@ def test_live_mode_submits_only_after_valid_grant(
         ),
     )
 
-    response = TestClient(executor_api.app).post("/execute", json=execute_payload(plan))
+    response = TestClient(executor_api.app).post(
+        "/execute", json=execute_payload(plan), headers=execute_headers()
+    )
 
     assert response.status_code == 200
     assert response.json()["applied"] is True
@@ -380,7 +398,9 @@ def test_live_mode_disabled_makes_zero_requests(
         ),
     )
 
-    response = TestClient(executor_api.app).post("/execute", json=execute_payload(plan))
+    response = TestClient(executor_api.app).post(
+        "/execute", json=execute_payload(plan), headers=execute_headers()
+    )
 
     assert response.status_code == 200
     assert response.json()["applied"] is False
@@ -403,7 +423,9 @@ def test_valid_verification_without_payload_is_an_authority_protocol_error(
         ),
     )
 
-    response = TestClient(executor_api.app).post("/execute", json=execute_payload(plan))
+    response = TestClient(executor_api.app).post(
+        "/execute", json=execute_payload(plan), headers=execute_headers()
+    )
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "AUTHORITY_INVALID_RESPONSE"

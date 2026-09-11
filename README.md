@@ -443,6 +443,69 @@ and, under the same marker, against the Neo4j store; the `neo4j` job in
 the opt-in variable, the tests skip and the normal deterministic suite needs no Neo4j
 credentials.
 
+## Where the trust boundary is
+
+The three services expose 49 mutating routes. 26 are authenticated and 23 are open. The
+inventory that produces those numbers is `backend/tests/test_route_authentication.py`; it walks
+every registered route, refuses any mutating route that has not been assigned a tier, and reads
+this section back, so the counts here cannot go stale without that test going red.
+
+- **What is authenticated.** Five mechanisms are in use, each enforced inside a route handler.
+  Service-to-service hops carry an HMAC capability derived from the grant secret
+  (`backend/writai/services/support.py:177`, enforced at
+  `backend/writai/services/support.py:187`). It guards all seven workspace-authority routes,
+  including `authorize` and `grants/verify` (`backend/writai/services/authority_api.py:1912` and
+  `backend/writai/services/authority_api.py:1926`), the two notification dispatch routes, the
+  agent service's three `/internal/...` routes, and the executor's only route, `POST /execute`
+  (`backend/writai/services/executor_api.py:90`). The executor forwards the same capability when
+  it verifies the grant upstream (`backend/writai/services/executor_api.py:116`), as do both
+  transports (`backend/writai/workspaces/transport.py:273` and
+  `backend/writai/workspaces/transport.py:298`; `backend/writai/scenarios/transport.py:159`).
+  Human approvals from the CLI or the Workspace UI resolve a Hexclave access token to a user
+  before any permission is checked (`backend/writai/services/agent_api.py:1175` and
+  `backend/writai/services/agent_api.py:1902`). Inbound webhooks verify a signature before the
+  body is trusted: Svix for Hexclave (`backend/writai/services/authority_api.py:448`) and
+  Composio for the two Slack intakes (`backend/writai/services/authority_api.py:1404` and
+  `backend/writai/services/authority_api.py:1517`). Email and push approvals redeem a signed,
+  single-use link (`backend/writai/services/authority_api.py:1264-1266`). The CrustData intakes
+  require a bearer, and capture and replay must use different ones
+  (`backend/writai/services/agent_api.py:905-907` and
+  `backend/writai/services/agent_api.py:951-953`). Five more routes sit behind a configuration
+  gate rather than an identity: they refuse unless demo reset is enabled
+  (`backend/writai/services/authority_api.py:202` and
+  `backend/writai/services/authority_api.py:250`; `backend/writai/services/agent_api.py:704`).
+- **What is deliberately open, and why.** 23 routes carry no guard: 7 on the authority service
+  (the shared-runtime `/authorize` and `/grants/verify`, and the five Scenario Lab context
+  routes) and 16 on the agent service (the four `/demo/*` steps, the Scenario Lab run routes,
+  and the Workspace import, authorize, propose, cancel, plan, reauthorize and grant-verify
+  routes). These are the routes the browser calls. The frontend posts to them directly
+  (`frontend/src/live-workspace/api.ts:591`) with no session layer, and the only way to hand it
+  a credential today would be a `VITE_*` variable, which Vite inlines into the bundle and ships
+  to every visitor; `frontend/src/approvals/api.ts:100-121` refuses exactly that and reads the
+  approval token from the runtime instead. Guarding this tier therefore needs a session layer
+  this repository does not have, not another header, and a sweep that added one would have to
+  ship a secret to the browser to keep the UI working. Until then the exposure is bounded by
+  deployment: `make stack` binds every service to `127.0.0.1` (`scripts/run_stack.sh:32`), the
+  separate `make authority`, `make agent` and `make executor` targets pass no `--host` and
+  inherit uvicorn's loopback default (`Makefile:23`, `Makefile:26`, `Makefile:29`), and CORS is
+  pinned to the Vite dev origin (`backend/writai/services/support.py:27-30`).
+- **What the open routes cannot do.** They cannot create authority. A workspace context returns
+  `HUMAN_REVIEW` and no grant until its baseline Decision has been approved
+  (`backend/writai/workspaces/authority_contexts.py:452-458`), and baseline approval reaches the
+  authority only through the guarded route above. `evaluate_plan`
+  (`backend/writai/authority/engine.py:359`) derives its requirements from approved Decisions
+  alone and answers any mismatch with `REPLAN` and no grant
+  (`backend/writai/authority/engine.py:485-487`); a grant is issued only on the `ALLOW` path
+  (`backend/writai/authority/engine.py:504`). Swapping the proposal under an approver is refused:
+  an approval is bound to the fingerprint and instance of the exact proposal the human saw, and
+  a mismatch is recorded as `STALE_CONFIRMATION`
+  (`backend/writai/services/agent_api.py:1261-1273`). Even a verified grant can dial only the
+  configured demo target, because the executor resolves the plan's phone reference through an
+  allowlist with one entry (`backend/writai/services/executor_api.py:189`,
+  `backend/writai/integrations/callwright.py:525-527`). The residual exposure, stated plainly:
+  anyone who can reach these ports can re-trigger an already-approved action and can reset or
+  corrupt demo state; they cannot create authority a human did not grant.
+
 ## Known limits
 
 - **The default signing secret.** The default at `backend/writai/config.py:103` comes from the
@@ -537,4 +600,4 @@ they are not persisted or presented as graph Task artifacts.
 
 ## Hackathon scope
 
-Build the reasoning and enforcement for real. Keep OAuth, webhooks, real PR creation, authentication, multitenancy, and production key management simulated. The exact scope boundaries are in [`AGENTS.md`](AGENTS.md).
+Build the reasoning and enforcement for real. Keep OAuth, webhooks, real PR creation, multitenancy, and production key management simulated. Route authentication is not simulated: it is real where it exists and absent where it does not, and [Where the trust boundary is](#where-the-trust-boundary-is) lists which is which. The exact scope boundaries are in [`AGENTS.md`](AGENTS.md).

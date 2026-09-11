@@ -418,18 +418,26 @@ def post_model(
     upstream_name: str,
     upstream_code: str,
     timeout_seconds: float,
+    internal_secret: str | None = None,
 ) -> ResponseModel:
-    """POST to another service and map transport/protocol failures deterministically."""
+    """POST to another service and map transport/protocol failures deterministically.
+
+    ``internal_secret`` attaches the internal-service capability for routes guarded by
+    ``require_internal_service``; ``None`` sends exactly the headers it always has.
+    """
 
     correlation_id = current_correlation_id()
+    headers = {
+        CORRELATION_ID_HEADER: correlation_id,
+        "Accept": "application/json",
+    }
+    if internal_secret is not None:
+        headers[INTERNAL_SERVICE_AUTH_HEADER] = internal_service_token(internal_secret)
     try:
         response = httpx.post(
             url,
             json=payload.model_dump(mode="json"),
-            headers={
-                CORRELATION_ID_HEADER: correlation_id,
-                "Accept": "application/json",
-            },
+            headers=headers,
             timeout=httpx.Timeout(timeout_seconds),
         )
     except httpx.TimeoutException as exc:

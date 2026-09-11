@@ -327,7 +327,12 @@ def test_executor_rejects_bad_authority_responses(
             "task_id": run.ticket_id,
             "plan": run.plan.model_dump(mode="json"),
         },
-        headers={support.CORRELATION_ID_HEADER: CORRELATION_ID},
+        headers={
+            support.CORRELATION_ID_HEADER: CORRELATION_ID,
+            support.INTERNAL_SERVICE_AUTH_HEADER: support.internal_service_token(
+                executor_api.settings.grant_secret
+            ),
+        },
     )
 
     assert response.status_code == 502

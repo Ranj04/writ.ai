@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,7 @@ from writai.services.support import (
     correlated_payload,
     install_api_support,
     post_model,
+    require_internal_service,
 )
 
 
@@ -83,22 +84,25 @@ def health() -> dict[str, str]:
 
 
 @app.post("/execute")
-def execute(request: ExecuteRequest) -> dict[str, object]:
+def execute(execution: ExecuteRequest, request: Request) -> dict[str, object]:
+    # A verified grant can still be replayed from any log or tab that saw the token;
+    # only the agent service and the scenario transport may drive execution.
+    require_internal_service(request, secret=settings.grant_secret)
     payload = GrantVerificationRequest(
-        token=request.token,
-        run_id=request.run_id,
-        task_id=request.task_id,
-        plan=request.plan,
+        token=execution.token,
+        run_id=execution.run_id,
+        task_id=execution.task_id,
+        plan=execution.plan,
     )
-    if request.context_id and request.context_kind is AuthorityContextKind.WORKSPACE:
+    if execution.context_id and execution.context_kind is AuthorityContextKind.WORKSPACE:
         verification_url = (
             f"{settings.authority_url}/live-workspaces/authority/contexts/"
-            f"{request.context_id}/grants/verify"
+            f"{execution.context_id}/grants/verify"
         )
-    elif request.context_id:
+    elif execution.context_id:
         verification_url = (
             f"{settings.authority_url}/scenario-lab/authority/contexts/"
-            f"{request.context_id}/grants/verify"
+            f"{execution.context_id}/grants/verify"
         )
     else:
         verification_url = f"{settings.authority_url}/grants/verify"
@@ -109,6 +113,7 @@ def execute(request: ExecuteRequest) -> dict[str, object]:
         upstream_name="Intent authority",
         upstream_code="AUTHORITY",
         timeout_seconds=settings.service_timeout_seconds,
+        internal_secret=settings.grant_secret,
     )
 
     if not verification.valid:
@@ -128,7 +133,7 @@ def execute(request: ExecuteRequest) -> dict[str, object]:
         )
 
     try:
-        call_action = select_callwright_action(request.plan)
+        call_action = select_callwright_action(execution.plan)
     except CallwrightError as exc:
         return correlated_payload(
             {

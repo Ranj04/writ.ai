@@ -258,3 +258,16 @@ already sorted, so the suite cannot observe it either. Own change, own test.
   B2-2 (`HookApiKeyVerifier` alias), B2-4 (session list not filtered by owner), T0-1
   (`uv.lock` consumed by nothing), T0-2 (two unread env vars), INT-2 (PR check grant
   validation), A1-1 to A1-5, demo-eve ENV-1 to ENV-4, and the `outgoing_edges` divergence above.
+
+---
+
+## Polish — PR 2, the trust boundary
+
+A route audit found 49 mutating routes across the three services, 26 of them with no guard.
+PR 2 guarded the dangerous subset and wrote the rest down rather than sweeping all 26: a sweep
+would need either a browser-shipped secret, which `frontend/src/approvals/api.ts:100-121`
+rejects on purpose, or a session layer the repository does not have.
+
+| # | Item | Severity | Why it is open |
+|---|---|---|---|
+| P2-1 | **23 mutating routes remain unauthenticated by design: 7 on the authority service (shared-runtime `/authorize` and `/grants/verify`, five Scenario Lab context routes) and 16 on the agent service (the `/demo/*` steps, Scenario Lab runs, and the Workspace import/authorize/propose/cancel/plan/reauthorize/grant-verify routes).** Anyone who can reach the ports can re-trigger an already-approved action or reset and corrupt demo state. They cannot create authority a human did not grant: the baseline check (`workspaces/authority_contexts.py:452-458`), `evaluate_plan`'s `REPLAN`-without-grant path (`authority/engine.py:485-487`), fingerprint-bound approvals (`agent_api.py:1261-1273`, `STALE_CONFIRMATION`) and Callwright's one-entry allowlist (`executor_api.py:189`) hold regardless of caller. | Medium (disclosed) | **TRACKED.** The browser posts to these routes with no session layer, so the fix is a session layer, not a header. Closed in this PR: `POST /execute` and the workspace-context `authorize` / `grants/verify` routes now require the internal-service capability, so a leaked grant token cannot be replayed into a live call from the network. `backend/tests/test_route_authentication.py` freezes every mutating route to a tier and reads the README counts back, so a new unguarded route must be added to the map consciously. The README section *Where the trust boundary is* is the operator-facing statement. |

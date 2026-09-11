@@ -172,6 +172,11 @@ class InProcessExecutor:
                 "task_id": task_id,
                 "plan": plan.model_dump(mode="json"),
             },
+            headers={
+                INTERNAL_SERVICE_AUTH_HEADER: internal_service_token(
+                    executor_api.settings.grant_secret
+                )
+            },
         )
         assert response.status_code == 200
         return WorkspaceExecutionResult.model_validate(response.json())

@@ -1906,10 +1906,12 @@ def approve_workspace_mutation(
 @app.post("/live-workspaces/authority/contexts/{context_id}/authorize")
 def authorize_in_workspace_context(
     context_id: str,
-    request: AuthorizationRequest,
+    authorization: AuthorizationRequest,
+    request: Request,
 ) -> dict[str, object]:
+    require_internal_service(request, secret=settings.grant_secret)
     try:
-        result = workspace_contexts.authorize(context_id, request)
+        result = workspace_contexts.authorize(context_id, authorization)
     except DynamicAuthorityContextNotFound as exc:
         raise _workspace_context_error(exc) from exc
     return correlated_payload(result)
@@ -1918,10 +1920,12 @@ def authorize_in_workspace_context(
 @app.post("/live-workspaces/authority/contexts/{context_id}/grants/verify")
 def verify_grant_in_workspace_context(
     context_id: str,
-    request: GrantVerificationRequest,
+    verification: GrantVerificationRequest,
+    request: Request,
 ) -> dict[str, object]:
+    require_internal_service(request, secret=settings.grant_secret)
     try:
-        result = workspace_contexts.verify_grant(context_id, request)
+        result = workspace_contexts.verify_grant(context_id, verification)
     except DynamicAuthorityContextNotFound as exc:
         raise _workspace_context_error(exc) from exc
     return correlated_payload(result)
