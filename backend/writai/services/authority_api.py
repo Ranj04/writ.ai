@@ -147,6 +147,7 @@ workspace_contexts = DynamicAuthorityContextRegistry(
     grant_secret=settings.grant_secret,
     grant_ttl_seconds=settings.grant_ttl_seconds,
     authority_threshold=settings.authority_threshold,
+    max_contexts=settings.max_authority_contexts,
 )
 event_broker = EventBroker()
 runtime_lock = RLock()
