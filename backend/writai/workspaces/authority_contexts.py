@@ -456,10 +456,14 @@ class DynamicAuthorityContextRegistry:
                     graph_version=context.graph.version_label,
                     task_id=request.task_id,
                 )
+            # Each workspace context owns its own IntentAuthority, so correlating this
+            # engine's last report with this plan is real, unlike the shared
+            # module-level runtime in authority_api.py.
             return context.authority.evaluate_plan(
                 run_id=request.run_id,
                 task_id=request.task_id,
                 plan=request.plan,
+                report=context.authority.last_report,
             )
 
     def verify_grant(

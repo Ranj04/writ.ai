@@ -435,10 +435,13 @@ WRITAI_RUN_NEO4J_TESTS=1 python -m pytest -m neo4j
 
 The suite seeds `graph-v17` repeatedly and compares persisted graph content, the selective
 invalidation report, and `ALLOW`/`REPLAN` behavior with the in-memory store. Its
-`_canonical_graph` helper sorts both sides before comparison, so it establishes content parity;
-ordering and error parity are not established. Without the opt-in variable, the tests skip and
-the normal deterministic suite needs no Neo4j credentials.
-<!-- TODO(T1): confirm graph-store contract coverage once Track A merges -->
+`_canonical_graph` helper sorts both sides before comparison, so it establishes content parity
+only. Ordering and error parity are covered by the graph-store contract suite,
+`backend/tests/test_graph_store_contract.py`, which runs each case against the in-memory store
+and, under the same marker, against the Neo4j store; the `neo4j` job in
+`.github/workflows/writai-check.yml` runs it against a real `neo4j:5-community` server. Without
+the opt-in variable, the tests skip and the normal deterministic suite needs no Neo4j
+credentials.
 
 ## Known limits
 
@@ -446,24 +449,35 @@ the normal deterministic suite needs no Neo4j credentials.
   repository-published constant at `backend/writai/config.py:44`. It is the HMAC key accepted for
   every `SignedGrant`, with only non-emptiness validated (`backend/writai/grants.py:13-17`); the
   derivation key for the internal-service capability that gates authority write routes
-  (`backend/writai/services/support.py:170`, enforced at
-  `backend/writai/services/support.py:180`); and the seed for each per-workspace context secret
-  (`backend/writai/workspaces/authority_contexts.py:173`). `writai doctor` validates six
+  (`backend/writai/services/support.py:177`, enforced at
+  `backend/writai/services/support.py:187`); and the seed for each per-workspace context secret
+  (`backend/writai/workspaces/authority_contexts.py:188`). `writai doctor` validates six
   integrations, not this secret. A startup guard now refuses to boot outside a demo environment
   when the secret is the default or any placeholder the repository itself publishes.
 - **The enforcement hot path.** The JSON store is reparsed on every `get()`
-  (`backend/writai/workspaces/repository.py:89`) through the `PreToolUse` assignment gateway
-  (`backend/writai/workspaces/session_enforcement.py:244`), behind a three-second fail-open hook
+  (`backend/writai/workspaces/repository.py:108`) through the `PreToolUse` assignment gateway
+  (`backend/writai/workspaces/session_enforcement.py:246`), behind a three-second fail-open hook
   (`backend/writai/config.py:212`). As the store grows, degradation can therefore become silent
-  enforcement loss instead of an error.
-<!-- TODO(T1): timings -->
-- **The world-readable write window.** The repository calls `chmod(0o600)` only after replacing
-  the destination (`backend/writai/workspaces/repository.py:63-64`), leaving a window on a file
-  that serialises signed grant tokens.
-- **Store and graph parity.** The Neo4j backend diverges from `graph/memory.py` on duplicate IDs,
-  ordering, and missing endpoints (`backend/writai/graph/neo4j_store.py:115`,
-  `backend/writai/graph/neo4j_store.py:140`, and
-  `backend/writai/graph/neo4j_store.py:145`).
+  enforcement loss instead of an error. Measured by Track B on this tree (Linux/WSL2,
+  Python 3.11, median of 20 `get()` calls on the last id in a store of N workspaces; recorded
+  under Track B in `outputs/OPEN-ITEMS-REGISTER.md`): JSON `get()` took 0.24 ms at N=1,
+  3.79 ms at N=50 and 17.05 ms at N=200, a t200/t1 ratio of 72.5. The SQLite store, the default
+  since B1, measured 0.30 / 0.35 / 0.26 ms over the same N (t200/t1 ≈ 0.9), so this limit
+  applies only to a deployment still on the legacy JSON path.
+- **The world-readable write window.** The JSON repository calls `chmod(0o600)` only after
+  replacing the destination (`backend/writai/workspaces/repository.py:82-83`), leaving a window
+  on a file that serialises signed grant tokens. The SQLite store is created owner-only.
+- **Store and graph parity.** Track A closed the duplicate-id, artifact-ordering and
+  missing-endpoint divergences: the Neo4j backend now raises on a duplicate artifact
+  (`backend/writai/graph/neo4j_store.py:152`), orders `list_artifacts` by id
+  (`backend/writai/graph/neo4j_store.py:176`) and raises on a missing edge endpoint
+  (`backend/writai/graph/neo4j_store.py:189`), matching `backend/writai/graph/memory.py:45`,
+  `backend/writai/graph/memory.py:60` and `backend/writai/graph/memory.py:64`. One divergence is
+  still open: `MemoryGraphStore.outgoing_edges` returns insertion order
+  (`backend/writai/graph/memory.py:70-75`) while the Neo4j backend orders by target then kind
+  (`backend/writai/graph/neo4j_store.py:207`). It is latent because the authority traversal
+  re-sorts edges with `authority_edge_sort_key` in Python, and the contract test inserts its
+  edges already in sorted order, so neither can observe it.
 
 See the [full open-items register](outputs/OPEN-ITEMS-REGISTER.md).
 
