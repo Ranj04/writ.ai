@@ -237,6 +237,7 @@ describe("ApprovalScreen", () => {
 describe("ApprovalsHeader", () => {
   it("keeps Hexclave sign-in reachable when the approval queue is empty", () => {
     vi.stubEnv("VITE_WRITAI_HEXCLAVE_SIGN_IN", "1");
+    vi.stubEnv("VITE_HEXCLAVE_PROJECT_ID", "54514e09-6629-4265-88cc-85fbb4ad119e");
     try {
       const markup = renderToStaticMarkup(
         <ApprovalsHeader view="approvals" />,
@@ -244,6 +245,7 @@ describe("ApprovalsHeader", () => {
 
       expect(markup).toContain("Sign in with Hexclave");
       expect(markup).toContain('type="button"');
+      expect(markup).toContain('class="ap-header__signin"');
     } finally {
       vi.unstubAllEnvs();
     }
