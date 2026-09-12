@@ -52,6 +52,7 @@ from writai.workspaces.supervisor import (
     SupervisorExecutionMode,
     SupervisorLifecycleState,
     SupervisorRuntimeAdapter,
+    WorkspaceSupervisor,
     resolve_plan_actions_for_assignments,
 )
 from writai.workspaces.transport import (
@@ -279,6 +280,18 @@ class LiveWorkspaceOrchestrator:
         }
         return actual_supersessions == expected_supersessions
 
+    @staticmethod
+    def _context_lineage(record: LiveWorkspaceRecord) -> tuple[object, ...]:
+        """The record fields ``_ensure_context`` rehydrates the authority context from."""
+
+        return (
+            record.definition,
+            record.graph_version,
+            record.baseline_approved,
+            record.baseline_approval_role,
+            record.approved_mutations,
+        )
+
     def _ensure_context(self, record: LiveWorkspaceRecord) -> None:
         current = self._transport.context_state(record.context_id)
         if current is not None and self._context_matches_record(record, current):
@@ -479,15 +492,56 @@ class LiveWorkspaceOrchestrator:
             return f"Continue {assignment.task_title} under corrected plan {plan_id}."
         return f"Under corrected plan {plan_id}: " + " ".join(descriptions)
 
+    @staticmethod
+    def _supervisor_to_transition(
+        record: LiveWorkspaceRecord,
+    ) -> WorkspaceSupervisor | None:
+        """A copy of ``record``'s supervisor for the runtime to transition.
+
+        The supervisor helpers below call the runtime adapter, which is a
+        network boundary once the adapter is a live one, so they run before
+        the store transaction on the record as read and never mutate it. The
+        callable inside ``mutate()`` applies what they return through
+        ``_apply_supervisor_transitions``.
+        """
+
+        if record.supervisor is None:
+            return None
+        return record.supervisor.model_copy(deep=True)
+
+    def _apply_supervisor_transitions(
+        self,
+        current: LiveWorkspaceRecord,
+        *,
+        read: LiveWorkspaceRecord,
+        transitioned: WorkspaceSupervisor | None,
+    ) -> None:
+        """Put runtime transitions computed from ``read`` onto the fresh ``current``.
+
+        The transitions were computed from ``read``'s assignments and graph
+        version. If either moved between that read and this transaction,
+        applying them would overwrite the write that moved it, so this
+        conflicts instead and the caller re-reads and recomputes.
+        """
+
+        if (
+            current.supervisor != read.supervisor
+            or current.graph_version != read.graph_version
+        ):
+            self._conflict(
+                "The supervisor changed while the runtime transition was in flight."
+            )
+        current.supervisor = transitioned
+
     def _dispatch_supervisor(
         self,
         record: LiveWorkspaceRecord,
         *,
         decision_snapshot: str,
-    ) -> None:
-        supervisor = record.supervisor
+    ) -> WorkspaceSupervisor | None:
+        supervisor = self._supervisor_to_transition(record)
         if supervisor is None:
-            return
+            return None
         supervisor.assignments = [
             (
                 self._supervisor_runtime.transition(
@@ -501,15 +555,16 @@ class LiveWorkspaceOrchestrator:
             for assignment in supervisor.assignments
         ]
         supervisor.state = SupervisorLifecycleState.RUNNING
+        return supervisor
 
     def _apply_supervisor_invalidation(
         self,
         record: LiveWorkspaceRecord,
-    ) -> None:
-        supervisor = record.supervisor
+    ) -> WorkspaceSupervisor | None:
+        supervisor = self._supervisor_to_transition(record)
         report = record.invalidation_report
         if supervisor is None or report is None:
-            return
+            return supervisor
         invalidated = set(report.invalidated_task_ids)
         preserved = set(report.preserved_task_ids)
         changed: list[SupervisorAssignment] = []
@@ -561,14 +616,15 @@ class LiveWorkspaceOrchestrator:
         supervisor.assignments = changed
         if invalidated:
             supervisor.state = SupervisorLifecycleState.INTERRUPTING
+        return supervisor
 
     def _enforce_supervisor_interrupts(
         self,
         record: LiveWorkspaceRecord,
-    ) -> None:
-        supervisor = record.supervisor
+    ) -> WorkspaceSupervisor | None:
+        supervisor = self._supervisor_to_transition(record)
         if supervisor is None:
-            return
+            return None
         supervisor.assignments = [
             (
                 self._supervisor_runtime.transition(
@@ -581,14 +637,15 @@ class LiveWorkspaceOrchestrator:
             )
             for assignment in supervisor.assignments
         ]
+        return supervisor
 
     def _redirect_supervisor(
         self,
         record: LiveWorkspaceRecord,
-    ) -> None:
-        supervisor = record.supervisor
+    ) -> WorkspaceSupervisor | None:
+        supervisor = self._supervisor_to_transition(record)
         if supervisor is None:
-            return
+            return None
         try:
             resolved_actions = resolve_plan_actions_for_assignments(
                 supervisor.assignments,
@@ -636,16 +693,17 @@ class LiveWorkspaceOrchestrator:
             for assignment in changed
         ):
             supervisor.state = SupervisorLifecycleState.REDIRECTING
+        return supervisor
 
     def _resume_supervisor(
         self,
         record: LiveWorkspaceRecord,
         *,
         decision_snapshot: str,
-    ) -> None:
-        supervisor = record.supervisor
+    ) -> WorkspaceSupervisor | None:
+        supervisor = self._supervisor_to_transition(record)
         if supervisor is None:
-            return
+            return None
         supervisor.assignments = [
             (
                 self._supervisor_runtime.transition(
@@ -659,11 +717,15 @@ class LiveWorkspaceOrchestrator:
             for assignment in supervisor.assignments
         ]
         supervisor.state = SupervisorLifecycleState.RESUMED
+        return supervisor
 
-    def _complete_supervisor(self, record: LiveWorkspaceRecord) -> None:
-        supervisor = record.supervisor
+    def _complete_supervisor(
+        self,
+        record: LiveWorkspaceRecord,
+    ) -> WorkspaceSupervisor | None:
+        supervisor = self._supervisor_to_transition(record)
         if supervisor is None:
-            return
+            return None
         supervisor.assignments = [
             (
                 self._supervisor_runtime.transition(
@@ -677,6 +739,7 @@ class LiveWorkspaceOrchestrator:
             for assignment in supervisor.assignments
         ]
         supervisor.state = SupervisorLifecycleState.COMPLETED
+        return supervisor
 
     def import_workspace(
         self, request: LiveWorkspaceImportRequest
@@ -939,19 +1002,30 @@ class LiveWorkspaceOrchestrator:
                     plan=record.current_plan,
                 ),
             )
+            # The supervisor dispatch is a runtime call, so it stays outside
+            # the transaction too: computed from the record as read, applied
+            # only if the fresh read still carries that supervisor.
+            grant = result.grant if result.verdict is Verdict.ALLOW else None
+            dispatched = (
+                self._dispatch_supervisor(
+                    record,
+                    decision_snapshot=grant.payload.decision_snapshot,
+                )
+                if grant is not None
+                else None
+            )
 
             def record_authorization(
                 current: LiveWorkspaceRecord,
             ) -> LiveWorkspaceRecord:
                 require_authorizable(current)
+                if grant is not None:
+                    self._apply_supervisor_transitions(
+                        current, read=record, transitioned=dispatched
+                    )
+                    current.status = LiveWorkspaceStatus.AUTHORIZED
                 current.initial_authorization = result
                 current.graph_version = result.graph_version
-                if result.verdict is Verdict.ALLOW and result.grant is not None:
-                    current.status = LiveWorkspaceStatus.AUTHORIZED
-                    self._dispatch_supervisor(
-                        current,
-                        decision_snapshot=result.grant.payload.decision_snapshot,
-                    )
                 self._event(
                     current,
                     event_type="authorization.evaluated",
@@ -1209,16 +1283,26 @@ class LiveWorkspaceOrchestrator:
                     return LiveWorkspaceView.from_record(current)
                 self._conflict("The requested Decision is not awaiting approval.")
 
-            def record_intent(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+            def require_bound_proposal(
+                record: LiveWorkspaceRecord,
+            ) -> tuple[DecisionMutation, str, str, ApprovalEvidence]:
+                """Check the request against ``record``'s own pending proposal.
+
+                Read from the record passed in, never from an earlier read,
+                so the re-check inside the store transaction sees the fresh
+                record.
+                """
+
                 mutation = self._pending_mutation(record, decision_id)
                 if mutation is None:
                     self._conflict("The requested Decision is not awaiting approval.")
                 expected_fingerprint = stable_hash(mutation)
+                expected_instance_id = record.pending_proposal_instance_id
                 evidence = request.approval_evidence
                 if (
-                    request.proposal_fingerprint != expected_fingerprint
-                    or request.proposal_instance_id
-                    != record.pending_proposal_instance_id
+                    expected_instance_id is None
+                    or request.proposal_fingerprint != expected_fingerprint
+                    or request.proposal_instance_id != expected_instance_id
                     or evidence is None
                     or evidence.workspace_id != workspace_id
                     or evidence.decision_id != decision_id
@@ -1226,20 +1310,43 @@ class LiveWorkspaceOrchestrator:
                     or evidence.confirmed_proposal_fingerprint
                     != expected_fingerprint
                     or evidence.confirmed_proposal_instance_id
-                    != record.pending_proposal_instance_id
+                    != expected_instance_id
                 ):
                     self._conflict(
                         "Approval is not bound to the exact pending proposal."
                     )
+                return mutation, expected_fingerprint, expected_instance_id, evidence
 
+            require_bound_proposal(current)
+            # On a first attempt the authority context is rehydrated here,
+            # outside the store transaction, from the record as read. A retry
+            # skips it: the context may already hold the applied mutation,
+            # and _recover_intent_mutation is what reconciles that. The intent
+            # write below requires the fresh read to carry the lineage the
+            # context was rehydrated for.
+            rehydrated_for: LiveWorkspaceRecord | None = None
+            if current.decision_approval_intent is None:
+                self._ensure_context(current)
+                rehydrated_for = current
+
+            def record_intent(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                mutation, expected_fingerprint, expected_instance_id, evidence = (
+                    require_bound_proposal(record)
+                )
                 intent = record.decision_approval_intent
                 if intent is None:
-                    self._ensure_context(record)
+                    if rehydrated_for is None or self._context_lineage(
+                        record
+                    ) != self._context_lineage(rehydrated_for):
+                        self._conflict(
+                            "The authority lineage changed while the approval "
+                            "was being recorded."
+                        )
                     record.decision_approval_intent = WorkspaceDecisionApprovalIntent(
                         mutation=mutation.model_copy(deep=True),
                         actor_role=request.actor_role,
                         proposal_fingerprint=expected_fingerprint,
-                        proposal_instance_id=record.pending_proposal_instance_id,
+                        proposal_instance_id=expected_instance_id,
                         approval_evidence=evidence.model_copy(deep=True),
                         base_graph_version=record.graph_version,
                     )
@@ -1317,14 +1424,23 @@ class LiveWorkspaceOrchestrator:
                 intent,
                 mutation_result=result,
             )
+            # The supervisor interrupts are runtime calls, so they stay outside
+            # the transaction: computed from the record as read with the
+            # report attached, applied only if the fresh read still carries
+            # that supervisor.
+            interrupted = record.model_copy(deep=True)
+            interrupted.invalidation_report = report
+            interrupted_supervisor = self._apply_supervisor_invalidation(interrupted)
 
             def record_mutation(current: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
                 require_intent(current)
+                self._apply_supervisor_transitions(
+                    current, read=record, transitioned=interrupted_supervisor
+                )
                 current.decision_approval_intent = intent
                 current.graph_version = result.graph_version
                 current.invalidation_report = report
                 current.conflict_authorization = None
-                self._apply_supervisor_invalidation(current)
                 return current
 
             # Authorization cannot run until evidence and interrupt state are durable.
@@ -1441,6 +1557,14 @@ class LiveWorkspaceOrchestrator:
                 task_id=record.definition.ticket.id,
                 plan=record.definition.plan,
             )
+            # Enforcing the interrupts is a runtime call, so it stays outside
+            # the transaction: computed from the record as read, applied only
+            # if the fresh read still carries that supervisor.
+            stale = (
+                not execution.applied
+                and execution.verification_code is VerificationCode.STALE_SNAPSHOT
+            )
+            enforced = self._enforce_supervisor_interrupts(record) if stale else None
 
             def record_verification(
                 current: LiveWorkspaceRecord,
@@ -1449,16 +1573,14 @@ class LiveWorkspaceOrchestrator:
                     # Another writer verified the stale grant in between; its
                     # enforced interrupts are the ones to keep.
                     return current
-                current.initial_verification = execution
-                if (
-                    not execution.applied
-                    and execution.verification_code
-                    is VerificationCode.STALE_SNAPSHOT
-                ):
+                if stale:
+                    self._apply_supervisor_transitions(
+                        current, read=record, transitioned=enforced
+                    )
                     current.status = LiveWorkspaceStatus.INITIAL_GRANT_REJECTED
-                    self._enforce_supervisor_interrupts(current)
                 else:
                     current.status = LiveWorkspaceStatus.CHANGE_APPLIED
+                current.initial_verification = execution
                 self._event(
                     current,
                     event_type="initial-grant.verified",
@@ -1483,7 +1605,7 @@ class LiveWorkspaceOrchestrator:
     ) -> LiveWorkspaceView:
         with self._lock:
 
-            def update(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+            def require_updatable(record: LiveWorkspaceRecord) -> None:
                 if record.status not in {
                     LiveWorkspaceStatus.INITIAL_GRANT_REJECTED,
                     LiveWorkspaceStatus.PLAN_UPDATED,
@@ -1497,22 +1619,36 @@ class LiveWorkspaceOrchestrator:
                     )
                 if request.plan.ticket_id != record.definition.ticket.id:
                     self._conflict("The corrected plan is bound to a different ticket.")
-                record.current_plan = request.plan.model_copy(deep=True)
-                record.replacement_authorization = None
-                record.replacement_verification = None
-                record.status = LiveWorkspaceStatus.PLAN_UPDATED
-                self._redirect_supervisor(record)
+
+            record = self._repository.get(workspace_id)
+            require_updatable(record)
+            # The redirect transitions are runtime calls, so they stay outside
+            # the transaction: computed from the record as read under the
+            # corrected plan, applied only if the fresh read still carries the
+            # assignments they were computed from. A redirect the hook
+            # delivers in between conflicts here and the caller retries from
+            # the delivered state rather than overwriting it.
+            redirected = record.model_copy(deep=True)
+            redirected.current_plan = request.plan.model_copy(deep=True)
+            redirected_supervisor = self._redirect_supervisor(redirected)
+
+            def update(current: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                require_updatable(current)
+                self._apply_supervisor_transitions(
+                    current, read=record, transitioned=redirected_supervisor
+                )
+                current.current_plan = request.plan.model_copy(deep=True)
+                current.replacement_authorization = None
+                current.replacement_verification = None
+                current.status = LiveWorkspaceStatus.PLAN_UPDATED
                 self._event(
-                    record,
+                    current,
                     event_type="plan.updated",
                     detail=f"Corrected plan {request.plan.id} is ready for authority review.",
                     data={"plan_id": request.plan.id},
                 )
-                return record
+                return current
 
-            # The redirect transitions are computed from the assignments as
-            # stored, so a redirect delivered by the hook in between is
-            # advanced from, not overwritten.
             record = self._repository.mutate(workspace_id, update)
             return LiveWorkspaceView.from_record(record)
 
@@ -1551,6 +1687,18 @@ class LiveWorkspaceOrchestrator:
                 ),
             )
             evaluated_plan = record.current_plan
+            # Resuming the supervisor is a runtime call, so it stays outside
+            # the transaction: computed from the record as read, applied only
+            # if the fresh read still carries that supervisor.
+            grant = result.grant if result.verdict is Verdict.ALLOW else None
+            resumed = (
+                self._resume_supervisor(
+                    record,
+                    decision_snapshot=grant.payload.decision_snapshot,
+                )
+                if grant is not None
+                else None
+            )
 
             def record_reauthorization(
                 current: LiveWorkspaceRecord,
@@ -1565,15 +1713,14 @@ class LiveWorkspaceOrchestrator:
                     self._conflict(
                         "The corrected plan changed while it was being reauthorized."
                     )
-                current.replacement_authorization = result
-                if result.verdict is Verdict.ALLOW and result.grant is not None:
-                    current.status = LiveWorkspaceStatus.REAUTHORIZED
-                    self._resume_supervisor(
-                        current,
-                        decision_snapshot=result.grant.payload.decision_snapshot,
+                if grant is not None:
+                    self._apply_supervisor_transitions(
+                        current, read=record, transitioned=resumed
                     )
+                    current.status = LiveWorkspaceStatus.REAUTHORIZED
                 else:
                     current.status = LiveWorkspaceStatus.PLAN_UPDATED
+                current.replacement_authorization = result
                 self._event(
                     current,
                     event_type="plan.reauthorized",
@@ -1617,18 +1764,25 @@ class LiveWorkspaceOrchestrator:
                 task_id=record.definition.ticket.id,
                 plan=record.current_plan,
             )
+            # Completing the supervisor is a runtime call, so it stays outside
+            # the transaction: computed from the record as read, applied only
+            # if the fresh read still carries that supervisor.
+            valid = (
+                execution.applied
+                and execution.verification_code is VerificationCode.VALID
+            )
+            completed = self._complete_supervisor(record) if valid else None
 
             def record_verification(
                 current: LiveWorkspaceRecord,
             ) -> LiveWorkspaceRecord:
                 require_verifiable(current)
-                current.replacement_verification = execution
-                if (
-                    execution.applied
-                    and execution.verification_code is VerificationCode.VALID
-                ):
+                if valid:
+                    self._apply_supervisor_transitions(
+                        current, read=record, transitioned=completed
+                    )
                     current.status = LiveWorkspaceStatus.COMPLETE
-                    self._complete_supervisor(current)
+                current.replacement_verification = execution
                 self._event(
                     current,
                     event_type="replacement-grant.verified",

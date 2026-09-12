@@ -234,6 +234,11 @@ def test_concurrent_saves_from_two_processes_do_not_lose_an_update(
 #: transport, the executor and the supervisor runtime.
 _NETWORK_ATTRIBUTES = frozenset({"_transport", "_executor", "_supervisor_runtime"})
 
+#: ``(method, helper)`` pairs the walk may skip: a helper called from inside a
+#: store transaction that genuinely must observe mid-transaction state. Every
+#: entry needs a comment naming the reason. Empty means no site is excused.
+_ALLOWED_HELPERS_IN_TRANSACTION: frozenset[tuple[str, str]] = frozenset()
+
 
 def _self_attribute_chain(node: ast.expr) -> list[str]:
     """Return ``["_transport", "approve_baseline"]`` for ``self._transport.approve_baseline``.
@@ -288,14 +293,50 @@ def _store_transaction_callables(
     return found
 
 
-def _network_calls(callable_node: ast.AST) -> list[tuple[str, int]]:
+def _direct_network_calls(node_tree: ast.AST) -> list[tuple[str, int]]:
     calls: list[tuple[str, int]] = []
-    for node in ast.walk(callable_node):
+    for node in ast.walk(node_tree):
         if not isinstance(node, ast.Call):
             continue
         chain = _self_attribute_chain(node.func)
         if chain and chain[0] in _NETWORK_ATTRIBUTES:
             calls.append(("self." + ".".join(chain), node.lineno))
+    return calls
+
+
+def _network_calls(
+    callable_node: ast.AST,
+    *,
+    method_name: str,
+    class_methods: dict[str, ast.FunctionDef],
+) -> list[tuple[str, int]]:
+    """Network calls the callable makes directly or through one same-class helper.
+
+    A call ``self._helper(...)`` resolves to the method of that name on the
+    same class and that method's body is searched for direct network calls.
+    Exactly one hop: a helper the helper calls is not followed. The point is
+    to catch the helper that hides a round trip, not to build a whole-program
+    analysis; a second hop is where a helper's own helpers live, and those
+    belong to the helper's own contract.
+    """
+
+    calls = list(_direct_network_calls(callable_node))
+    for node in ast.walk(callable_node):
+        if not isinstance(node, ast.Call):
+            continue
+        chain = _self_attribute_chain(node.func)
+        if len(chain) != 1 or chain[0] not in class_methods:
+            continue
+        helper = chain[0]
+        if (method_name, helper) in _ALLOWED_HELPERS_IN_TRANSACTION:
+            continue
+        for call, lineno in _direct_network_calls(class_methods[helper]):
+            calls.append(
+                (
+                    f"self.{helper} (called at line {node.lineno}) -> {call}",
+                    lineno,
+                )
+            )
     return calls
 
 
@@ -313,6 +354,13 @@ def test_no_store_transaction_wraps_a_network_call() -> None:
     the split used across the orchestrator: read, check the precondition,
     make the network call, then ``mutate()`` re-checking the same precondition
     on the fresh read before applying the result.
+
+    The walk follows one level of ``self._helper(...)`` indirection into
+    methods of the same class, because ``_ensure_context`` and the supervisor
+    helpers are where a round trip hides one hop from the callable. The
+    supervisor runtime counts even though today's only adapter is in-process:
+    the product's second adapter is a live one, and a call on it inside a
+    transaction would be a real round trip under the write lock.
     """
 
     source = inspect.getsource(orchestrator_module)
@@ -323,12 +371,19 @@ def test_no_store_transaction_wraps_a_network_call() -> None:
     checked = 0
     offenders: list[str] = []
     for class_node in classes:
-        for method in class_node.body:
-            if not isinstance(method, ast.FunctionDef):
-                continue
+        class_methods = {
+            node.name: node
+            for node in class_node.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        for method in class_methods.values():
             for callable_name, callable_node in _store_transaction_callables(method):
                 checked += 1
-                for call, lineno in _network_calls(callable_node):
+                for call, lineno in _network_calls(
+                    callable_node,
+                    method_name=method.name,
+                    class_methods=class_methods,
+                ):
                     offenders.append(
                         f"{method.name} -> {callable_name}: {call} at "
                         f"orchestrator.py:{lineno} runs inside a store transaction"

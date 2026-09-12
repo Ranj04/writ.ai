@@ -54,6 +54,7 @@ from writai.workspaces.repository import (
     LiveWorkspaceRepository,
     SqliteLiveWorkspaceRepository,
 )
+from writai.workspaces.supervisor import SupervisorAssignmentState
 
 
 def _registry(max_contexts: int) -> DynamicAuthorityContextRegistry:
@@ -594,6 +595,16 @@ _LIFECYCLE_WRITES: dict[str, tuple[str, LiveWorkspaceStatus]] = {
 }
 
 
+def _corrected_plan() -> AgentPlan:
+    # The changed task never returns to VALID, so the corrected action binds to
+    # it by scope rather than by task_id; the requirement itself is now met.
+    corrected = _workspace_import().plan.model_copy(deep=True)
+    corrected.id = "PLAN-2"
+    corrected.actions[0].description = "Run the manual path"
+    corrected.actions[0].attributes = {"mode": "manual"}
+    return corrected
+
+
 def _drive_lifecycle(
     orchestrator: LiveWorkspaceOrchestrator,
     *,
@@ -703,16 +714,10 @@ def _drive_lifecycle(
     if stop_at == "verify-initial":
         return workspace_id
 
-    # The changed task never returns to VALID, so the corrected action binds to
-    # it by scope rather than by task_id; the requirement itself is now met.
-    corrected = _workspace_import().plan.model_copy(deep=True)
-    corrected.id = "PLAN-2"
-    corrected.actions[0].description = "Run the manual path"
-    corrected.actions[0].attributes = {"mode": "manual"}
     if stop_at == "update-plan":
         arm()
     updated = orchestrator.update_plan(
-        workspace_id, WorkspacePlanUpdateRequest(plan=corrected)
+        workspace_id, WorkspacePlanUpdateRequest(plan=_corrected_plan())
     )
     assert updated.status is LiveWorkspaceStatus.PLAN_UPDATED
     if stop_at == "update-plan":
@@ -764,4 +769,221 @@ def test_every_lifecycle_write_keeps_a_write_that_lands_between_its_read_and_its
     assert stored.history[-1].event_type == expected_event
     assert [event.sequence for event in stored.history] == list(
         range(1, len(stored.history) + 1)
+    )
+
+
+# --- Runtime transitions and rehydration run before the transaction ----------
+
+_RENAMED_BY_ANOTHER_PROCESS = "renamed-by-another-process"
+
+
+def _concurrent_assignment_rename(record: LiveWorkspaceRecord) -> None:
+    """Change an assignment field that no runtime transition writes."""
+
+    assert record.supervisor is not None
+    record.supervisor.assignments[0].agent_name = _RENAMED_BY_ANOTHER_PROCESS
+
+
+def _first_agent_name(record: LiveWorkspaceRecord) -> str:
+    assert record.supervisor is not None
+    return record.supervisor.assignments[0].agent_name
+
+
+def _land_on_nth_store_access(
+    repository: _InterleavingRepository,
+    nth: int,
+    write: Callable[[LiveWorkspaceRecord], None],
+) -> None:
+    """Arm ``repository`` so ``write`` lands on the ``nth`` get()/mutate() from now."""
+
+    def step(remaining: int) -> Callable[[LiveWorkspaceRecord], None]:
+        def interleave(record: LiveWorkspaceRecord) -> None:
+            if remaining == 1:
+                write(record)
+            else:
+                repository.interleave_once = step(remaining - 1)
+
+        return interleave
+
+    repository.interleave_once = step(nth)
+
+
+#: The runtime-transition sites `_drive_lifecycle` reaches: the status each
+#: leaves untouched when its transition conflicts, and the call that retries it.
+_RUNTIME_TRANSITION_SITES: dict[
+    str,
+    tuple[LiveWorkspaceStatus, Callable[[LiveWorkspaceOrchestrator, str], object]],
+] = {
+    "authorize": (
+        LiveWorkspaceStatus.BASELINE_APPROVED,
+        lambda orchestrator, workspace_id: orchestrator.authorize(workspace_id),
+    ),
+    "verify-initial": (
+        LiveWorkspaceStatus.CHANGE_APPLIED,
+        lambda orchestrator, workspace_id: orchestrator.verify_initial_grant(
+            workspace_id
+        ),
+    ),
+    "update-plan": (
+        LiveWorkspaceStatus.INITIAL_GRANT_REJECTED,
+        lambda orchestrator, workspace_id: orchestrator.update_plan(
+            workspace_id, WorkspacePlanUpdateRequest(plan=_corrected_plan())
+        ),
+    ),
+    "reauthorize": (
+        LiveWorkspaceStatus.PLAN_UPDATED,
+        lambda orchestrator, workspace_id: orchestrator.reauthorize(workspace_id),
+    ),
+    "verify-replacement": (
+        LiveWorkspaceStatus.REAUTHORIZED,
+        lambda orchestrator, workspace_id: orchestrator.verify_replacement_grant(
+            workspace_id
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("stage", list(_RUNTIME_TRANSITION_SITES))
+def test_a_runtime_transition_conflicts_when_the_supervisor_changes_in_flight(
+    tmp_path: Path, stage: str
+) -> None:
+    """Supervisor transitions are runtime calls made before the store transaction.
+
+    Each site computes them from the record as read and applies them inside
+    ``mutate()`` only if the fresh read still carries that supervisor. An
+    assignment another writer changed in between must conflict and be kept,
+    not be overwritten with transitions computed from the stale read; the
+    retry computes from the changed state and succeeds.
+    """
+
+    store = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    repository = _InterleavingRepository(store)
+    orchestrator = LiveWorkspaceOrchestrator(
+        repository=repository,
+        transport=_RegistryTransport(_registry(max_contexts=4)),
+    )
+    workspace_id = _workspace_import().id
+    untouched_status, retry = _RUNTIME_TRANSITION_SITES[stage]
+    expected_event, expected_status = _LIFECYCLE_WRITES[stage]
+
+    def arm() -> None:
+        repository.interleave_once = _concurrent_assignment_rename
+
+    with pytest.raises(LiveWorkspaceStateConflict, match="supervisor changed"):
+        _drive_lifecycle(orchestrator, stop_at=stage, arm=arm)
+
+    assert repository.interleave_once is None, "the concurrent write never landed"
+    stored = store.get(workspace_id)
+    assert stored.status is untouched_status
+    assert _first_agent_name(stored) == _RENAMED_BY_ANOTHER_PROCESS
+    assert stored.history[-1].event_type != expected_event
+
+    retry(orchestrator, workspace_id)
+    stored = store.get(workspace_id)
+    assert stored.status is expected_status
+    assert _first_agent_name(stored) == _RENAMED_BY_ANOTHER_PROCESS
+    assert stored.history[-1].event_type == expected_event
+
+
+def test_the_change_approval_conflicts_when_the_supervisor_changes_between_its_writes(
+    tmp_path: Path,
+) -> None:
+    """`approve_decision` interrupts the supervisor from the record its intent
+    write returned, outside the transaction, and applies the interrupts in
+    the next write only if the fresh read still carries that supervisor.
+
+    A change landing between those two writes conflicts with the durable
+    intent left in place; the retry recovers the applied mutation and
+    computes the interrupts from the changed state.
+    """
+
+    store = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    repository = _InterleavingRepository(store)
+    orchestrator = LiveWorkspaceOrchestrator(
+        repository=repository,
+        transport=_RegistryTransport(_registry(max_contexts=4)),
+    )
+    workspace_id = _workspace_import().id
+
+    def arm() -> None:
+        # The read lands the first access, the intent write the second and the
+        # mutation write the third; only the third carries the change.
+        _land_on_nth_store_access(repository, 3, _concurrent_assignment_rename)
+
+    with pytest.raises(LiveWorkspaceStateConflict, match="supervisor changed"):
+        _apply_one_change(orchestrator, before_change_approval=arm)
+
+    assert repository.interleave_once is None, "the concurrent write never landed"
+    stored = store.get(workspace_id)
+    assert stored.status is LiveWorkspaceStatus.CHANGE_PROPOSED
+    assert stored.invalidation_report is None
+    assert _first_agent_name(stored) == _RENAMED_BY_ANOTHER_PROCESS
+    intent = stored.decision_approval_intent
+    assert intent is not None, "the durable intent is what the retry recovers from"
+
+    applied = orchestrator.approve_decision(
+        workspace_id,
+        "DEC-CHANGE",
+        WorkspaceApprovalRequest(
+            actor_role="approver",
+            proposal_fingerprint=intent.proposal_fingerprint,
+            proposal_instance_id=intent.proposal_instance_id,
+            approval_evidence=_evidence(
+                workspace_id=workspace_id,
+                decision_id="DEC-CHANGE",
+                fingerprint=intent.proposal_fingerprint,
+                instance_id=intent.proposal_instance_id,
+            ),
+        ),
+    )
+    assert applied.status is LiveWorkspaceStatus.CHANGE_APPLIED
+    stored = store.get(workspace_id)
+    assert stored.decision_approval_intent is None
+    assert stored.invalidation_report is not None
+    assert _first_agent_name(stored) == _RENAMED_BY_ANOTHER_PROCESS
+    assert stored.supervisor is not None
+    assert {
+        assignment.task_id
+        for assignment in stored.supervisor.assignments
+        if assignment.state is SupervisorAssignmentState.INTERRUPTED
+    } == set(stored.invalidation_report.invalidated_task_ids)
+
+
+def test_the_approval_intent_conflicts_when_the_lineage_changes_in_flight(
+    tmp_path: Path,
+) -> None:
+    """The authority context is rehydrated before the intent write, outside
+    the transaction, from the record as read.
+
+    The write requires the fresh read to carry that lineage. A graph version
+    another writer moved in between means the context was rehydrated for a
+    record that no longer exists, so no intent is recorded and the proposal
+    stays pending for a retry that rehydrates from the moved record.
+    """
+
+    store = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    repository = _InterleavingRepository(store)
+    orchestrator = LiveWorkspaceOrchestrator(
+        repository=repository,
+        transport=_RegistryTransport(_registry(max_contexts=4)),
+    )
+    workspace_id = _workspace_import().id
+
+    def move_lineage(record: LiveWorkspaceRecord) -> None:
+        record.graph_version = f"{record.graph_version}-moved"
+
+    def arm() -> None:
+        repository.interleave_once = move_lineage
+
+    with pytest.raises(LiveWorkspaceStateConflict, match="lineage changed"):
+        _apply_one_change(orchestrator, before_change_approval=arm)
+
+    assert repository.interleave_once is None, "the concurrent write never landed"
+    stored = store.get(workspace_id)
+    assert stored.status is LiveWorkspaceStatus.CHANGE_PROPOSED
+    assert stored.decision_approval_intent is None
+    assert stored.pending_mutation is not None
+    assert stored.graph_version.endswith("-moved")
+    assert not any(
+        event.event_type == "decision.approved" for event in stored.history
     )
