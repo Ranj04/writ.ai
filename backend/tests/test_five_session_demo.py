@@ -435,7 +435,7 @@ def test_the_session_list_route_is_authenticated_and_lists_unbound_sessions(
     from fastapi import FastAPI
     from fastapi.testclient import TestClient as _TestClient
     from writai.services.supervisor_api import (
-        HookApiKeyVerifier,
+        HookCredentialVerifier,
         build_supervisor_session_router,
     )
     from writai.services.support import install_api_support
@@ -448,7 +448,7 @@ def test_the_session_list_route_is_authenticated_and_lists_unbound_sessions(
     app.include_router(
         build_supervisor_session_router(
             service,
-            api_key_verifier=HookApiKeyVerifier(expected_api_key="test-key"),
+            api_key_verifier=HookCredentialVerifier(expected_api_key="test-key"),
         )
     )
     client = _TestClient(app)

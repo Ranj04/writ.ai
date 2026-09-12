@@ -174,6 +174,39 @@ def open_live_workspace_repository(path: str | Path) -> LiveWorkspaceRepository:
     return SqliteLiveWorkspaceRepository(store_path)
 
 
+#: Every store derived from the workspace store's name is a JSON document.
+_SIBLING_STORE_SUFFIX = ".json"
+
+
+def workspace_store_sibling(workspace_store: str | Path, label: str) -> Path:
+    """``<dir>/<stem>-<label>.json`` next to the configured workspace store.
+
+    The Slack approval-thread, Slack delivery and CrustData delivery ledgers are
+    JSON documents whatever the workspace store is, so they carry ``.json``
+    rather than inheriting its ``.sqlite3``. Earlier releases inherited it. A
+    ledger still sitting under that name is refused, not read and not moved:
+    it is a replay ledger or an approval-thread map, and an operator should
+    rename it knowingly rather than have the service copy or lose it.
+    """
+
+    workspace_path = Path(workspace_store).expanduser()
+    sibling = workspace_path.with_name(
+        f"{workspace_path.stem}-{label}{_SIBLING_STORE_SUFFIX}"
+    )
+    inherited_suffix = workspace_path.suffix
+    if inherited_suffix and inherited_suffix != _SIBLING_STORE_SUFFIX:
+        inherited = workspace_path.with_name(
+            f"{workspace_path.stem}-{label}{inherited_suffix}"
+        )
+        if inherited.exists() and not sibling.exists():
+            raise RuntimeError(
+                f"Sibling store {inherited} carries the workspace store's suffix "
+                f"from an earlier release; it is now read from {sibling}. Rename "
+                "it to that path and restart. It was neither read nor moved."
+            )
+    return sibling
+
+
 class SqliteLiveWorkspaceRepository:
     """One row per workspace; owner-only from creation; serialised across processes.
 

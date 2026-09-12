@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from multiprocessing.synchronize import Barrier
 from pathlib import Path
 from threading import Event
+from types import ModuleType
 
 import httpx
 import pytest
@@ -22,6 +23,7 @@ from writai.domain import (
 )
 from writai.services import agent_api, support
 from writai.workspaces import orchestrator as orchestrator_module
+from writai.workspaces import session_enforcement as session_enforcement_module
 from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
     LiveWorkspaceRecord,
@@ -230,9 +232,22 @@ def test_concurrent_saves_from_two_processes_do_not_lose_an_update(
 
 # --- No network call inside a store transaction ------------------------------
 
-#: Orchestrator attributes whose methods leave the process: the authority
-#: transport, the executor and the supervisor runtime.
-_NETWORK_ATTRIBUTES = frozenset({"_transport", "_executor", "_supervisor_runtime"})
+#: Every module that calls ``self._repository.mutate(...)``, with the attribute
+#: names whose methods leave the process in that module: the authority
+#: transport, the executor and the supervisor runtime. Adding a module is one
+#: line here; the walk below is the same for each.
+_STORE_TRANSACTION_MODULES = (
+    pytest.param(
+        orchestrator_module,
+        frozenset({"_transport", "_executor", "_supervisor_runtime"}),
+        id="orchestrator",
+    ),
+    pytest.param(
+        session_enforcement_module,
+        frozenset({"_runtime"}),
+        id="session_enforcement",
+    ),
+)
 
 #: ``(method, helper)`` pairs the walk may skip: a helper called from inside a
 #: store transaction that genuinely must observe mid-transaction state. Every
@@ -293,13 +308,17 @@ def _store_transaction_callables(
     return found
 
 
-def _direct_network_calls(node_tree: ast.AST) -> list[tuple[str, int]]:
+def _direct_network_calls(
+    node_tree: ast.AST,
+    *,
+    network_attributes: frozenset[str],
+) -> list[tuple[str, int]]:
     calls: list[tuple[str, int]] = []
     for node in ast.walk(node_tree):
         if not isinstance(node, ast.Call):
             continue
         chain = _self_attribute_chain(node.func)
-        if chain and chain[0] in _NETWORK_ATTRIBUTES:
+        if chain and chain[0] in network_attributes:
             calls.append(("self." + ".".join(chain), node.lineno))
     return calls
 
@@ -309,6 +328,7 @@ def _network_calls(
     *,
     method_name: str,
     class_methods: dict[str, ast.FunctionDef],
+    network_attributes: frozenset[str],
 ) -> list[tuple[str, int]]:
     """Network calls the callable makes directly or through one same-class helper.
 
@@ -320,7 +340,9 @@ def _network_calls(
     belong to the helper's own contract.
     """
 
-    calls = list(_direct_network_calls(callable_node))
+    calls = list(
+        _direct_network_calls(callable_node, network_attributes=network_attributes)
+    )
     for node in ast.walk(callable_node):
         if not isinstance(node, ast.Call):
             continue
@@ -330,7 +352,9 @@ def _network_calls(
         helper = chain[0]
         if (method_name, helper) in _ALLOWED_HELPERS_IN_TRANSACTION:
             continue
-        for call, lineno in _direct_network_calls(class_methods[helper]):
+        for call, lineno in _direct_network_calls(
+            class_methods[helper], network_attributes=network_attributes
+        ):
             calls.append(
                 (
                     f"self.{helper} (called at line {node.lineno}) -> {call}",
@@ -340,7 +364,11 @@ def _network_calls(
     return calls
 
 
-def test_no_store_transaction_wraps_a_network_call() -> None:
+@pytest.mark.parametrize(("module", "network_attributes"), _STORE_TRANSACTION_MODULES)
+def test_no_store_transaction_wraps_a_network_call(
+    module: ModuleType,
+    network_attributes: frozenset[str],
+) -> None:
     """No callable passed to ``_repository.mutate()`` may leave the process.
 
     ``SqliteLiveWorkspaceRepository.mutate()`` runs its callable under
@@ -361,12 +389,17 @@ def test_no_store_transaction_wraps_a_network_call() -> None:
     supervisor runtime counts even though today's only adapter is in-process:
     the product's second adapter is a live one, and a call on it inside a
     transaction would be a real round trip under the write lock.
+
+    Parametrised over every module that opens a store transaction, because
+    ``session_enforcement.py``'s redirect delivery is the same shape as the
+    orchestrator's sites and a walk over one file cannot see the other.
     """
 
-    source = inspect.getsource(orchestrator_module)
+    module_file = Path(module.__file__ or "").name
+    source = inspect.getsource(module)
     tree = ast.parse(source)
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
-    assert classes, "no class found in the orchestrator module"
+    assert classes, f"no class found in {module_file}"
 
     checked = 0
     offenders: list[str] = []
@@ -383,10 +416,11 @@ def test_no_store_transaction_wraps_a_network_call() -> None:
                     callable_node,
                     method_name=method.name,
                     class_methods=class_methods,
+                    network_attributes=network_attributes,
                 ):
                     offenders.append(
                         f"{method.name} -> {callable_name}: {call} at "
-                        f"orchestrator.py:{lineno} runs inside a store transaction"
+                        f"{module_file}:{lineno} runs inside a store transaction"
                     )
 
     assert checked > 0, "no _repository.mutate(...) call sites were found"

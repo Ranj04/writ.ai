@@ -87,9 +87,6 @@ _READ_OUTSIDE_SETTINGS = frozenset(
         "HEXCLAVE_APPROVER_USER_API_KEY",
         # scripts/demo/lib.sh, demo infrastructure only
         "SUPERSET_API_KEY",
-        # documented for operators, consumed by nothing in this tree today
-        "WRITAI_PUBLIC_WEBHOOK_URL",
-        "HEXCLAVE_PUBLISHABLE_CLIENT_KEY",
         # the frontend build reads VITE_* through vite, never through Settings
         "VITE_AUTHORITY_URL",
         "VITE_AGENT_URL",

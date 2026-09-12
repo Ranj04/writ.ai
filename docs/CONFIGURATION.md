@@ -62,7 +62,6 @@ The exceptions are listed literally in `_READ_OUTSIDE_SETTINGS`
 | `HEXCLAVE_APPROVER_USER_API_KEY` | `writai approve` — the human approver's own key |
 | `COMPOSIO_SLACK_AUTH_CONFIG_ID`, `WRITAI_SLACK_CHANNEL_ID` | `writai doctor` probes only |
 | `SUPERSET_API_KEY` | `scripts/demo/lib.sh`, demo infrastructure |
-| `WRITAI_PUBLIC_WEBHOOK_URL`, `HEXCLAVE_PUBLISHABLE_CLIENT_KEY` | documented for operators, consumed by nothing in this tree today |
 | `NEO4J_*` | the driver, `docker-compose.yml`, and the `neo4j` CI job |
 | `VITE_*` | the frontend build, through Vite |
 

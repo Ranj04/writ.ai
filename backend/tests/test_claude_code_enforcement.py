@@ -17,7 +17,7 @@ from writai.domain import (
 )
 from writai.services.supervisor_api import (
     HOOK_API_KEY_HEADER,
-    HookApiKeyVerifier,
+    HookCredentialVerifier,
     build_supervisor_session_router,
 )
 from writai.services.support import install_api_support
@@ -723,7 +723,7 @@ def test_session_start_router_reads_attach_file_and_binds_explicitly(
     app.include_router(
         build_supervisor_session_router(
             enforcement,
-            api_key_verifier=HookApiKeyVerifier(expected_api_key="key"),
+            api_key_verifier=HookCredentialVerifier(expected_api_key="key"),
         )
     )
     marker_directory = tmp_path / ".writai"
@@ -766,7 +766,7 @@ def test_agent_service_router_exposes_fail_closed_check_without_private_fields(
     app.include_router(
         build_supervisor_session_router(
             enforcement,
-            api_key_verifier=HookApiKeyVerifier(
+            api_key_verifier=HookCredentialVerifier(
                 expected_api_key="developer-hook-api-key"
             ),
         )
@@ -954,7 +954,7 @@ def test_session_list_carries_the_state_each_session_is_judged_on(
     app.include_router(
         build_supervisor_session_router(
             enforcement,
-            api_key_verifier=HookApiKeyVerifier(expected_api_key="key"),
+            api_key_verifier=HookCredentialVerifier(expected_api_key="key"),
         )
     )
     client = TestClient(app)
@@ -1151,7 +1151,7 @@ def test_agent_service_router_fails_closed_when_hook_auth_is_unconfigured(
     app.include_router(
         build_supervisor_session_router(
             enforcement,
-            api_key_verifier=HookApiKeyVerifier(expected_api_key=""),
+            api_key_verifier=HookCredentialVerifier(expected_api_key=""),
         )
     )
 
@@ -1407,3 +1407,50 @@ def test_redirect_delivery_keeps_an_interrupt_that_lands_between_read_and_write(
     by_task = {item.task_id: item for item in stored.supervisor.assignments}
     assert by_task["TASK-102"].state is SupervisorAssignmentState.REDIRECTED
     assert by_task["TASK-101"].state is SupervisorAssignmentState.INTERRUPTED
+
+
+def test_redirect_delivery_recomputes_when_the_graph_version_moves_in_flight() -> None:
+    """The runtime transition is computed outside the store transaction.
+
+    That leaves a window: an approval landing between the read and the write
+    moves the graph version, and the transition already computed carries the
+    old one. Applying it anyway would pin the assignment to a snapshot that is
+    no longer current and the very next hook check would deny on the mismatch.
+    The transaction callable must refuse the stale transition and the gateway
+    must recompute from the changed record.
+    """
+
+    repository, runtime = _live_record()
+    gateway = RepositorySupervisorAssignmentGateway(
+        repository=repository,
+        runtime=runtime,
+    )
+    record = repository.get("csv-exports")
+    _interrupt_task(record, runtime, "TASK-102")
+    repository.save(record)
+    assert record.supervisor is not None
+    target = next(
+        item for item in record.supervisor.assignments if item.task_id == "TASK-102"
+    )
+    repository.interleave_once = lambda current: setattr(
+        current, "graph_version", "graph-v18"
+    )
+
+    delivered = gateway.mark_redirect_delivered(
+        AssignmentLocator(
+            workspace_id="csv-exports",
+            assignment_id=target.id,
+            task_id="TASK-102",
+        ),
+        expected_run_id=target.run_id,
+    )
+
+    assert repository.interleave_once is None, "the concurrent write never landed"
+    assert delivered is not None
+    assert delivered.assignment.state is SupervisorAssignmentState.REDIRECTED
+    assert delivered.current_decision_snapshot == "graph-v18"
+    assert delivered.assignment.decision_snapshot == "graph-v18"
+    stored = repository.get("csv-exports")
+    assert stored.supervisor is not None
+    by_task = {item.task_id: item for item in stored.supervisor.assignments}
+    assert by_task["TASK-102"].decision_snapshot == "graph-v18"

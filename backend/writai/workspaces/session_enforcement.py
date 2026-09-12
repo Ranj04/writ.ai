@@ -150,6 +150,13 @@ SPENT_DENY_STATES = frozenset(
 )
 
 
+#: How many times ``mark_redirect_delivered`` recomputes its transition when the
+#: assignment or graph version moves between its read and its write. Exhausting
+#: this leaves the assignment un-advanced, which the hook handles by
+#: re-delivering the same redirect on its next call.
+_REDIRECT_DELIVERY_ATTEMPTS = 3
+
+
 class SessionAssignmentState(_FrozenModel):
     """The assignment facts behind one registered session.
 
@@ -337,53 +344,97 @@ class RepositorySupervisorAssignmentGateway:
         """
 
         with self._lock:
-            try:
-                record = self._repository.get(locator.workspace_id)
-            except LiveWorkspaceNotFound:
-                return None
-            index = _live_assignment_index(record, locator)
-            if index is None:
-                return None
-            assignment = _assignments(record)[index]
-            if not _awaits_redirect(assignment, expected_run_id):
-                return _snapshot(record, locator, assignment)
-            # The transition is read, applied and written in one repository
-            # mutation: an orchestrator save landing between a plain get() and
-            # save() would either lose this REDIRECTED state or lose its own
-            # interrupt to it, and both are authorization state.
-            record = self._repository.mutate(
-                locator.workspace_id,
-                lambda current: self._deliver_redirect(
-                    current, locator, expected_run_id=expected_run_id
-                ),
-            )
-            index = _live_assignment_index(record, locator)
-            if index is None:
-                return None
-            return _snapshot(record, locator, _assignments(record)[index])
+            snapshot: AssignmentEnforcementSnapshot | None = None
+            for _attempt in range(_REDIRECT_DELIVERY_ATTEMPTS):
+                snapshot = self._deliver_redirect_once(
+                    locator, expected_run_id=expected_run_id
+                )
+                if snapshot is None or not _awaits_redirect(
+                    snapshot.assignment, expected_run_id
+                ):
+                    return snapshot
+                # The assignment or the graph version moved between the read
+                # and the write, so nothing was applied. Recompute from the
+                # changed state rather than deliver a transition built on the
+                # old one.
+            # Still awaiting after every attempt: return the state as it stands
+            # without advancing it. The hook re-delivers the identical redirect
+            # on its next call, which is the safe direction.
+            return snapshot
 
-    def _deliver_redirect(
+    def _deliver_redirect_once(
         self,
-        record: LiveWorkspaceRecord,
         locator: AssignmentLocator,
         *,
         expected_run_id: str,
-    ) -> LiveWorkspaceRecord:
-        supervisor = record.supervisor
+    ) -> AssignmentEnforcementSnapshot | None:
+        try:
+            record = self._repository.get(locator.workspace_id)
+        except LiveWorkspaceNotFound:
+            return None
         index = _live_assignment_index(record, locator)
-        if supervisor is None or index is None:
-            return record
-        assignment = supervisor.assignments[index]
+        if index is None:
+            return None
+        assignment = _assignments(record)[index]
         if not _awaits_redirect(assignment, expected_run_id):
-            # Another writer advanced it inside the window; keep what it wrote.
-            return record
-        supervisor.assignments[index] = self._runtime.transition(
+            return _snapshot(record, locator, assignment)
+        # The runtime adapter is a network boundary once the adapter is a live
+        # one, so the transition is computed here from the record as read,
+        # outside the store transaction. The transaction below only applies it,
+        # and only if the fresh record still holds the assignment and graph
+        # version it was computed from: an orchestrator write landing in between
+        # would otherwise either lose this REDIRECTED state or lose its own
+        # interrupt to it, and both are authorization state.
+        read_graph_version = record.graph_version
+        transitioned = self._runtime.transition(
             assignment,
             state=SupervisorAssignmentState.REDIRECTED,
-            decision_snapshot=record.graph_version,
+            decision_snapshot=read_graph_version,
         )
+        record = self._repository.mutate(
+            locator.workspace_id,
+            lambda current: self._apply_redirect_delivery(
+                current,
+                locator,
+                read=assignment,
+                read_graph_version=read_graph_version,
+                transitioned=transitioned,
+            ),
+        )
+        index = _live_assignment_index(record, locator)
+        if index is None:
+            return None
+        return _snapshot(record, locator, _assignments(record)[index])
+
+    def _apply_redirect_delivery(
+        self,
+        current: LiveWorkspaceRecord,
+        locator: AssignmentLocator,
+        *,
+        read: SupervisorAssignment,
+        read_graph_version: str,
+        transitioned: SupervisorAssignment,
+    ) -> LiveWorkspaceRecord:
+        """Put a transition computed from ``read`` onto the fresh ``current``.
+
+        Applied only when the fresh assignment and graph version equal the ones
+        the transition was computed from. Anything else means another writer
+        moved them inside the window; ``current`` is returned untouched so that
+        write is kept, and the caller recomputes from it.
+        """
+
+        supervisor = current.supervisor
+        index = _live_assignment_index(current, locator)
+        if supervisor is None or index is None:
+            return current
+        if (
+            supervisor.assignments[index] != read
+            or current.graph_version != read_graph_version
+        ):
+            return current
+        supervisor.assignments[index] = transitioned
         supervisor.state = SupervisorLifecycleState.REDIRECTING
-        return record
+        return current
 
 
 class ClaudeCodeSessionEnforcement:
@@ -435,8 +486,15 @@ class ClaudeCodeSessionEnforcement:
 
         return self._registry.list()
 
-    def registered_sessions(self) -> tuple[RegisteredSession, ...]:
+    def registered_sessions(
+        self,
+        *,
+        owner_id: str | None = None,
+    ) -> tuple[RegisteredSession, ...]:
         """Every registered session with the assignment state behind it.
+
+        ``owner_id`` narrows the list to the sessions that developer
+        registered; ``None`` lists every developer's, for in-process readers.
 
         Reads only. Nothing here transitions an assignment or delivers a
         redirect — that is ``check``'s job, and listing sessions must never
@@ -449,6 +507,7 @@ class ClaudeCodeSessionEnforcement:
                 assignment_state=self._assignment_state(binding),
             )
             for binding in self._registry.list()
+            if owner_id is None or binding.owner_id == owner_id
         )
 
     def _assignment_state(

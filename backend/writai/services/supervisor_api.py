@@ -127,12 +127,6 @@ class HookCredentialVerifier:
         return resolved
 
 
-#: Compatibility name. ``backend/tests/test_five_session_demo.py:438`` constructs
-#: ``HookApiKeyVerifier(expected_api_key=...)`` and is outside Track B's
-#: ownership; drop this alias once that caller moves to the new name.
-HookApiKeyVerifier = HookCredentialVerifier
-
-
 def build_supervisor_session_router(
     enforcement: ClaudeCodeSessionEnforcement,
     *,
@@ -171,14 +165,19 @@ def build_supervisor_session_router(
         and can reach a different answer than the hook would.
 
         Authenticated like the rest of the session routes: it discloses which
-        machines are running which task, which is not public.
+        machines are running which task, which is not public. Filtered to the
+        developer the credential resolves to, for the same reason a developer
+        cannot check or end another's session. A single ``WRITAI_HOOK_API_KEY``
+        deployment registers every session under the default developer, so
+        it keeps seeing all of them.
         """
 
-        verifier.resolve(hook_api_key)
+        owner_id = verifier.resolve(hook_api_key)
         return correlated_payload(
             {
                 "sessions": [
-                    session.to_payload() for session in enforcement.registered_sessions()
+                    session.to_payload()
+                    for session in enforcement.registered_sessions(owner_id=owner_id)
                 ]
             }
         )

@@ -208,8 +208,10 @@ elif [[ -f "$REPO_DIR/.env" ]]; then
 fi
 
 # The agent service derives the CrustData delivery ledger from the workspace
-# store name. Clear that derived rehearsal state too, without touching genuine
-# callback captures.
+# store name: always a `.json` document (`workspace_store_sibling` in
+# `workspaces/repository.py`). Earlier releases gave it the store's own suffix,
+# and the service refuses to start over a ledger left under that name, so a
+# reset clears both. Genuine callback captures are untouched.
 store_directory="$(dirname "$store_relative")"
 store_filename="$(basename "$store_relative")"
 case "$store_filename" in
@@ -222,12 +224,14 @@ case "$store_filename" in
     store_suffix=".json"
     ;;
 esac
-crustdata_replay_relative="$store_directory/${store_stem}-crustdata-deliveries${store_suffix}"
+crustdata_replay_relative="$store_directory/${store_stem}-crustdata-deliveries.json"
+crustdata_replay_inherited="$store_directory/${store_stem}-crustdata-deliveries${store_suffix}"
 
 removed=0
 for relative in \
   "$store_relative" \
   "$crustdata_replay_relative" \
+  "$crustdata_replay_inherited" \
   ".writai/live-workspaces.json" \
   ".writai/live-workspaces-crustdata-deliveries.json" \
   ".writai/hook-verdict-cache.json" \

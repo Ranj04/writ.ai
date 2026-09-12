@@ -113,6 +113,7 @@ from writai.workspaces.repository import (
     LiveWorkspaceConflict,
     LiveWorkspaceNotFound,
     open_live_workspace_repository,
+    workspace_store_sibling,
 )
 from writai.workspaces.runtimes.claude_code import (
     ClaudeCodeSupervisorRuntime,
@@ -678,11 +679,7 @@ def _workspace_response(
 
 
 def _crustdata_replay_store() -> JsonCrustDataDeliveryReplayStore:
-    workspace_path = Path(settings.workspace_store).expanduser()
-    suffix = workspace_path.suffix or ".json"
-    path = workspace_path.with_name(
-        f"{workspace_path.stem}-crustdata-deliveries{suffix}"
-    )
+    path = workspace_store_sibling(settings.workspace_store, "crustdata-deliveries")
     with crustdata_replay_store_lock:
         store = crustdata_replay_stores.get(path)
         if store is None:

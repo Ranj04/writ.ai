@@ -13,9 +13,9 @@ from writai.domain import (
     ArtifactKind,
     PlanAction,
 )
+from writai.services import supervisor_api
 from writai.services.supervisor_api import (
     HOOK_API_KEY_HEADER,
-    HookApiKeyVerifier,
     HookCredentialVerifier,
     build_supervisor_session_router,
     parse_hook_credentials,
@@ -310,8 +310,7 @@ def test_a_developer_cannot_end_another_developers_session(tmp_path: Path) -> No
     assert response.json()["error"]["code"] == "HOOK_SESSION_NOT_OWNED"
 
     listed = client.get("/supervisor/sessions", headers=BOB).json()["sessions"]
-    assert [item["session_id"] for item in listed] == ["alice-session"]
-    assert listed[0]["owner_id"] == "alice"
+    assert listed == [], "another developer's session must not be listed either"
 
     own = client.post(
         "/supervisor/sessions/alice-session/end",
@@ -320,6 +319,42 @@ def test_a_developer_cannot_end_another_developers_session(tmp_path: Path) -> No
     )
     assert own.status_code == 200
     assert own.json()["released"] is True
+
+
+def test_the_session_list_shows_each_developer_only_their_own(tmp_path: Path) -> None:
+    """B2-4: listing every developer's sessions is the ownership leak one step removed."""
+
+    client = _hook_client(tmp_path, TWO_DEVELOPERS)
+    _start_bound_session(client, "alice-session", ALICE, tmp_path)
+    _start_bound_session(client, "bob-session", BOB, tmp_path)
+
+    alice_sees = client.get("/supervisor/sessions", headers=ALICE).json()["sessions"]
+    bob_sees = client.get("/supervisor/sessions", headers=BOB).json()["sessions"]
+
+    assert [(item["session_id"], item["owner_id"]) for item in alice_sees] == [
+        ("alice-session", "alice")
+    ]
+    assert [(item["session_id"], item["owner_id"]) for item in bob_sees] == [
+        ("bob-session", "bob")
+    ]
+
+
+def test_a_single_shared_key_still_lists_every_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only ``WRITAI_HOOK_API_KEY`` set: every session is the default developer's."""
+
+    monkeypatch.delenv("WRITAI_HOOK_API_KEYS", raising=False)
+    monkeypatch.setenv("WRITAI_HOOK_API_KEY", "shared-key")
+    client = _hook_client(tmp_path, HookCredentialVerifier.from_environment())
+    headers = {HOOK_API_KEY_HEADER: "shared-key"}
+    _start_bound_session(client, "first", headers, tmp_path)
+    _start_bound_session(client, "second", headers, tmp_path)
+
+    listed = client.get("/supervisor/sessions", headers=headers).json()["sessions"]
+
+    assert sorted(item["session_id"] for item in listed) == ["first", "second"]
+    assert {item["owner_id"] for item in listed} == {DEFAULT_HOOK_DEVELOPER_ID}
 
 
 def test_the_owning_developer_can_acknowledge(tmp_path: Path) -> None:
@@ -433,11 +468,15 @@ def test_hook_credentials_parse_from_the_documented_format(
         HookCredentialVerifier.from_environment()
 
 
-def test_the_single_key_verifier_name_still_constructs() -> None:
-    """``test_five_session_demo.py`` (outside Track B) still uses the old name."""
+def test_the_compatibility_alias_is_gone_and_the_single_key_field_stays() -> None:
+    """B2-2: ``HookApiKeyVerifier`` existed for one caller, which has moved.
 
-    verifier = HookApiKeyVerifier(expected_api_key="test-key")
-    assert isinstance(verifier, HookCredentialVerifier)
+    ``expected_api_key`` is not part of the alias: it is the single-developer
+    ``WRITAI_HOOK_API_KEY`` fallback that ``from_environment`` reads.
+    """
+
+    assert not hasattr(supervisor_api, "HookApiKeyVerifier")
+    verifier = HookCredentialVerifier(expected_api_key="test-key")
     assert verifier.resolve("test-key") == DEFAULT_HOOK_DEVELOPER_ID
 
 

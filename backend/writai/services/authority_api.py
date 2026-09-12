@@ -136,6 +136,7 @@ from writai.workspaces.models import (
     WorkspaceApprovalRequest,
     WorkspaceSlackBinding,
 )
+from writai.workspaces.repository import workspace_store_sibling
 
 runtime = create_authority_runtime()
 scenario_contexts = ScenarioAuthorityContextRegistry(
@@ -730,11 +731,7 @@ class _AgentChannelApprovalPort:
 
 
 def _workspace_store_sibling(label: str) -> Path:
-    workspace_path = Path(settings.workspace_store).expanduser()
-    suffix = workspace_path.suffix or ".json"
-    return workspace_path.with_name(
-        f"{workspace_path.stem}-{label}{suffix}"
-    )
+    return workspace_store_sibling(settings.workspace_store, label)
 
 
 def _approval_link_secret() -> str:
