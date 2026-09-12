@@ -29,8 +29,12 @@ updates:
       # was caught. Moving to 2.x is real work with those tests updated
       # deliberately, not a range bump, so the major is excluded here rather than
       # re-proposed every month.
+      # `update-types: semver-major` does NOT match this: Dependabot is widening a
+      # range ceiling in pyproject.toml, not bumping a pinned version, and it kept
+      # proposing the change after a `recreate` with that rule in place. A version
+      # constraint is what actually excludes 2.x.
       - dependency-name: svix
-        update-types: ["version-update:semver-major"]
+        versions: [">=2"]
 
   - package-ecosystem: npm
     directory: /frontend
