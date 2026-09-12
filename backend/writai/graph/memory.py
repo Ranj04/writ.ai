@@ -13,6 +13,7 @@ class MemoryGraphStore:
         self._version = 0
         self._artifacts: dict[str, Artifact] = {}
         self._edges: list[Edge] = []
+        self._in_transaction = False
 
     def reset(self, *, version: int, artifacts: list[Artifact], edges: list[Edge]) -> None:
         self._version = version
@@ -33,12 +34,20 @@ class MemoryGraphStore:
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
+        # A nested block joins the outermost transaction, as Neo4jGraphStore does:
+        # only the outermost snapshots, and only it restores on failure.
+        if self._in_transaction:
+            yield
+            return
         snapshot = deepcopy((self._version, self._artifacts, self._edges))
+        self._in_transaction = True
         try:
             yield
         except BaseException:
             self._version, self._artifacts, self._edges = snapshot
             raise
+        finally:
+            self._in_transaction = False
 
     def add_artifact(self, artifact: Artifact) -> None:
         if artifact.id in self._artifacts:
@@ -68,10 +77,14 @@ class MemoryGraphStore:
         return [deepcopy(edge) for edge in self._edges]
 
     def outgoing_edges(self, artifact_id: str, kinds: set[EdgeKind] | None = None) -> list[Edge]:
-        return [
-            deepcopy(edge)
+        matching = [
+            edge
             for edge in self._edges
             if edge.source_id == artifact_id and (kinds is None or edge.kind in kinds)
+        ]
+        return [
+            deepcopy(edge)
+            for edge in sorted(matching, key=lambda edge: (edge.target_id, edge.kind))
         ]
 
     def downstream_subgraph(

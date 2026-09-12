@@ -118,7 +118,7 @@ separate change:
 
 - **A2 resolved after premise correction.** The original skip remains recorded above: Neo4j rejects schema and data writes in the same transaction. The authorised correction creates `artifact_id_unique` in its own schema transaction before `reset()` opens the existing seed data transaction; duplicate artifacts, missing edge endpoints, and artifact ordering now match the memory-store contract.
 - **A5 resolved after premise correction.** The original skip remains recorded above: `/decisions/change` does not exist. The corrected guard uses the repository's real `POST /decisions/ingest` request shape, and authorization provenance is now supplied explicitly by in-process callers instead of inherited from shared `last_report` state.
-- **Open parity divergence:** `MemoryGraphStore.outgoing_edges` returns insertion order, while `neo4j_store.py` orders by `target_id, kind`. This is latent today because authority traversal re-sorts edges with `authority_edge_sort_key` in Python. Closing the backend-contract divergence is its own change and needs its own tests.
+- **Parity divergence, resolved:** `MemoryGraphStore.outgoing_edges` returned insertion order, while `neo4j_store.py` orders by `target_id, kind`. It was latent because authority traversal re-sorts edges with `authority_edge_sort_key` in Python. Memory now sorts by `(target_id, kind)`; `test_outgoing_edges_is_ordered_by_target_then_kind` in `backend/tests/test_graph_store_contract.py` inserts its edges out of order and pins both backends (see the "Latent parity divergence" section below for the controls).
 
 ---
 
@@ -200,8 +200,8 @@ Two results from that pass are recorded here rather than lost in a transcript.
 
 | id | Item | Severity | Disposition |
 |---|---|---|---|
-| RC-1 | **The two graph stores disagree about nested transactions.** Track A's F2 fix made `Neo4jGraphStore.transaction()` join an already-open transaction, but `MemoryGraphStore` was not made join-aware. Where an outer block swallows an inner failure and continues — outer adds A, inner adds B and raises, outer catches and adds C — memory yields `['A', 'C']` and Neo4j yields `['A', 'B', 'C']`. | Low (latent) | **OPEN, and not a regression**: before the F2 fix Neo4j returned `['C']`, so the fix narrowed the gap rather than opening it. Latent because `apply_decision_change` is the only caller and never nests. No contract test pins nesting parity, which is why it survived the review. Closing it is its own change with its own contract-suite case, alongside the `outgoing_edges` ordering divergence already tracked above. |
-| RC-2 | **A review test went vacuous when its finding was fixed.** Track C's F2 test searched the documented walkthroughs for `scripts/demo/up.sh`; the fix removed every mention, so the test now passes without asserting anything. | Low | **RECORDED.** The reviewer noticed during the re-check and verified the finding a different way — replaying the documented flow against three isolated services on an empty store: import, approve and authorize returned `ALLOW` on `graph-v17`, and after a change `verify --grant initial` exited 1 with `STALE_SNAPSHOT` on `graph-v18`. The general lesson is worth more than the instance: a test written to catch a specific wrong string stops testing anything once that string is gone. A test asserting the *right* commands run would not have this failure mode. |
+| RC-1 | **The two graph stores disagree about nested transactions.** Track A's F2 fix made `Neo4jGraphStore.transaction()` join an already-open transaction, but `MemoryGraphStore` was not made join-aware. Where an outer block swallows an inner failure and continues — outer adds A, inner adds B and raises, outer catches and adds C — memory yields `['A', 'C']` and Neo4j yields `['A', 'B', 'C']`. | Low (latent) | **RESOLVED.** Not a regression: before the F2 fix Neo4j returned `['C']`, so the fix narrowed the gap rather than opening it. Latent because `apply_decision_change` is the only caller and never nests. No contract test pinned nesting parity, which is why it survived the review. `MemoryGraphStore.transaction()` (`backend/writai/graph/memory.py`) is now join-aware: a nested block joins the outermost, and only the outermost snapshots and restores. Pinned for both backends by `test_a_nested_transaction_joins_the_outer_one` in `backend/tests/test_graph_store_contract.py`, using exactly the probe in this row. Control: with the memory change reverted by hand the test fails `assert ['A', 'C'] == ['A', 'B', 'C']` on `[memory]`; restored, it passes on `[memory]` and `[neo4j]`. |
+| RC-2 | **A review test went vacuous when its finding was fixed.** Track C's F2 test searched the documented walkthroughs for `scripts/demo/up.sh`; the fix removed every mention, so the test now passes without asserting anything. | Low | **RESOLVED.** The reviewer noticed during the re-check and verified the finding a different way — replaying the documented flow against three isolated services on an empty store: import, approve and authorize returned `ALLOW` on `graph-v17`, and after a change `verify --grant initial` exited 1 with `STALE_SNAPSHOT` on `graph-v18`. The general lesson is worth more than the instance: a test written to catch a specific wrong string stops testing anything once that string is gone. `test_finding_f2_the_no_hexclave_baseline_path_arms_the_documented_workspace` (`backend/tests/review/test_c1_review_docs.py`) keeps its name and history and now asserts the right thing: each documented no-Hexclave baseline block must import a fixture that exists, approve the baseline of the workspace id that fixture declares with a script that exists, and authorize that same workspace; a document with no such block fails outright. `test_the_f2_test_goes_red_when_the_baseline_path_names_an_unimported_workspace` is the checked-in control: the README copy approves `csv-exports` after importing `refund-operations` and the F2 test fails naming both ids. |
 
 ## Plan execution — integration
 
@@ -266,14 +266,22 @@ zero environment variables, and `WRITAI_ENV=production` still raises the
 - `backend/writai/workspaces/interrupt_port.py` is **not** dead: `scripts/demo/seed.py:47,479`
   uses `WorkspaceSupervisorInterruptPort`, as does `backend/tests/test_claude_code_runtime.py:20,229,251`.
 
-### Latent parity divergence (Track A found it and correctly did not fix it)
+### Latent parity divergence (Track A found it and correctly did not fix it) — resolved
 
-`MemoryGraphStore.outgoing_edges` (`backend/writai/graph/memory.py:70-75`) returns insertion
+`MemoryGraphStore.outgoing_edges` (`backend/writai/graph/memory.py:70-75`) returned insertion
 order; `Neo4jGraphStore.outgoing_edges` (`backend/writai/graph/neo4j_store.py:207`) has
 `ORDER BY target_id, kind`. Latent because the authority traversal re-sorts with
 `authority_edge_sort_key` (`backend/writai/authority/engine.py:262`), and
-`test_outgoing_edges_is_ordered_by_target_then_kind` in the contract suite inserts its edges
-already sorted, so the suite cannot observe it either. Own change, own test.
+`test_outgoing_edges_is_ordered_by_target_then_kind` in the contract suite inserted its edges
+already sorted, so the suite could not observe it either.
+
+**Resolved** in its own change: memory now sorts by `(target_id, kind)`, and the contract test
+inserts `(B-2, CREATES), (A-1, DECOMPOSES_TO), (A-1, CREATES)` — reversed on both keys.
+Control: with the sort reverted by hand the test fails on `[memory]` with
+`('B-2', CREATES) != ('A-1', CREATES)` at index 0; restored, it passes on `[memory]` and
+`[neo4j]`. No caller depended on insertion order: the engine traverses via
+`downstream_subgraph`, the orchestrator re-sorts, and `test_selective_invalidation.py` only
+counts calls.
 
 ### Still open after integration
 
@@ -281,7 +289,8 @@ already sorted, so the suite cannot observe it either. Own change, own test.
 - B1-2 (orchestrator read-modify-write sites), B1-3 (sibling stores named `.sqlite3`),
   B2-2 (`HookApiKeyVerifier` alias), B2-4 (session list not filtered by owner), T0-1
   (`uv.lock` consumed by nothing), T0-2 (two unread env vars), INT-2 (PR check grant
-  validation), A1-1 to A1-5, DEMO-ENV-1 to DEMO-ENV-4, and the `outgoing_edges` divergence above.
+  validation), A1-1 to A1-5, DEMO-ENV-1 to DEMO-ENV-4. The `outgoing_edges` divergence above,
+  RC-1 and RC-2 are now resolved.
 
 ---
 

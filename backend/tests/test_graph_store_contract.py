@@ -90,10 +90,12 @@ def test_list_artifacts_is_ordered_by_id(graph_store: GraphStore) -> None:
 def test_outgoing_edges_is_ordered_by_target_then_kind(graph_store: GraphStore) -> None:
     for artifact_id in ["SOURCE", "B-2", "A-1"]:
         graph_store.add_artifact(_artifact(artifact_id))
+    # Inserted in reverse of the expected order on both keys, so a backend that
+    # returned insertion order could not pass by accident.
     for edge in [
-        Edge(source_id="SOURCE", target_id="A-1", kind=EdgeKind.CREATES),
-        Edge(source_id="SOURCE", target_id="A-1", kind=EdgeKind.DECOMPOSES_TO),
         Edge(source_id="SOURCE", target_id="B-2", kind=EdgeKind.CREATES),
+        Edge(source_id="SOURCE", target_id="A-1", kind=EdgeKind.DECOMPOSES_TO),
+        Edge(source_id="SOURCE", target_id="A-1", kind=EdgeKind.CREATES),
     ]:
         graph_store.add_edge(edge)
 
@@ -121,6 +123,22 @@ def test_transaction_rolls_back_on_exception(graph_store: GraphStore) -> None:
     with pytest.raises(KeyError):
         graph_store.get_artifact("ROLLBACK")
     assert graph_store.version_label == original_version
+
+
+def test_a_nested_transaction_joins_the_outer_one(graph_store: GraphStore) -> None:
+    # RC-1 probe: an inner block has no transaction of its own to roll back, so a
+    # failure the outer block swallows must not undo the inner block's writes.
+    with graph_store.transaction():
+        graph_store.add_artifact(_artifact("A"))
+        try:
+            with graph_store.transaction():
+                graph_store.add_artifact(_artifact("B"))
+                raise RuntimeError("inner")
+        except RuntimeError:
+            pass
+        graph_store.add_artifact(_artifact("C"))
+
+    assert [artifact.id for artifact in graph_store.list_artifacts()] == ["A", "B", "C"]
 
 
 def test_downstream_subgraph_is_ordered_and_kind_filtered(graph_store: GraphStore) -> None:
