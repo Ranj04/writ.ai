@@ -22,6 +22,15 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: "deps"
+    ignore:
+      # svix 2.x changes webhook payload verification. The <2 ceiling in
+      # pyproject.toml is load-bearing: widening it resolves 2.x and fails the
+      # seven tests in backend/tests/test_hexclave_webhooks.py, which is how PR #2
+      # was caught. Moving to 2.x is real work with those tests updated
+      # deliberately, not a range bump, so the major is excluded here rather than
+      # re-proposed every month.
+      - dependency-name: svix
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /frontend
