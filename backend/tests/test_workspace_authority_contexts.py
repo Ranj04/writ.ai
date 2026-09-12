@@ -43,6 +43,7 @@ from writai.workspaces.models import (
     WorkspaceApprovalRequest,
     WorkspaceEvent,
     WorkspaceExecutionResult,
+    WorkspacePlanUpdateRequest,
     WorkspaceProposalRequest,
 )
 from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
@@ -513,6 +514,199 @@ def test_an_approval_keeps_a_write_that_lands_between_its_read_and_its_write(
     assert stored.status is LiveWorkspaceStatus.CHANGE_APPLIED
     assert stored.baseline_approved is True
     assert len(_concurrent_events(stored)) == 1
+    assert [event.sequence for event in stored.history] == list(
+        range(1, len(stored.history) + 1)
+    )
+
+
+#: Every remaining orchestrator write, in lifecycle order, with the audit
+#: event it records and the status it leaves behind.
+_LIFECYCLE_WRITES: dict[str, tuple[str, LiveWorkspaceStatus]] = {
+    "authorize": ("authorization.evaluated", LiveWorkspaceStatus.AUTHORIZED),
+    "propose": ("decision.proposed", LiveWorkspaceStatus.CHANGE_PROPOSED),
+    "cancel": ("decision.proposal-canceled", LiveWorkspaceStatus.AUTHORIZED),
+    "reject": ("decision.approval-rejected", LiveWorkspaceStatus.CHANGE_PROPOSED),
+    "verify-initial": (
+        "initial-grant.verified",
+        LiveWorkspaceStatus.INITIAL_GRANT_REJECTED,
+    ),
+    "update-plan": ("plan.updated", LiveWorkspaceStatus.PLAN_UPDATED),
+    "reauthorize": ("plan.reauthorized", LiveWorkspaceStatus.REAUTHORIZED),
+    "verify-replacement": (
+        "replacement-grant.verified",
+        LiveWorkspaceStatus.COMPLETE,
+    ),
+}
+
+
+def _drive_lifecycle(
+    orchestrator: LiveWorkspaceOrchestrator,
+    *,
+    stop_at: str,
+    arm: Callable[[], None],
+) -> str:
+    """Run the workspace lifecycle up to and including ``stop_at``.
+
+    ``arm`` is called immediately before the ``stop_at`` write so the
+    concurrent write lands between that write's read and its write.
+    """
+
+    imported = orchestrator.import_workspace(_workspace_import())
+    workspace_id = imported.id
+    baseline_instance = imported.baseline_proposal_instance_id
+    assert baseline_instance is not None
+    orchestrator.approve_baseline(
+        workspace_id,
+        WorkspaceApprovalRequest(
+            actor_role="approver",
+            proposal_fingerprint=imported.baseline_proposal_fingerprint,
+            proposal_instance_id=baseline_instance,
+            approval_evidence=_evidence(
+                workspace_id=workspace_id,
+                decision_id="DEC-BASE",
+                fingerprint=imported.baseline_proposal_fingerprint,
+                instance_id=baseline_instance,
+            ),
+        ),
+    )
+
+    if stop_at == "authorize":
+        arm()
+    assert orchestrator.authorize(workspace_id).status is LiveWorkspaceStatus.AUTHORIZED
+    if stop_at == "authorize":
+        return workspace_id
+
+    if stop_at == "propose":
+        arm()
+    pending = orchestrator.propose_decision(
+        workspace_id,
+        WorkspaceProposalRequest(
+            decision=Artifact(
+                id="DEC-CHANGE",
+                kind=ArtifactKind.DECISION,
+                title="Require a manual path",
+                scopes={"scope.changed"},
+                approval_status=ApprovalStatus.PROPOSAL,
+                authority_role="approver",
+                effective_at=datetime(2026, 7, 2, tzinfo=UTC),
+                source_ref="manual://decision/change",
+                attributes={"requirements": {"scope.changed": {"mode": "manual"}}},
+            ),
+            supersedes_id="DEC-BASE",
+            affected_scopes={"scope.changed"},
+        ),
+    )
+    if stop_at == "propose":
+        return workspace_id
+    assert pending.pending_mutation is not None
+    fingerprint = pending.pending_proposal_fingerprint
+    instance_id = pending.pending_proposal_instance_id
+    assert fingerprint is not None
+    assert instance_id is not None
+
+    if stop_at == "cancel":
+        arm()
+        orchestrator.cancel_pending_decision(workspace_id)
+        return workspace_id
+    if stop_at == "reject":
+        arm()
+        orchestrator.record_approval_rejection(
+            workspace_id,
+            decision_id="DEC-CHANGE",
+            disposition="rejected",
+            approver_user_id="USER-APPROVER",
+            permission_id="approver",
+            approval_channel=ApprovalChannel.WORKSPACE_UI.value,
+            approval_evidence_ref=f"workspace-ui://{workspace_id}/DEC-CHANGE",
+            confirmed_proposal_fingerprint=fingerprint,
+            confirmed_proposal_instance_id=instance_id,
+            detail="Rejected in the workspace UI.",
+        )
+        return workspace_id
+
+    applied = orchestrator.approve_decision(
+        workspace_id,
+        "DEC-CHANGE",
+        WorkspaceApprovalRequest(
+            actor_role="approver",
+            proposal_fingerprint=fingerprint,
+            proposal_instance_id=instance_id,
+            approval_evidence=_evidence(
+                workspace_id=workspace_id,
+                decision_id="DEC-CHANGE",
+                fingerprint=fingerprint,
+                instance_id=instance_id,
+            ),
+        ),
+    )
+    assert applied.status is LiveWorkspaceStatus.CHANGE_APPLIED
+
+    if stop_at == "verify-initial":
+        arm()
+    verified = orchestrator.verify_initial_grant(workspace_id)
+    assert verified.status is LiveWorkspaceStatus.INITIAL_GRANT_REJECTED
+    if stop_at == "verify-initial":
+        return workspace_id
+
+    # The changed task never returns to VALID, so the corrected action binds to
+    # it by scope rather than by task_id; the requirement itself is now met.
+    corrected = _workspace_import().plan.model_copy(deep=True)
+    corrected.id = "PLAN-2"
+    corrected.actions[0].description = "Run the manual path"
+    corrected.actions[0].attributes = {"mode": "manual"}
+    if stop_at == "update-plan":
+        arm()
+    updated = orchestrator.update_plan(
+        workspace_id, WorkspacePlanUpdateRequest(plan=corrected)
+    )
+    assert updated.status is LiveWorkspaceStatus.PLAN_UPDATED
+    if stop_at == "update-plan":
+        return workspace_id
+
+    if stop_at == "reauthorize":
+        arm()
+    reauthorized = orchestrator.reauthorize(workspace_id)
+    assert reauthorized.status is LiveWorkspaceStatus.REAUTHORIZED
+    if stop_at == "reauthorize":
+        return workspace_id
+
+    assert stop_at == "verify-replacement"
+    arm()
+    completed = orchestrator.verify_replacement_grant(workspace_id)
+    assert completed.status is LiveWorkspaceStatus.COMPLETE
+    return workspace_id
+
+
+@pytest.mark.parametrize("stage", list(_LIFECYCLE_WRITES))
+def test_every_lifecycle_write_keeps_a_write_that_lands_between_its_read_and_its_write(
+    tmp_path: Path, stage: str
+) -> None:
+    """Each remaining orchestrator write goes through `mutate()`.
+
+    The concurrent write is a bare audit event, the smallest thing a plain
+    get()/save() pair would silently discard; each site's own audit event
+    must land after it with the sequence still contiguous.
+    """
+
+    store = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    repository = _InterleavingRepository(store)
+    orchestrator = LiveWorkspaceOrchestrator(
+        repository=repository,
+        transport=_RegistryTransport(_registry(max_contexts=4)),
+    )
+
+    def arm() -> None:
+        repository.interleave_once = _concurrent_event
+
+    workspace_id = _drive_lifecycle(orchestrator, stop_at=stage, arm=arm)
+    expected_event, expected_status = _LIFECYCLE_WRITES[stage]
+
+    assert repository.interleave_once is None, "the concurrent write never landed"
+    stored = store.get(workspace_id)
+    assert stored.status is expected_status
+    assert len(_concurrent_events(stored)) == 1
+    assert stored.history[-2].event_type == "concurrent.write"
+    assert stored.history[-1].event_type == expected_event
     assert [event.sequence for event in stored.history] == list(
         range(1, len(stored.history) + 1)
     )

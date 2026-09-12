@@ -895,13 +895,22 @@ class LiveWorkspaceOrchestrator:
 
     def authorize(self, workspace_id: str) -> LiveWorkspaceView:
         with self._lock:
+
+            def require_authorizable(record: LiveWorkspaceRecord) -> None:
+                if record.status not in {
+                    LiveWorkspaceStatus.BASELINE_APPROVED,
+                    LiveWorkspaceStatus.AUTHORIZED,
+                }:
+                    self._conflict(
+                        "Approve the baseline before requesting authorization."
+                    )
+
             record = self._repository.get(workspace_id)
-            if record.status not in {
-                LiveWorkspaceStatus.BASELINE_APPROVED,
-                LiveWorkspaceStatus.AUTHORIZED,
-            }:
-                self._conflict("Approve the baseline before requesting authorization.")
+            require_authorizable(record)
             self._ensure_context(record)
+            # The authority call stays outside the store transaction; the
+            # verdict, grant and audit event are then applied to a fresh read
+            # so a write landing in between is kept rather than overwritten.
             result = self._transport.authorize(
                 record.context_id,
                 AuthorizationRequest(
@@ -910,21 +919,28 @@ class LiveWorkspaceOrchestrator:
                     plan=record.current_plan,
                 ),
             )
-            record.initial_authorization = result
-            record.graph_version = result.graph_version
-            if result.verdict is Verdict.ALLOW and result.grant is not None:
-                record.status = LiveWorkspaceStatus.AUTHORIZED
-                self._dispatch_supervisor(
-                    record,
-                    decision_snapshot=result.grant.payload.decision_snapshot,
+
+            def record_authorization(
+                current: LiveWorkspaceRecord,
+            ) -> LiveWorkspaceRecord:
+                require_authorizable(current)
+                current.initial_authorization = result
+                current.graph_version = result.graph_version
+                if result.verdict is Verdict.ALLOW and result.grant is not None:
+                    current.status = LiveWorkspaceStatus.AUTHORIZED
+                    self._dispatch_supervisor(
+                        current,
+                        decision_snapshot=result.grant.payload.decision_snapshot,
+                    )
+                self._event(
+                    current,
+                    event_type="authorization.evaluated",
+                    detail=f"Initial plan verdict: {result.verdict.value}.",
+                    data={"verdict": result.verdict.value},
                 )
-            self._event(
-                record,
-                event_type="authorization.evaluated",
-                detail=f"Initial plan verdict: {result.verdict.value}.",
-                data={"verdict": result.verdict.value},
-            )
-            self._repository.save(record)
+                return current
+
+            record = self._repository.mutate(workspace_id, record_authorization)
             return LiveWorkspaceView.from_record(record)
 
     def propose_decision(
@@ -933,83 +949,94 @@ class LiveWorkspaceOrchestrator:
         request: WorkspaceProposalRequest,
     ) -> LiveWorkspaceView:
         with self._lock:
-            record = self._repository.get(workspace_id)
-            if record.status is not LiveWorkspaceStatus.AUTHORIZED:
-                self._conflict(
-                    "Obtain an initial authorization before proposing a decision change."
+
+            def propose(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                if record.status is not LiveWorkspaceStatus.AUTHORIZED:
+                    self._conflict(
+                        "Obtain an initial authorization before proposing a decision change."
+                    )
+                existing_ids = {
+                    record.definition.baseline_decision.id,
+                    *(item.mutation.decision.id for item in record.approved_mutations),
+                }
+                if request.decision.id in existing_ids:
+                    self._conflict("The proposed Decision ID is already present.")
+                known_decisions = {
+                    record.definition.baseline_decision.id:
+                        record.definition.baseline_decision,
+                    **{
+                        item.mutation.decision.id: item.mutation.decision
+                        for item in record.approved_mutations
+                    },
+                }
+                superseded = known_decisions.get(request.supersedes_id)
+                if superseded is None:
+                    self._conflict(
+                        "The proposed supersession target does not exist in this workspace."
+                    )
+                if not request.affected_scopes <= superseded.scopes:
+                    self._conflict(
+                        "The proposed change includes scopes absent from its supersession target."
+                    )
+                record.pending_mutation = request.mutation()
+                record.proposal_sequence += 1
+                record.pending_proposal_instance_id = (
+                    f"{workspace_id}:proposal:{record.proposal_sequence}"
                 )
-            existing_ids = {
-                record.definition.baseline_decision.id,
-                *(item.mutation.decision.id for item in record.approved_mutations),
-            }
-            if request.decision.id in existing_ids:
-                self._conflict("The proposed Decision ID is already present.")
-            known_decisions = {
-                record.definition.baseline_decision.id:
-                    record.definition.baseline_decision,
-                **{
-                    item.mutation.decision.id: item.mutation.decision
-                    for item in record.approved_mutations
-                },
-            }
-            superseded = known_decisions.get(request.supersedes_id)
-            if superseded is None:
-                self._conflict(
-                    "The proposed supersession target does not exist in this workspace."
+                record.status = LiveWorkspaceStatus.CHANGE_PROPOSED
+                self._event(
+                    record,
+                    event_type="decision.proposed",
+                    detail=(
+                        f"{request.decision.id} was recorded as a proposal; "
+                        "the graph has not changed."
+                    ),
+                    data={
+                        "decision_id": request.decision.id,
+                        "proposal_instance_id": record.pending_proposal_instance_id,
+                        "proposal_fingerprint": stable_hash(record.pending_mutation),
+                        "permission_id": request.decision.authority_role,
+                    },
                 )
-            if not request.affected_scopes <= superseded.scopes:
-                self._conflict(
-                    "The proposed change includes scopes absent from its supersession target."
-                )
-            record.pending_mutation = request.mutation()
-            record.proposal_sequence += 1
-            record.pending_proposal_instance_id = (
-                f"{workspace_id}:proposal:{record.proposal_sequence}"
-            )
-            record.status = LiveWorkspaceStatus.CHANGE_PROPOSED
-            self._event(
-                record,
-                event_type="decision.proposed",
-                detail=(
-                    f"{request.decision.id} was recorded as a proposal; "
-                    "the graph has not changed."
-                ),
-                data={
-                    "decision_id": request.decision.id,
-                    "proposal_instance_id": record.pending_proposal_instance_id,
-                    "proposal_fingerprint": stable_hash(record.pending_mutation),
-                    "permission_id": request.decision.authority_role,
-                },
-            )
-            self._repository.save(record)
+                return record
+
+            # Status check, proposal sequence and audit event share one
+            # repository mutation: the proposal_sequence increment is what
+            # makes proposal instance ids unique, so it must not be lost.
+            record = self._repository.mutate(workspace_id, propose)
             return LiveWorkspaceView.from_record(record)
 
     def cancel_pending_decision(self, workspace_id: str) -> LiveWorkspaceView:
         with self._lock:
-            record = self._repository.get(workspace_id)
-            mutation = record.pending_mutation
-            if record.decision_approval_intent is not None:
-                self._conflict(
-                    "Approval has started; retry it to converge the exact proposal."
+
+            def cancel(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                mutation = record.pending_mutation
+                if record.decision_approval_intent is not None:
+                    self._conflict(
+                        "Approval has started; retry it to converge the exact proposal."
+                    )
+                if (
+                    record.status is not LiveWorkspaceStatus.CHANGE_PROPOSED
+                    or mutation is None
+                ):
+                    self._conflict("There is no pending Decision proposal to cancel.")
+                record.pending_mutation = None
+                record.pending_proposal_instance_id = None
+                record.status = LiveWorkspaceStatus.AUTHORIZED
+                self._event(
+                    record,
+                    event_type="decision.proposal-canceled",
+                    detail=(
+                        f"Canceled pending proposal {mutation.decision.id}; "
+                        "the authority graph was unchanged."
+                    ),
+                    data={"decision_id": mutation.decision.id},
                 )
-            if (
-                record.status is not LiveWorkspaceStatus.CHANGE_PROPOSED
-                or mutation is None
-            ):
-                self._conflict("There is no pending Decision proposal to cancel.")
-            record.pending_mutation = None
-            record.pending_proposal_instance_id = None
-            record.status = LiveWorkspaceStatus.AUTHORIZED
-            self._event(
-                record,
-                event_type="decision.proposal-canceled",
-                detail=(
-                    f"Canceled pending proposal {mutation.decision.id}; "
-                    "the authority graph was unchanged."
-                ),
-                data={"decision_id": mutation.decision.id},
-            )
-            self._repository.save(record)
+                return record
+
+            # The intent check and the cancellation share one mutation, so an
+            # approval intent written in between is seen, not overwritten.
+            record = self._repository.mutate(workspace_id, cancel)
             return LiveWorkspaceView.from_record(record)
 
     def record_approval_rejection(
@@ -1029,95 +1056,104 @@ class LiveWorkspaceOrchestrator:
         """Persist a token-free rejected approval verdict without changing authority."""
 
         with self._lock:
-            record = self._repository.get(workspace_id)
-            pending = record.pending_mutation
-            expected_permission_id: str | None = None
-            proposal_fingerprint: str | None
-            proposal_instance_id: str | None
-            if pending is not None and pending.decision.id == decision_id:
-                proposal_fingerprint = stable_hash(pending)
-                proposal_instance_id = record.pending_proposal_instance_id
-                if (
-                    confirmed_proposal_fingerprint is None
-                    or confirmed_proposal_instance_id is None
-                    or (
-                        confirmed_proposal_fingerprint == proposal_fingerprint
-                        and confirmed_proposal_instance_id
-                        == proposal_instance_id
+
+            def record_rejection(
+                record: LiveWorkspaceRecord,
+            ) -> LiveWorkspaceRecord:
+                pending = record.pending_mutation
+                expected_permission_id: str | None = None
+                proposal_fingerprint: str | None
+                proposal_instance_id: str | None
+                if pending is not None and pending.decision.id == decision_id:
+                    proposal_fingerprint = stable_hash(pending)
+                    proposal_instance_id = record.pending_proposal_instance_id
+                    if (
+                        confirmed_proposal_fingerprint is None
+                        or confirmed_proposal_instance_id is None
+                        or (
+                            confirmed_proposal_fingerprint == proposal_fingerprint
+                            and confirmed_proposal_instance_id
+                            == proposal_instance_id
+                        )
+                    ):
+                        expected_permission_id = pending.decision.authority_role
+                elif decision_id == record.definition.baseline_decision.id:
+                    proposal_fingerprint = stable_hash(
+                        record.definition.baseline_decision
                     )
+                    proposal_instance_id = record.baseline_proposal_instance_id
+                    expected_permission_id = (
+                        record.definition.baseline_decision.authority_role
+                    )
+                else:
+                    proposal_fingerprint = confirmed_proposal_fingerprint
+                    proposal_instance_id = confirmed_proposal_instance_id
+                if expected_permission_id is None:
+                    for event in reversed(record.history):
+                        data = event.data
+                        if (
+                            event.event_type == "decision.proposed"
+                            and data.get("decision_id") == decision_id
+                            and data.get("proposal_fingerprint")
+                            == confirmed_proposal_fingerprint
+                            and data.get("proposal_instance_id")
+                            == confirmed_proposal_instance_id
+                            and isinstance(data.get("permission_id"), str)
+                        ):
+                            expected_permission_id = str(data["permission_id"])
+                            break
+                if expected_permission_id is None:
+                    for approved in reversed(record.approved_mutations):
+                        evidence = approved.approval_evidence
+                        if (
+                            approved.mutation.decision.id == decision_id
+                            and evidence is not None
+                            and evidence.confirmed_proposal_fingerprint
+                            == confirmed_proposal_fingerprint
+                            and evidence.confirmed_proposal_instance_id
+                            == confirmed_proposal_instance_id
+                        ):
+                            expected_permission_id = approved.actor_role
+                            break
+                if (
+                    expected_permission_id is None
+                    or permission_id != expected_permission_id
                 ):
-                    expected_permission_id = pending.decision.authority_role
-            elif decision_id == record.definition.baseline_decision.id:
-                proposal_fingerprint = stable_hash(
-                    record.definition.baseline_decision
+                    self._conflict(
+                        "Rejected approval evidence is not bound to an exact "
+                        "proposal permission."
+                    )
+                rejected_at = utc_now()
+                self._event(
+                    record,
+                    event_type="decision.approval-rejected",
+                    detail=detail,
+                    actor_role=permission_id,
+                    data={
+                        "decision_id": decision_id,
+                        "disposition": disposition,
+                        "approver_user_id": approver_user_id,
+                        "permission_id": permission_id,
+                        "approval_channel": approval_channel,
+                        "approval_evidence_ref": approval_evidence_ref,
+                        "proposal_fingerprint": proposal_fingerprint,
+                        "proposal_instance_id": proposal_instance_id,
+                        "confirmed_proposal_fingerprint": (
+                            confirmed_proposal_fingerprint
+                        ),
+                        "confirmed_proposal_instance_id": (
+                            confirmed_proposal_instance_id
+                        ),
+                        "rejected_at": rejected_at.isoformat(),
+                    },
                 )
-                proposal_instance_id = record.baseline_proposal_instance_id
-                expected_permission_id = (
-                    record.definition.baseline_decision.authority_role
-                )
-            else:
-                proposal_fingerprint = confirmed_proposal_fingerprint
-                proposal_instance_id = confirmed_proposal_instance_id
-            if expected_permission_id is None:
-                for event in reversed(record.history):
-                    data = event.data
-                    if (
-                        event.event_type == "decision.proposed"
-                        and data.get("decision_id") == decision_id
-                        and data.get("proposal_fingerprint")
-                        == confirmed_proposal_fingerprint
-                        and data.get("proposal_instance_id")
-                        == confirmed_proposal_instance_id
-                        and isinstance(data.get("permission_id"), str)
-                    ):
-                        expected_permission_id = str(data["permission_id"])
-                        break
-            if expected_permission_id is None:
-                for approved in reversed(record.approved_mutations):
-                    evidence = approved.approval_evidence
-                    if (
-                        approved.mutation.decision.id == decision_id
-                        and evidence is not None
-                        and evidence.confirmed_proposal_fingerprint
-                        == confirmed_proposal_fingerprint
-                        and evidence.confirmed_proposal_instance_id
-                        == confirmed_proposal_instance_id
-                    ):
-                        expected_permission_id = approved.actor_role
-                        break
-            if (
-                expected_permission_id is None
-                or permission_id != expected_permission_id
-            ):
-                self._conflict(
-                    "Rejected approval evidence is not bound to an exact "
-                    "proposal permission."
-                )
-            rejected_at = utc_now()
-            self._event(
-                record,
-                event_type="decision.approval-rejected",
-                detail=detail,
-                actor_role=permission_id,
-                data={
-                    "decision_id": decision_id,
-                    "disposition": disposition,
-                    "approver_user_id": approver_user_id,
-                    "permission_id": permission_id,
-                    "approval_channel": approval_channel,
-                    "approval_evidence_ref": approval_evidence_ref,
-                    "proposal_fingerprint": proposal_fingerprint,
-                    "proposal_instance_id": proposal_instance_id,
-                    "confirmed_proposal_fingerprint": (
-                        confirmed_proposal_fingerprint
-                    ),
-                    "confirmed_proposal_instance_id": (
-                        confirmed_proposal_instance_id
-                    ),
-                    "rejected_at": rejected_at.isoformat(),
-                },
-            )
-            self._repository.save(record)
+                return record
+
+            # A rejection is pure audit: the only thing this write carries is
+            # the event, so a plain save would trade it for whatever landed
+            # in between. The permission binding and the event share one
+            # mutation.
+            record = self._repository.mutate(workspace_id, record_rejection)
             return LiveWorkspaceView.from_record(record)
 
     def is_slack_authority_user_bound(
@@ -1214,19 +1250,43 @@ class LiveWorkspaceOrchestrator:
                 raise RuntimeError("The durable approval intent was not recorded.")
             mutation = intent.mutation
             expected_fingerprint = intent.proposal_fingerprint
+            expected_instance_id = intent.proposal_instance_id
+
+            # Every later write re-reads the record inside the store transaction
+            # and requires the intent it is advancing to still be the one
+            # written above; the transport calls between them stay outside.
+            def holds_intent(current: LiveWorkspaceRecord) -> bool:
+                held = current.decision_approval_intent
+                return (
+                    held is not None
+                    and held.proposal_fingerprint == expected_fingerprint
+                    and held.proposal_instance_id == expected_instance_id
+                )
+
+            def require_intent(current: LiveWorkspaceRecord) -> None:
+                if not holds_intent(current):
+                    self._conflict(
+                        "The durable approval intent changed while the "
+                        "approval was in flight."
+                    )
+
+            def clear_intent(current: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                # Only this approval's own intent is cleared; one another
+                # writer replaced or removed in between is left as found.
+                if holds_intent(current):
+                    current.decision_approval_intent = None
+                return current
 
             try:
                 result = self._recover_intent_mutation(record, intent)
             except LiveWorkspaceStateConflict:
-                record.decision_approval_intent = None
-                self._repository.save(record)
+                self._repository.mutate(workspace_id, clear_intent)
                 raise
             except ApiError as exc:
                 if not exc.retryable:
                     # The authority rejected before applying; leave the proposal
                     # pending so a rejection audit or cancellation can follow.
-                    record.decision_approval_intent = None
-                    self._repository.save(record)
+                    self._repository.mutate(workspace_id, clear_intent)
                 raise
             report = result.report
             if report is None:
@@ -1237,13 +1297,18 @@ class LiveWorkspaceOrchestrator:
                 intent,
                 mutation_result=result,
             )
-            record.decision_approval_intent = intent
-            record.graph_version = result.graph_version
-            record.invalidation_report = report
-            record.conflict_authorization = None
-            self._apply_supervisor_invalidation(record)
+
+            def record_mutation(current: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                require_intent(current)
+                current.decision_approval_intent = intent
+                current.graph_version = result.graph_version
+                current.invalidation_report = report
+                current.conflict_authorization = None
+                self._apply_supervisor_invalidation(current)
+                return current
+
             # Authorization cannot run until evidence and interrupt state are durable.
-            self._repository.save(record)
+            record = self._repository.mutate(workspace_id, record_mutation)
 
             conflict = intent.authorization_result
             if conflict is None:
@@ -1266,68 +1331,89 @@ class LiveWorkspaceOrchestrator:
                     intent,
                     authorization_result=conflict,
                 )
-                record.decision_approval_intent = intent
-                # Preserve the exact verdict/grant before final visible state.
-                self._repository.save(record)
+                authorized_intent = intent
 
-            record.approved_mutations.append(
-                ApprovedWorkspaceMutation(
-                    mutation=mutation.model_copy(deep=True),
-                    actor_role=intent.actor_role,
-                    approval_evidence=intent.approval_evidence,
+                def record_authorization(
+                    current: LiveWorkspaceRecord,
+                ) -> LiveWorkspaceRecord:
+                    require_intent(current)
+                    current.decision_approval_intent = authorized_intent
+                    return current
+
+                # Preserve the exact verdict/grant before final visible state.
+                record = self._repository.mutate(workspace_id, record_authorization)
+
+            def complete(current: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                require_intent(current)
+                current.approved_mutations.append(
+                    ApprovedWorkspaceMutation(
+                        mutation=mutation.model_copy(deep=True),
+                        actor_role=intent.actor_role,
+                        approval_evidence=intent.approval_evidence,
+                    )
                 )
-            )
-            record.pending_mutation = None
-            record.pending_proposal_instance_id = None
-            record.graph_version = result.graph_version
-            record.invalidation_report = report
-            record.conflict_authorization = conflict
-            record.status = LiveWorkspaceStatus.CHANGE_APPLIED
-            record.decision_approval_intent = None
-            evidence = intent.approval_evidence
-            self._event(
-                record,
-                event_type="decision.approved",
-                detail=(
-                    f"{decision_id} advanced the graph to {result.graph_version}; "
-                    f"the current plan verdict is {conflict.verdict.value}."
-                ),
-                actor_role=intent.actor_role,
-                data={
-                    "decision_id": decision_id,
-                    "verdict": conflict.verdict.value,
-                    "approver_user_id": evidence.approver_user_id,
-                    "approval_channel": evidence.channel.value,
-                    "approval_evidence_ref": evidence.evidence_ref,
-                    "approved_at": evidence.approved_at.isoformat(),
-                    "confirmed_proposal_fingerprint": expected_fingerprint,
-                    "confirmed_proposal_instance_id": (
-                        evidence.confirmed_proposal_instance_id
+                current.pending_mutation = None
+                current.pending_proposal_instance_id = None
+                current.graph_version = result.graph_version
+                current.invalidation_report = report
+                current.conflict_authorization = conflict
+                current.status = LiveWorkspaceStatus.CHANGE_APPLIED
+                current.decision_approval_intent = None
+                evidence = intent.approval_evidence
+                self._event(
+                    current,
+                    event_type="decision.approved",
+                    detail=(
+                        f"{decision_id} advanced the graph to {result.graph_version}; "
+                        f"the current plan verdict is {conflict.verdict.value}."
                     ),
-                    "invalidated_task_ids": report.invalidated_task_ids,
-                    "preserved_task_ids": report.preserved_task_ids,
-                },
-            )
-            self._repository.save(record)
+                    actor_role=intent.actor_role,
+                    data={
+                        "decision_id": decision_id,
+                        "verdict": conflict.verdict.value,
+                        "approver_user_id": evidence.approver_user_id,
+                        "approval_channel": evidence.channel.value,
+                        "approval_evidence_ref": evidence.evidence_ref,
+                        "approved_at": evidence.approved_at.isoformat(),
+                        "confirmed_proposal_fingerprint": expected_fingerprint,
+                        "confirmed_proposal_instance_id": (
+                            evidence.confirmed_proposal_instance_id
+                        ),
+                        "invalidated_task_ids": report.invalidated_task_ids,
+                        "preserved_task_ids": report.preserved_task_ids,
+                    },
+                )
+                return current
+
+            record = self._repository.mutate(workspace_id, complete)
             return LiveWorkspaceView.from_record(record)
 
     def verify_initial_grant(self, workspace_id: str) -> LiveWorkspaceView:
         with self._lock:
+
+            def already_verified(record: LiveWorkspaceRecord) -> bool:
+                if record.status not in {
+                    LiveWorkspaceStatus.CHANGE_APPLIED,
+                    LiveWorkspaceStatus.INITIAL_GRANT_REJECTED,
+                }:
+                    self._conflict(
+                        "Apply an approved decision change before verification."
+                    )
+                return (
+                    record.status is LiveWorkspaceStatus.INITIAL_GRANT_REJECTED
+                    and self._has_verified_stale_grant(record)
+                )
+
             record = self._repository.get(workspace_id)
-            if record.status not in {
-                LiveWorkspaceStatus.CHANGE_APPLIED,
-                LiveWorkspaceStatus.INITIAL_GRANT_REJECTED,
-            }:
-                self._conflict("Apply an approved decision change before verification.")
-            if (
-                record.status is LiveWorkspaceStatus.INITIAL_GRANT_REJECTED
-                and self._has_verified_stale_grant(record)
-            ):
+            if already_verified(record):
                 return LiveWorkspaceView.from_record(record)
             authorization = record.initial_authorization
             if authorization is None or authorization.grant is None:
                 self._conflict("The workspace has no initial ALLOW grant to verify.")
             self._ensure_context(record)
+            # The executor call stays outside the store transaction; its result
+            # is applied to a fresh read. Nothing reachable from these statuses
+            # replaces the initial grant, so the status re-check is sufficient.
             execution = self._transport.execute(
                 context_id=record.context_id,
                 token=authorization.grant.token,
@@ -1335,28 +1421,39 @@ class LiveWorkspaceOrchestrator:
                 task_id=record.definition.ticket.id,
                 plan=record.definition.plan,
             )
-            record.initial_verification = execution
-            if (
-                not execution.applied
-                and execution.verification_code is VerificationCode.STALE_SNAPSHOT
-            ):
-                record.status = LiveWorkspaceStatus.INITIAL_GRANT_REJECTED
-                self._enforce_supervisor_interrupts(record)
-            else:
-                record.status = LiveWorkspaceStatus.CHANGE_APPLIED
-            self._event(
-                record,
-                event_type="initial-grant.verified",
-                detail=(
-                    f"Executor verification returned "
-                    f"{execution.verification_code.value}."
-                ),
-                data={
-                    "applied": execution.applied,
-                    "verification_code": execution.verification_code.value,
-                },
-            )
-            self._repository.save(record)
+
+            def record_verification(
+                current: LiveWorkspaceRecord,
+            ) -> LiveWorkspaceRecord:
+                if already_verified(current):
+                    # Another writer verified the stale grant in between; its
+                    # enforced interrupts are the ones to keep.
+                    return current
+                current.initial_verification = execution
+                if (
+                    not execution.applied
+                    and execution.verification_code
+                    is VerificationCode.STALE_SNAPSHOT
+                ):
+                    current.status = LiveWorkspaceStatus.INITIAL_GRANT_REJECTED
+                    self._enforce_supervisor_interrupts(current)
+                else:
+                    current.status = LiveWorkspaceStatus.CHANGE_APPLIED
+                self._event(
+                    current,
+                    event_type="initial-grant.verified",
+                    detail=(
+                        f"Executor verification returned "
+                        f"{execution.verification_code.value}."
+                    ),
+                    data={
+                        "applied": execution.applied,
+                        "verification_code": execution.verification_code.value,
+                    },
+                )
+                return current
+
+            record = self._repository.mutate(workspace_id, record_verification)
             return LiveWorkspaceView.from_record(record)
 
     def update_plan(
@@ -1365,51 +1462,66 @@ class LiveWorkspaceOrchestrator:
         request: WorkspacePlanUpdateRequest,
     ) -> LiveWorkspaceView:
         with self._lock:
-            record = self._repository.get(workspace_id)
-            if record.status not in {
-                LiveWorkspaceStatus.INITIAL_GRANT_REJECTED,
-                LiveWorkspaceStatus.PLAN_UPDATED,
-            }:
-                self._conflict(
-                    "Verify the initial grant as STALE_SNAPSHOT before updating the plan."
+
+            def update(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                if record.status not in {
+                    LiveWorkspaceStatus.INITIAL_GRANT_REJECTED,
+                    LiveWorkspaceStatus.PLAN_UPDATED,
+                }:
+                    self._conflict(
+                        "Verify the initial grant as STALE_SNAPSHOT before updating the plan."
+                    )
+                if not self._has_verified_stale_grant(record):
+                    self._conflict(
+                        "A verified STALE_SNAPSHOT result is required before updating the plan."
+                    )
+                if request.plan.ticket_id != record.definition.ticket.id:
+                    self._conflict("The corrected plan is bound to a different ticket.")
+                record.current_plan = request.plan.model_copy(deep=True)
+                record.replacement_authorization = None
+                record.replacement_verification = None
+                record.status = LiveWorkspaceStatus.PLAN_UPDATED
+                self._redirect_supervisor(record)
+                self._event(
+                    record,
+                    event_type="plan.updated",
+                    detail=f"Corrected plan {request.plan.id} is ready for authority review.",
+                    data={"plan_id": request.plan.id},
                 )
-            if not self._has_verified_stale_grant(record):
-                self._conflict(
-                    "A verified STALE_SNAPSHOT result is required before updating the plan."
-                )
-            if request.plan.ticket_id != record.definition.ticket.id:
-                self._conflict("The corrected plan is bound to a different ticket.")
-            record.current_plan = request.plan.model_copy(deep=True)
-            record.replacement_authorization = None
-            record.replacement_verification = None
-            record.status = LiveWorkspaceStatus.PLAN_UPDATED
-            self._redirect_supervisor(record)
-            self._event(
-                record,
-                event_type="plan.updated",
-                detail=f"Corrected plan {request.plan.id} is ready for authority review.",
-                data={"plan_id": request.plan.id},
-            )
-            self._repository.save(record)
+                return record
+
+            # The redirect transitions are computed from the assignments as
+            # stored, so a redirect delivered by the hook in between is
+            # advanced from, not overwritten.
+            record = self._repository.mutate(workspace_id, update)
             return LiveWorkspaceView.from_record(record)
 
     def reauthorize(self, workspace_id: str) -> LiveWorkspaceView:
         with self._lock:
+
+            def already_reauthorized(record: LiveWorkspaceRecord) -> bool:
+                if (
+                    record.status is LiveWorkspaceStatus.REAUTHORIZED
+                    and record.replacement_authorization is not None
+                ):
+                    # Keep retries idempotent. Rotating the authorization ID
+                    # here would bypass Callwright's at-most-once attempt
+                    # record for this plan.
+                    return True
+                if record.status is not LiveWorkspaceStatus.PLAN_UPDATED:
+                    self._conflict("Submit a corrected plan before reauthorization.")
+                if not self._has_verified_stale_grant(record):
+                    self._conflict(
+                        "A verified STALE_SNAPSHOT result is required before reauthorization."
+                    )
+                return False
+
             record = self._repository.get(workspace_id)
-            if (
-                record.status is LiveWorkspaceStatus.REAUTHORIZED
-                and record.replacement_authorization is not None
-            ):
-                # Keep retries idempotent. Rotating the authorization ID here would
-                # bypass Callwright's at-most-once attempt record for this plan.
+            if already_reauthorized(record):
                 return LiveWorkspaceView.from_record(record)
-            if record.status is not LiveWorkspaceStatus.PLAN_UPDATED:
-                self._conflict("Submit a corrected plan before reauthorization.")
-            if not self._has_verified_stale_grant(record):
-                self._conflict(
-                    "A verified STALE_SNAPSHOT result is required before reauthorization."
-                )
             self._ensure_context(record)
+            # The authority call stays outside the store transaction; the
+            # verdict is applied to a fresh read.
             result = self._transport.authorize(
                 record.context_id,
                 AuthorizationRequest(
@@ -1418,40 +1530,66 @@ class LiveWorkspaceOrchestrator:
                     plan=record.current_plan,
                 ),
             )
-            record.replacement_authorization = result
-            if result.verdict is Verdict.ALLOW and result.grant is not None:
-                record.status = LiveWorkspaceStatus.REAUTHORIZED
-                self._resume_supervisor(
-                    record,
-                    decision_snapshot=result.grant.payload.decision_snapshot,
+            evaluated_plan = record.current_plan
+
+            def record_reauthorization(
+                current: LiveWorkspaceRecord,
+            ) -> LiveWorkspaceRecord:
+                if already_reauthorized(current):
+                    # Another writer reauthorized in between; its grant is the
+                    # one the executor's attempt record will see.
+                    return current
+                if current.current_plan != evaluated_plan:
+                    # PLAN_UPDATED admits a further update_plan, so the plan the
+                    # authority evaluated may no longer be the stored one.
+                    self._conflict(
+                        "The corrected plan changed while it was being reauthorized."
+                    )
+                current.replacement_authorization = result
+                if result.verdict is Verdict.ALLOW and result.grant is not None:
+                    current.status = LiveWorkspaceStatus.REAUTHORIZED
+                    self._resume_supervisor(
+                        current,
+                        decision_snapshot=result.grant.payload.decision_snapshot,
+                    )
+                else:
+                    current.status = LiveWorkspaceStatus.PLAN_UPDATED
+                self._event(
+                    current,
+                    event_type="plan.reauthorized",
+                    detail=f"Corrected plan verdict: {result.verdict.value}.",
+                    data={"verdict": result.verdict.value},
                 )
-            else:
-                record.status = LiveWorkspaceStatus.PLAN_UPDATED
-            self._event(
-                record,
-                event_type="plan.reauthorized",
-                detail=f"Corrected plan verdict: {result.verdict.value}.",
-                data={"verdict": result.verdict.value},
-            )
-            self._repository.save(record)
+                return current
+
+            record = self._repository.mutate(workspace_id, record_reauthorization)
             return LiveWorkspaceView.from_record(record)
 
     def verify_replacement_grant(self, workspace_id: str) -> LiveWorkspaceView:
         with self._lock:
+
+            def require_verifiable(record: LiveWorkspaceRecord) -> None:
+                if record.status not in {
+                    LiveWorkspaceStatus.REAUTHORIZED,
+                    LiveWorkspaceStatus.COMPLETE,
+                }:
+                    self._conflict(
+                        "Obtain a replacement ALLOW grant before verification."
+                    )
+                if not self._has_verified_stale_grant(record):
+                    self._conflict(
+                        "A verified STALE_SNAPSHOT result is required before completion."
+                    )
+
             record = self._repository.get(workspace_id)
-            if record.status not in {
-                LiveWorkspaceStatus.REAUTHORIZED,
-                LiveWorkspaceStatus.COMPLETE,
-            }:
-                self._conflict("Obtain a replacement ALLOW grant before verification.")
-            if not self._has_verified_stale_grant(record):
-                self._conflict(
-                    "A verified STALE_SNAPSHOT result is required before completion."
-                )
+            require_verifiable(record)
             authorization = record.replacement_authorization
             if authorization is None or authorization.grant is None:
                 self._conflict("The workspace has no replacement grant to verify.")
             self._ensure_context(record)
+            # The executor call stays outside the store transaction; its result
+            # is applied to a fresh read. Nothing reachable from these statuses
+            # replaces the plan or the grant, so the status re-check suffices.
             execution = self._transport.execute(
                 context_id=record.context_id,
                 token=authorization.grant.token,
@@ -1459,24 +1597,31 @@ class LiveWorkspaceOrchestrator:
                 task_id=record.definition.ticket.id,
                 plan=record.current_plan,
             )
-            record.replacement_verification = execution
-            if (
-                execution.applied
-                and execution.verification_code is VerificationCode.VALID
-            ):
-                record.status = LiveWorkspaceStatus.COMPLETE
-                self._complete_supervisor(record)
-            self._event(
-                record,
-                event_type="replacement-grant.verified",
-                detail=(
-                    f"Executor verification returned "
-                    f"{execution.verification_code.value}."
-                ),
-                data={
-                    "applied": execution.applied,
-                    "verification_code": execution.verification_code.value,
-                },
-            )
-            self._repository.save(record)
+
+            def record_verification(
+                current: LiveWorkspaceRecord,
+            ) -> LiveWorkspaceRecord:
+                require_verifiable(current)
+                current.replacement_verification = execution
+                if (
+                    execution.applied
+                    and execution.verification_code is VerificationCode.VALID
+                ):
+                    current.status = LiveWorkspaceStatus.COMPLETE
+                    self._complete_supervisor(current)
+                self._event(
+                    current,
+                    event_type="replacement-grant.verified",
+                    detail=(
+                        f"Executor verification returned "
+                        f"{execution.verification_code.value}."
+                    ),
+                    data={
+                        "applied": execution.applied,
+                        "verification_code": execution.verification_code.value,
+                    },
+                )
+                return current
+
+            record = self._repository.mutate(workspace_id, record_verification)
             return LiveWorkspaceView.from_record(record)
