@@ -97,6 +97,8 @@ On the **agent service**, not the executor. `services/executor_api.py` is the Ca
 Logic:
 - `assignment.decision_snapshot == current` → allow.
 - `INTERRUPTED` and not yet redirected → **deny once**, return `redirect_instruction` + `provenance_path`, transition to `REDIRECTED`, advance `decision_snapshot`.
+
+> **2026-09-12:** Historical design only: current enforcement is deny-until-acknowledged; see `docs/STAGE_RUNBOOK.md`.
 - invalidated outright rather than redirected → keep denying until a human acknowledges.
 
 Deny-once-then-advance is what makes it terminate. Be honest in the code comment that this is a weaker guarantee than the grant path, because the session's plan is not re-checked — the PR check is what closes it.

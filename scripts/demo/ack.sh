@@ -61,7 +61,9 @@ fi
 # Only sessions the service says are blocked. The decision id comes from the
 # service, never from this script.
 blocked=()
-while IFS=$'\037' read -r session_id task_id assignment_id source cwd decision_id; do
+while IFS=$'\037' read -r \
+  session_id task_id assignment_id source cwd decision_id \
+  bound snapshot_current deny_spent state snapshot graph; do
   [[ -n "$decision_id" ]] || continue
   if (( ${#TARGETS[@]} > 0 )); then
     wanted=0
