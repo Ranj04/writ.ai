@@ -46,7 +46,10 @@ from writai.workspaces.models import (
     WorkspacePlanUpdateRequest,
     WorkspaceProposalRequest,
 )
-from writai.workspaces.orchestrator import LiveWorkspaceOrchestrator
+from writai.workspaces.orchestrator import (
+    LiveWorkspaceOrchestrator,
+    LiveWorkspaceStateConflict,
+)
 from writai.workspaces.repository import (
     LiveWorkspaceRepository,
     SqliteLiveWorkspaceRepository,
@@ -516,6 +519,58 @@ def test_an_approval_keeps_a_write_that_lands_between_its_read_and_its_write(
     assert len(_concurrent_events(stored)) == 1
     assert [event.sequence for event in stored.history] == list(
         range(1, len(stored.history) + 1)
+    )
+
+
+def test_baseline_approval_conflicts_when_the_proposal_is_rebound_in_flight(
+    tmp_path: Path,
+) -> None:
+    """The binding re-check inside `mutate()` reads the fresh record.
+
+    `approve_baseline` checks the proposal binding, makes the authority call,
+    then re-checks the binding on the record the store transaction reads. A
+    proposal rebound while the call was in flight must conflict and leave the
+    record unapproved; a re-check against the stale read would approve it.
+    """
+
+    store = SqliteLiveWorkspaceRepository(tmp_path / "live-workspaces.sqlite3")
+    repository = _InterleavingRepository(store)
+    orchestrator = LiveWorkspaceOrchestrator(
+        repository=repository,
+        transport=_RegistryTransport(_registry(max_contexts=4)),
+    )
+    imported = orchestrator.import_workspace(_workspace_import())
+    baseline_instance = imported.baseline_proposal_instance_id
+    assert baseline_instance is not None
+
+    def rebind_proposal(record: LiveWorkspaceRecord) -> None:
+        record.baseline_proposal_instance_id = f"{baseline_instance}-rebound"
+
+    repository.interleave_once = rebind_proposal
+    with pytest.raises(LiveWorkspaceStateConflict, match="not bound"):
+        orchestrator.approve_baseline(
+            imported.id,
+            WorkspaceApprovalRequest(
+                actor_role="approver",
+                proposal_fingerprint=imported.baseline_proposal_fingerprint,
+                proposal_instance_id=baseline_instance,
+                approval_evidence=_evidence(
+                    workspace_id=imported.id,
+                    decision_id="DEC-BASE",
+                    fingerprint=imported.baseline_proposal_fingerprint,
+                    instance_id=baseline_instance,
+                ),
+            ),
+        )
+
+    assert repository.interleave_once is None, "the rebinding never landed"
+    stored = store.get(imported.id)
+    assert stored.status is LiveWorkspaceStatus.IMPORTED
+    assert stored.baseline_approved is False
+    assert stored.baseline_approval_evidence is None
+    assert stored.baseline_proposal_instance_id == f"{baseline_instance}-rebound"
+    assert not any(
+        event.event_type == "baseline.approved" for event in stored.history
     )
 
 

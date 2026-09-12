@@ -837,7 +837,16 @@ class LiveWorkspaceOrchestrator:
     ) -> LiveWorkspaceView:
         with self._lock:
 
-            def approve(record: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+            def require_bound_proposal(
+                record: LiveWorkspaceRecord,
+            ) -> tuple[Artifact, str, str, ApprovalEvidence]:
+                """Check the request against ``record``'s own proposal binding.
+
+                The fingerprint and instance id are read from the record that
+                is passed in, never captured from an earlier read, so the
+                re-check inside the store transaction sees the fresh record.
+                """
+
                 if record.status is not LiveWorkspaceStatus.IMPORTED:
                     self._conflict("The workspace baseline is not awaiting approval.")
                 decision = record.definition.baseline_decision
@@ -860,19 +869,33 @@ class LiveWorkspaceOrchestrator:
                     self._conflict(
                         "The baseline approval is not bound to the current proposal."
                     )
-                self._ensure_context(record)
-                state = self._transport.approve_baseline(record.context_id, request)
-                record.baseline_approved = True
-                record.baseline_approval_role = request.actor_role
-                record.baseline_approval_evidence = evidence
-                record.status = LiveWorkspaceStatus.BASELINE_APPROVED
-                record.graph_version = state.graph_version
+                return decision, expected_fingerprint, expected_instance_id, evidence
+
+            record = self._repository.get(workspace_id)
+            require_bound_proposal(record)
+            self._ensure_context(record)
+            # The authority call stays outside the store transaction so no
+            # writer waits on the HTTP round trip. The binding is re-checked
+            # on the fresh read below: a second approver reads
+            # BASELINE_APPROVED and conflicts instead of overwriting this
+            # approval, and a proposal replaced while the call was in flight
+            # no longer matches the request.
+            state = self._transport.approve_baseline(record.context_id, request)
+
+            def approve(current: LiveWorkspaceRecord) -> LiveWorkspaceRecord:
+                decision, expected_fingerprint, expected_instance_id, evidence = (
+                    require_bound_proposal(current)
+                )
+                current.baseline_approved = True
+                current.baseline_approval_role = request.actor_role
+                current.baseline_approval_evidence = evidence
+                current.status = LiveWorkspaceStatus.BASELINE_APPROVED
+                current.graph_version = state.graph_version
                 self._event(
-                    record,
+                    current,
                     event_type="baseline.approved",
                     detail=(
-                        f"{record.definition.baseline_decision.id} approved at "
-                        f"{state.graph_version}."
+                        f"{decision.id} approved at {state.graph_version}."
                     ),
                     actor_role=request.actor_role,
                     data={
@@ -885,11 +908,8 @@ class LiveWorkspaceOrchestrator:
                         "confirmed_proposal_instance_id": expected_instance_id,
                     },
                 )
-                return record
+                return current
 
-            # Status check, authority call and write share one repository
-            # mutation, so a second approver reads BASELINE_APPROVED and
-            # conflicts instead of overwriting this approval with its own copy.
             record = self._repository.mutate(workspace_id, approve)
             return LiveWorkspaceView.from_record(record)
 

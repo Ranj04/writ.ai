@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import inspect
 import multiprocessing
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
@@ -19,6 +21,7 @@ from writai.domain import (
     Verdict,
 )
 from writai.services import agent_api, support
+from writai.workspaces import orchestrator as orchestrator_module
 from writai.workspaces.models import (
     LiveWorkspaceImportRequest,
     LiveWorkspaceRecord,
@@ -223,3 +226,113 @@ def test_concurrent_saves_from_two_processes_do_not_lose_an_update(
     assert [event.sequence for event in history] == list(
         range(1, 2 * APPENDS_PER_WORKER + 1)
     )
+
+
+# --- No network call inside a store transaction ------------------------------
+
+#: Orchestrator attributes whose methods leave the process: the authority
+#: transport, the executor and the supervisor runtime.
+_NETWORK_ATTRIBUTES = frozenset({"_transport", "_executor", "_supervisor_runtime"})
+
+
+def _self_attribute_chain(node: ast.expr) -> list[str]:
+    """Return ``["_transport", "approve_baseline"]`` for ``self._transport.approve_baseline``.
+
+    Empty when the expression is not rooted at ``self``.
+    """
+
+    chain: list[str] = []
+    while isinstance(node, ast.Attribute):
+        chain.append(node.attr)
+        node = node.value
+    if isinstance(node, ast.Name) and node.id == "self":
+        chain.reverse()
+        return chain
+    return []
+
+
+def _is_repository_mutate(call: ast.Call) -> bool:
+    return _self_attribute_chain(call.func) == ["_repository", "mutate"]
+
+
+def _store_transaction_callables(
+    method: ast.FunctionDef,
+) -> list[tuple[str, ast.AST]]:
+    """Every callable ``method`` passes to ``self._repository.mutate(...)``.
+
+    Named callables resolve to the nested ``def`` of that name; a lambda is
+    returned as itself.
+    """
+
+    nested = {
+        node.name: node
+        for node in ast.walk(method)
+        if isinstance(node, ast.FunctionDef) and node is not method
+    }
+    found: list[tuple[str, ast.AST]] = []
+    for node in ast.walk(method):
+        if not (isinstance(node, ast.Call) and _is_repository_mutate(node)):
+            continue
+        if len(node.args) < 2:
+            continue
+        callable_arg = node.args[1]
+        if isinstance(callable_arg, ast.Name) and callable_arg.id in nested:
+            found.append((callable_arg.id, nested[callable_arg.id]))
+        elif isinstance(callable_arg, ast.Lambda):
+            found.append((f"<lambda at line {callable_arg.lineno}>", callable_arg))
+        else:
+            raise AssertionError(
+                f"{method.name} at line {node.lineno} passes something the "
+                "invariant walk cannot resolve to mutate(); extend the walk."
+            )
+    return found
+
+
+def _network_calls(callable_node: ast.AST) -> list[tuple[str, int]]:
+    calls: list[tuple[str, int]] = []
+    for node in ast.walk(callable_node):
+        if not isinstance(node, ast.Call):
+            continue
+        chain = _self_attribute_chain(node.func)
+        if chain and chain[0] in _NETWORK_ATTRIBUTES:
+            calls.append(("self." + ".".join(chain), node.lineno))
+    return calls
+
+
+def test_no_store_transaction_wraps_a_network_call() -> None:
+    """No callable passed to ``_repository.mutate()`` may leave the process.
+
+    ``SqliteLiveWorkspaceRepository.mutate()`` runs its callable under
+    ``BEGIN IMMEDIATE``, so anything the callable does happens with the
+    store's write lock held. A call on the authority transport, the executor
+    or the supervisor runtime inside it is an HTTP round trip under that lock:
+    every other writer waits for the remote service, up to the transport's
+    timeout. That is a latency fault that only appears under concurrency and
+    never in a single-threaded test run, which is exactly the kind of defect
+    a test has to catch rather than a reviewer. The pattern that avoids it is
+    the split used across the orchestrator: read, check the precondition,
+    make the network call, then ``mutate()`` re-checking the same precondition
+    on the fresh read before applying the result.
+    """
+
+    source = inspect.getsource(orchestrator_module)
+    tree = ast.parse(source)
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    assert classes, "no class found in the orchestrator module"
+
+    checked = 0
+    offenders: list[str] = []
+    for class_node in classes:
+        for method in class_node.body:
+            if not isinstance(method, ast.FunctionDef):
+                continue
+            for callable_name, callable_node in _store_transaction_callables(method):
+                checked += 1
+                for call, lineno in _network_calls(callable_node):
+                    offenders.append(
+                        f"{method.name} -> {callable_name}: {call} at "
+                        f"orchestrator.py:{lineno} runs inside a store transaction"
+                    )
+
+    assert checked > 0, "no _repository.mutate(...) call sites were found"
+    assert offenders == [], "\n".join(offenders)
